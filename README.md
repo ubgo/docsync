@@ -48,7 +48,7 @@ The full design is in [docs/SPEC.md](docs/SPEC.md). It is normative; the conform
 
 ## Install
 
-macOS (Apple silicon) and Linux, amd64 or arm64:
+macOS (Apple silicon), Linux and Windows, amd64 or arm64. On macOS and Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | sh
@@ -58,10 +58,10 @@ It downloads the newest `ds` release for your machine, checks it against the rel
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | INSTALL_DIR=$HOME/.local/bin sh   # no sudo
-curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | VERSION=v0.1.1 sh                # a specific release
+curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | VERSION=v0.1.2 sh                # a specific release
 ```
 
-Windows (PowerShell), which installs to `%LOCALAPPDATA%\ds` and adds it to your PATH:
+On Windows (PowerShell), which installs to `%LOCALAPPDATA%\ds` and adds it to your PATH:
 
 ```powershell
 irm https://raw.githubusercontent.com/ubgo/docsync/main/install.ps1 | iex
@@ -74,7 +74,7 @@ go install github.com/ubgo/docsync/cli/cmd/ds@latest
 go install github.com/ubgo/docsync/cli/cmd/ds-resolve-aws@latest   # a secret-resolver plugin, only if you use `ds check --resolve`: -aws -gcp -github -onepassword -vault
 ```
 
-Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64 and windows/amd64, with a `checksums.txt`. Check what you are running with `ds version`.
+Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64, windows/amd64 and windows/arm64, with a `checksums.txt`. The Windows builds are run on real Windows machines by `.github/workflows/windows.yml` (the Go tests of every module, then `scripts/windows-smoke.ps1` against the published binary); `ds:run` needs `sh` on PATH there, which Git for Windows provides. Check what you are running with `ds version`.
 
 The library, for Go programs that embed docsync (standard library only):
 
@@ -268,7 +268,7 @@ What docsync cannot do, stated here rather than discovered in use. Each of these
 
 ## Status
 
-The library is at `v0.1.0` and the `ds` binary at `v0.1.1` (see [CHANGELOG.md](CHANGELOG.md)). Every module is built and gated at 100% statement coverage: the root library, the `cli` module with `init doctor def scan check ack refresh render map context facts why find read locate impact status triage audit rename graph blame report adopt undo publish sync mcp lsp notify review github export`, the `ext/structured` tier (YAML, TOML, HCL), the `ext/treesitter` tier (Go, TypeScript, TSX, JavaScript, Python, SQL), the `ext/records/sqlite` source, and the JavaScript integrations (Docusaurus plugin, VS Code client) under `node --test` with 100% line, branch, and function coverage. Secret resolvers ship as process plugins under `cli/cmd/`: `ds-resolve-github` (existence through `gh`), and `ds-resolve-onepassword`, `ds-resolve-aws`, `ds-resolve-gcp`, `ds-resolve-vault` (existence and a hash through `op`, `aws`, `gcloud`, `vault`; the value never leaves the plugin); any provider can add one in any language by speaking the procplugin protocol. Scale features are in: parallel extraction with a persisted cache under `.ds/cache/` (`check --full` bypasses it), a per-directory sharded ledger with `[ledger] shard = true`, collapsed findings for heavily cited ids, and `report --metrics` printing bytes served to agents against source bytes plus busy id prefixes. Repo mode (`include.mode = "repo"`), the HTTP record source, fork pull request refusal of `--run` and `--resolve`, and doc rename detection keeping acks are built too.
+The library is at `v0.1.0` and the `ds` binary at `v0.1.2` (see [CHANGELOG.md](CHANGELOG.md)). Every module is built and gated at 100% statement coverage: the root library, the `cli` module with `init doctor def scan check ack refresh render map context facts why find read locate impact status triage audit rename graph blame report adopt undo publish sync mcp lsp notify review github export`, the `ext/structured` tier (YAML, TOML, HCL), the `ext/treesitter` tier (Go, TypeScript, TSX, JavaScript, Python, SQL), the `ext/records/sqlite` source, and the JavaScript integrations (Docusaurus plugin, VS Code client) under `node --test` with 100% line, branch, and function coverage. Secret resolvers ship as process plugins under `cli/cmd/`: `ds-resolve-github` (existence through `gh`), and `ds-resolve-onepassword`, `ds-resolve-aws`, `ds-resolve-gcp`, `ds-resolve-vault` (existence and a hash through `op`, `aws`, `gcloud`, `vault`; the value never leaves the plugin); any provider can add one in any language by speaking the procplugin protocol. Scale features are in: parallel extraction with a persisted cache under `.ds/cache/` (`check --full` bypasses it), a per-directory sharded ledger with `[ledger] shard = true`, collapsed findings for heavily cited ids, and `report --metrics` printing bytes served to agents against source bytes plus busy id prefixes. Repo mode (`include.mode = "repo"`), the HTTP record source, fork pull request refusal of `--run` and `--resolve`, and doc rename detection keeping acks are built too.
 
 A citation keeps its baselines when it moves — a line inserted above it, its doc renamed — by matching the sentence it sits in, and where a move is ambiguous every candidate takes the baseline that still reports a change. A file the scan cannot read (too large, binary, or a line past the limit in a tier that is not prose) keeps its last recorded state and fails the check as `unscanned` rather than taking its citations with it. Coverage of a citation is decided against that citation's own baseline — the hash it was acked at, or the hash recorded the first time it was seen — and never against the scan-to-scan change table. Blocks bodies are kept content-addressed under `.ds/blocks/` and, for a workspace, under `repos/<name>/blocks/` in the index, so a change can still be classified when its baseline is many scans old or lives in another repository; secret and local blocks publish a hash and no body, and a body the store cannot supply yields the class `unknown`, which flags wherever `api` flags. `refs.tsv` is `format = 2` (it gained `seen_hash`); `format = 1` files are still read and are upgraded by the next scan. A citing repo also commits `.ds/foreign.tsv`, the snapshot of the foreign blocks it cites, written by `ds sync`; `ds check --frozen` resolves against it without syncing, so the same commit gives the same answer on any machine and with no network, and it is the default when `CI` is set. `ds status` reports how far that snapshot is behind upstream, per repo and per block with the change class, without ever changing the exit code, and `[check] snapshot_max_age` adds an opt-in warning. `ds prune` removes block bodies no ledger, ack, citation, or snapshot still needs, with a 30-day grace period, a `--dry-run`, an `--index` mode gated on the default branch and a fresh sync, and a targeted `--hash … --force` for a value that should never have been stored.
 

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-30
+
+A release of the `ds` binary and the `cli` module, after the first run of docsync on Windows.
+
+### Added
+
+- A `ds` build for Windows on ARM64 (`ds_v0.1.2_windows_arm64.zip`), installed by `install.ps1`.
+- `.github/workflows/windows.yml` and `scripts/windows-smoke.ps1`: every module's tests, a build from source, and the published release, run on Windows amd64 and ARM64. Manual trigger.
+
+### Fixed
+
+- On Windows, a rooted path with no drive letter (`/etc/hosts`, `\etc\hosts`) was accepted as a path inside the repository, and `ds:run file="/etc/hosts"` was not refused. A path argument is now taken from the root, and `file=` is judged by its text on every platform: a leading slash of either kind, or a drive, is refused.
+- On Windows, a file sitting where `.ds/blocks` or `.ds/ledger` should be was read as an empty store instead of an error.
+
 ## [0.1.1] - 2026-09-30
 
 A release of the `ds` binary and the `cli` module; the library and the tier modules stay at 0.1.0.

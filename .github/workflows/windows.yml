@@ -26,7 +26,14 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    # Both architectures the release ships for. fail-fast is off so that one
+    # failing does not hide what the other would have reported.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
       CGO_ENABLED: "1"
@@ -42,8 +49,11 @@ jobs:
         shell: pwsh
         run: |
           go version
-          gcc --version | Select-Object -First 1
+          go env GOARCH
           git --version
+          # cgo needs a C compiler; say which one is here, or that none is.
+          $cc = Get-Command gcc, clang -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($cc) { & $cc.Source --version | Select-Object -First 1 } else { Write-Host "no C compiler on PATH: the cgo steps will fail" }
 
       # Every test step runs even when an earlier one failed, so one run
       # reports everything that is wrong on this platform.

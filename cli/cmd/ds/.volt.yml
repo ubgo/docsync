@@ -6,7 +6,7 @@
 # for macOS (Apple's SDK is not redistributable): Intel Macs install with
 # `go install github.com/ubgo/docsync/cli/cmd/ds@<version>`.
 cgo: true
-platforms: [darwin/arm64, linux/amd64, linux/arm64, windows/amd64]
+platforms: [darwin/arm64, linux/amd64, linux/arm64, windows/amd64, windows/arm64]
 toolchain:
   # Applied to cross targets only; the native one uses the host compiler
   # (volt v0.2.0 or later).
