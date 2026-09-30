@@ -45,6 +45,24 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # The ARM runner's gcc is an x86_64 MinGW, which cannot compile C for
+      # arm64, so cgo (the tree-sitter tier, and ds itself) would fail to build
+      # from source there. llvm-mingw ships a native ARM64 toolchain; it is
+      # pinned, and put first on PATH so `gcc` is the one that matches GOARCH.
+      - name: C compiler for ARM64
+        if: runner.arch == 'ARM64'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LLVM_MINGW: "20260922"
+        run: |
+          $zip = "llvm-mingw-$env:LLVM_MINGW-ucrt-aarch64.zip"
+          gh release download $env:LLVM_MINGW -R mstorsjo/llvm-mingw -p $zip -D $env:RUNNER_TEMP
+          Expand-Archive (Join-Path $env:RUNNER_TEMP $zip) -DestinationPath $env:RUNNER_TEMP
+          $bin = Join-Path $env:RUNNER_TEMP "llvm-mingw-$env:LLVM_MINGW-ucrt-aarch64/bin"
+          if (-not (Test-Path (Join-Path $bin "gcc.exe"))) { throw "no gcc.exe in $bin" }
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+
       - name: Toolchain
         shell: pwsh
         run: |
