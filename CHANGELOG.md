@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-30
+
+A release of the `ds` binary and the `cli` module; the library and the tier modules stay at 0.1.0.
+
+### Changed
+
+- The `ds` release archives carry the five secret-resolver plugins (`ds-resolve-aws`, `ds-resolve-gcp`, `ds-resolve-github`, `ds-resolve-onepassword`, `ds-resolve-vault`) beside `ds`, and `install.sh` / `install.ps1` install them with it. In 0.1.0 they could only be built with `go install`, so `ds check --resolve` needed a Go toolchain.
+
 ## [0.1.0] - 2026-09-30
 
 The first release: the root library `github.com/ubgo/docsync`, the tier modules `ext/structured`, `ext/treesitter` and `ext/records/sqlite`, the `cli` module, and the `ds` binary for darwin/arm64, linux/amd64, linux/arm64 and windows/amd64, installable with `install.sh` / `install.ps1` or `go install`. `ds` carries the tree-sitter tier and is built with cgo, so there is no prebuilt Intel Mac binary; `go install github.com/ubgo/docsync/cli/cmd/ds@v0.1.0` with a C compiler covers it. The five secret-resolver plugins install with `go install` as well.
