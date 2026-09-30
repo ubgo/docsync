@@ -621,16 +621,13 @@ func TestStoreAndHelpers(t *testing.T) {
 	if err := st.AppendAcks(nil); err != nil {
 		t.Errorf("save acks: %v", err)
 	}
-	// A directory that cannot be written to: only where the platform enforces
-	// directory permissions (not Windows, not root).
+	// A directory that cannot be written to: everywhere but as root.
 	if dirPermsEnforced(t) {
-		if err := os.Chmod(filepath.Join(dir, DirName), 0o500); err != nil {
-			t.Fatal(err)
-		}
+		restore := restrictDir(t, filepath.Join(dir, DirName), denyWrite)
 		if err := st.Write("x", []byte("y")); err == nil {
 			t.Error("unwritable dir")
 		}
-		_ = os.Chmod(filepath.Join(dir, DirName), 0o755)
+		restore()
 	}
 	// ApplyEdit paths.
 	write(t, dir, "a.txt", "one\ntwo\n")

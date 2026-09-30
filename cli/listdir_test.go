@@ -3,28 +3,113 @@ package cli
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
 
-// dirPermsEnforced reports whether removing a directory's permission bits
-// stops this process reading it. It does not on Windows, where directory
-// modes are not access control, nor for root anywhere. A test whose fixture
-// is "a directory I cannot read" has nothing to stand on there, and says so
-// instead of asserting on a fixture that never came to exist.
+// dirDenial is what restrictDir takes away from a directory.
+type dirDenial int
+
+const (
+	// denyWrite: nothing can be created in the directory.
+	denyWrite dirDenial = iota
+	// denyList: the directory's entries cannot be read.
+	denyList
+)
+
+// everyoneSID is the well-known SID for Everyone. icacls takes it with a
+// leading *, which avoids naming an account: account names are localised and
+// differ between a desktop and a CI runner.
+const everyoneSID = "*S-1-1-0"
+
+// restrictDir takes one kind of access to dir away from this process, by
+// what the platform honours, and returns the call that gives it back. On
+// Unix that is the mode bits. On Windows a directory's mode is not access
+// control, so it is a deny entry in the ACL, set with icacls: the specific
+// rights are named (WD,AD to create entries, RD to list) because the broad
+// W also denies SYNCHRONIZE, which would block reading as well and make a
+// "cannot write" fixture into a "cannot open" one. The entry is not
+// inherited, so files already inside stay as they were.
+//
+// It is also registered as a cleanup, so t.TempDir can remove the tree
+// whether or not the test restores it itself.
+func restrictDir(t *testing.T, dir string, deny dirDenial) (restore func()) {
+	t.Helper()
+	if runtime.GOOS != windowsOS {
+		mode := os.FileMode(0o555)
+		if deny == denyList {
+			mode = 0
+		}
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		restore = func() { _ = os.Chmod(dir, 0o755) }
+		t.Cleanup(restore)
+		return restore
+	}
+	rights := "(WD,AD)"
+	if deny == denyList {
+		rights = "(RD)"
+	}
+	if out, err := exec.Command("icacls", dir, "/deny", everyoneSID+":"+rights).CombinedOutput(); err != nil {
+		t.Fatalf("icacls /deny on %s: %v\n%s", dir, err, out)
+	}
+	restore = func() { _ = exec.Command("icacls", dir, "/remove:d", everyoneSID).Run() }
+	t.Cleanup(restore)
+	return restore
+}
+
+// dirPermsEnforced reports whether restrictDir has any effect on this
+// process. It has none for root on Unix, which is not subject to mode bits.
+// A test whose fixture is "a directory I cannot read" has nothing to stand on
+// there, and says so instead of asserting on a fixture that never came to
+// exist.
 func dirPermsEnforced(t *testing.T) bool {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "probe")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	restrictDir(t, dir, denyList)
 	_, err := os.ReadDir(dir)
 	return err != nil
+}
+
+// TestRestrictDir pins the fixture itself: each denial takes away exactly
+// what it names and the restore gives it back. Without this, a test built on
+// restrictDir could pass because the directory was never restricted.
+func TestRestrictDir(t *testing.T) {
+	t.Parallel()
+	if !dirPermsEnforced(t) {
+		t.Skip("this process is not subject to directory permissions (root)")
+	}
+	dir := t.TempDir()
+	write(t, dir, "d/kept.txt", "x")
+	d := filepath.Join(dir, "d")
+	create := func() error { return os.WriteFile(filepath.Join(d, "new.txt"), []byte("x"), 0o644) }
+
+	restore := restrictDir(t, d, denyWrite)
+	if err := create(); err == nil {
+		t.Error("denyWrite: a file was created")
+	}
+	if _, err := os.ReadDir(d); err != nil {
+		t.Errorf("denyWrite must leave the directory listable: %v", err)
+	}
+	restore()
+	if err := create(); err != nil {
+		t.Errorf("after restoring from denyWrite: %v", err)
+	}
+
+	restore = restrictDir(t, d, denyList)
+	if _, err := os.ReadDir(d); err == nil {
+		t.Error("denyList: the directory was listed")
+	}
+	restore()
+	if entries, err := os.ReadDir(d); err != nil || len(entries) != 2 {
+		t.Errorf("after restoring from denyList: %v %v", entries, err)
+	}
 }
 
 // TestListDir pins what each thing at a store path means, identically on
@@ -76,10 +161,7 @@ func TestListDir(t *testing.T) {
 	if err := os.Mkdir(locked, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(locked, 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	restrictDir(t, locked, denyList)
 	if _, exists, err := listDir(locked); err == nil || !exists {
 		t.Errorf("an unreadable directory = exists %v, err %v; want an error", exists, err)
 	}

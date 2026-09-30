@@ -36,6 +36,9 @@ const (
 	DefaultMaxFileKB      = 512
 	DefaultMaxLineChars   = 2000
 	DefaultRunTimeout     = "30s"
+	// DefaultRunShell runs ds:run commands and the [review] command. It is
+	// looked up on PATH; on Windows, Git for Windows provides it.
+	DefaultRunShell       = "sh"
 	DefaultURLTTL         = "7d"
 	DefaultURLRate        = 30
 	DefaultEnv            = ""
@@ -192,7 +195,14 @@ type RunConfig struct {
 	Enabled bool
 	Allow   []string
 	Timeout string
-	Env     map[string]map[string]string
+	// Shell is the program ds:run commands and the [review] command run
+	// under, invoked as `<shell> -c <command>` and, for file=, `<shell>
+	// <file>`. Empty means DefaultRunShell. It exists for machines without
+	// sh and for teams whose commands are written for another shell
+	// (`pwsh`); docsync never picks a different shell by itself, because the
+	// same text means different things to different shells.
+	Shell string
+	Env   map[string]map[string]string
 }
 
 // URLConfig is [url].
@@ -308,7 +318,7 @@ func Default() Config {
 		Check:   CheckConfig{FuzzyThreshold: DefaultFuzzyThreshold, Unacked: DefaultUnacked, Sentence: DefaultSentence},
 		Owners:  map[string][]string{},
 		Env:     EnvConfig{Default: DefaultEnv},
-		Run:     RunConfig{Timeout: DefaultRunTimeout, Env: map[string]map[string]string{}},
+		Run:     RunConfig{Timeout: DefaultRunTimeout, Shell: DefaultRunShell, Env: map[string]map[string]string{}},
 		URL:     URLConfig{TTL: DefaultURLTTL, RatePerMinute: DefaultURLRate},
 		Sources: map[string]SourceConfig{},
 		Records: RecordsConfig{Source: DefaultRecords},
@@ -599,6 +609,7 @@ func (c *Config) applyRun(v value) error {
 		"enabled": func(x value) (e error) { c.Run.Enabled, e = x.boolean(); return },
 		"allow":   func(x value) (e error) { c.Run.Allow, e = x.strs(); return },
 		"timeout": func(x value) (e error) { c.Run.Timeout, e = x.str(); return },
+		"shell":   func(x value) (e error) { c.Run.Shell, e = x.str(); return },
 		"env": func(x value) error {
 			envs, err := x.table()
 			if err != nil {

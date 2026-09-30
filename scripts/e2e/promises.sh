@@ -13,6 +13,9 @@
 # which puts the binary built from this tree first on PATH.
 set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -40,7 +43,7 @@ mk() { # $1 dir, $2 fwd|rev
     printf '# P%d\n\nSee [v](ds:cfg?id=%s).\n\n<!-- ds:block id=%s -->\nValue is %d.\n' "$i" "$id" "$id" "$i" > docs/p$i.md
   done
   ds init >/dev/null; git add -A; git commit -qm a; ds scan >/dev/null; git add -A; git commit -qm b
-  for i in 1 5 9 13 17 21 25 29; do sed -i.bak "s/= $i \/\//= 9$i \/\//" src/v$i.go; /bin/rm -f src/v$i.go.bak; done
+  for i in 1 5 9 13 17 21 25 29; do sedi "s/= $i \/\//= 9$i \/\//" src/v$i.go; done
 }
 mk "$S/fwd" fwd; mk "$S/rev" rev
 # Only what differs by construction is dropped: the clock, the repo name
@@ -83,7 +86,7 @@ ds init >/dev/null; ds scan >/dev/null
 ds ack val-k7m2p4xq --doc docs/p.md --line 3 --note ok >/dev/null; ds scan >/dev/null; git add -A; git commit -qm a
 for f in ledger refs acks; do
   cp .ds/$f.tsv "$S/orig"
-  sed -i.bak "1s/format=[0-9]*/format=99/" .ds/$f.tsv; /bin/rm -f .ds/$f.tsv.bak; cp .ds/$f.tsv "$S/newer"
+  sedi "1s/format=[0-9]*/format=99/" .ds/$f.tsv; cp .ds/$f.tsv "$S/newer"
   out=$(ds check 2>&1); rc=$?
   ck "§33 $f.tsv with format=99: check refuses" 2 $rc
   has "§33 $f.tsv with format=99: refused by name" "$out" "file format 99"
@@ -101,7 +104,7 @@ done
 # would rewrite the files under the older rule.
 for f in ledger refs; do
   cp .ds/$f.tsv "$S/orig"
-  sed -i.bak "1s/extract=[0-9]*/extract=99/" .ds/$f.tsv; /bin/rm -f .ds/$f.tsv.bak; cp .ds/$f.tsv "$S/newer"
+  sedi "1s/extract=[0-9]*/extract=99/" .ds/$f.tsv; cp .ds/$f.tsv "$S/newer"
   out=$(ds check 2>&1); rc=$?
   ck "§33 $f.tsv with extract=99: check refuses" 2 $rc
   has "§33 $f.tsv with extract=99: refused naming both rules" "$out" "$f.tsv says extract=99, this build implements rule"
@@ -114,13 +117,13 @@ for f in ledger refs; do
   ck "§33 $f.tsv with extract=99: doctor fails" 2 $rc
   has "§33 $f.tsv with extract=99: doctor names it" "$out" "extract=99"
   # The fix the refusal gives for a repo a pre-release build wrote.
-  sed -i.bak "1s/extract=99/extract=1/" .ds/$f.tsv; /bin/rm -f .ds/$f.tsv.bak
+  sedi "1s/extract=99/extract=1/" .ds/$f.tsv
   ds check >/dev/null 2>&1; ck "§33 $f.tsv: setting extract=1 clears the refusal" 0 $?
   cp "$S/orig" .ds/$f.tsv
 done
 # The ack log's header is written once and never restamped, so it says
 # nothing about its rows; each row's rule is what check reports.
-cp .ds/acks.tsv "$S/orig"; sed -i.bak "1s/extract=[0-9]*/extract=99/" .ds/acks.tsv; /bin/rm -f .ds/acks.tsv.bak
+cp .ds/acks.tsv "$S/orig"; sedi "1s/extract=[0-9]*/extract=99/" .ds/acks.tsv
 out=$(ds check 2>&1); rc=$?
 ck "§33 acks.tsv header rule is not treated as the rows' rule" 0 $rc
 cp "$S/orig" .ds/acks.tsv
@@ -133,7 +136,7 @@ printf '# P\n\nSee [v](ds:cfg?id=val-k7m2p4xq).\n\nAnd a second [v](ds:cfg?id=va
 ds scan >/dev/null
 first=$(awk -F'\t' '$1=="val-k7m2p4xq" && $4=="5" {print $8}' .ds/refs.tsv)
 [ -n "$first" ]; ck "§15 a new citation records a seen_hash" 0 $?
-for v in 2 3 4; do sed -i.bak "s/= [0-9] /= $v /" src/v.go; /bin/rm -f src/v.go.bak; ds scan >/dev/null; done
+for v in 2 3 4; do sedi "s/= [0-9] /= $v /" src/v.go; ds scan >/dev/null; done
 now=$(awk -F'\t' '$1=="val-k7m2p4xq" && $4=="5" {print $8}' .ds/refs.tsv)
 ck "§15 seen_hash survives three changed scans unrevised" "$first" "$now"
 out=$(ds check 2>&1)
@@ -152,7 +155,7 @@ ck "§7 '// ds is the datastore' is not a directive" 0 "$(grep -c datastore .ds/
 ck "§7 public/ and dist/ are never scanned" 0 "$(grep -c -e built- -e nope- .ds/ledger.tsv .ds/refs.tsv | awk -F: '{s+=$2} END {print s}')"
 lines=$(awk -F'\t' '$1=="sec-t4k2b9rf" {print $6}' .ds/ledger.tsv)
 ck "Part VII: frontmatter is never part of a block" 5-7 "$lines"
-sed -i.bak 's/title: One/title: Two/' docs/spec.md; /bin/rm -f docs/spec.md.bak
+sedi 's/title: One/title: Two/' docs/spec.md
 ds check >/dev/null 2>&1; ck "Part VII: editing only the frontmatter changes no block" 0 $?
 git add -A; git commit -qm frontmatter
 

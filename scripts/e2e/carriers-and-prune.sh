@@ -4,6 +4,9 @@
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
 set -u
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -35,7 +38,7 @@ ds init >/dev/null
 B=$(ds def "spec.md#D" --label d | tail -1)
 printf 'See [d](ds:block?id=%s).\n' "$B" > guide.md
 ds scan >/dev/null; ds ack "$B" --doc guide.md --line 1 --note ok >/dev/null; ds scan >/dev/null
-for n in 11 10 9; do sed -i '' "s/At most [0-9]* deep/At most $n deep/" spec.md; ds scan >/dev/null; done
+for n in 11 10 9; do sedi "s/At most [0-9]* deep/At most $n deep/" spec.md; ds scan >/dev/null; done
 N1=$(ls .ds/blocks | wc -l | tr -d ' ')
 ds prune --dry-run >/dev/null 2>&1; ck "bug 6: prune --dry-run exits 0" 0 $?
 N2=$(ls .ds/blocks | wc -l | tr -d ' ')

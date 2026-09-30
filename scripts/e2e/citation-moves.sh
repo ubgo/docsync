@@ -8,6 +8,9 @@
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -18,7 +21,7 @@ setup() {
   printf 'package p\n\n// ds:def id=alpha-k7m2p4xq\nfunc A() int { return 1 }\n' > a.go
 }
 base() { ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm base; }
-drift() { sed -i '' 's/return 1/return 2/' a.go 2>/dev/null || sed -i 's/return 1/return 2/' a.go; ds scan >/dev/null; }
+drift() { sedi 's/return 1/return 2/' a.go; ds scan >/dev/null; }
 ck() { [ -n "$2" ] || { echo "  FAIL  $1 (an empty expectation matches anything)"; fail=$((fail+1)); return; }; case "$3" in *"$2"*) echo "  PASS  $1"; pass=$((pass+1));; *) echo "  FAIL  $1 (want $2, got: $3)"; fail=$((fail+1));; esac; }
 last() { ds check 2>&1 | tail -1; }
 

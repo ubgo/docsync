@@ -6,6 +6,9 @@
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -13,7 +16,6 @@ ck() { [ -n "$2" ] || { echo "  FAIL  $1 (an empty expectation matches anything)
 # notes counts the ack rows carrying note $1, by column: the note is not the
 # last column since the ack log grew rule and sentence columns.
 notes() { awk -F'\t' -v n="$1" 'NR>2 && $12==n' .ds/acks.tsv | grep -c .; }
-sedi() { sed -i '' "$@" 2>/dev/null || sed -i "$@"; }
 W="$S/w"; mkdir -p "$W/docs"; cd "$W" || exit 1
 git init -q -b main .; git config user.email t@t; git config user.name t
 printf 'package p\n' > a.go; printf '# D\n\n' > docs/d.md
@@ -69,9 +71,27 @@ ck "the tree settles on ten unreviewed changes" "10 error" "$(ds check 2>&1 | ta
 # killed with SIGKILL the ack goes through.
 # Started through sh -c so it is not this shell's job: the shell would
 # otherwise print its "Killed" line, which run.sh reads as a shell error.
-sh -c 'python3 -c "import fcntl,sys,time; f=open(sys.argv[1],\"a\"); fcntl.flock(f,fcntl.LOCK_EX); open(sys.argv[2],\"w\").close(); time.sleep(60)" "$1" "$2" & echo $! > "$3"' _ .ds/lock "$S/held" "$S/holder"
+# The holder takes the lock the way ds does on each platform: flock on Unix,
+# and on Windows a one-byte range lock at offset 0 (cli/lock_windows.go).
+cat > "$S/hold.py" <<'HOLD'
+import sys, time
+f = open(sys.argv[1], "a+")
+try:
+    import fcntl
+    fcntl.flock(f, fcntl.LOCK_EX)
+except ImportError:
+    import msvcrt
+    f.seek(0)
+    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+open(sys.argv[2], "w").close()
+time.sleep(60)
+HOLD
+sh -c 'python3 "$1" "$2" "$3" & echo $! > "$4"' _ "$S/hold.py" .ds/lock "$S/held" "$S/holder"
 holder=$(cat "$S/holder")
-while [ ! -f "$S/held" ]; do sleep 0.1; done
+# Bounded: a holder that never took the lock fails the cases below instead of
+# hanging the matrix.
+n=0; while [ ! -f "$S/held" ] && [ $n -lt 100 ]; do sleep 0.1; n=$((n+1)); done
+ck "the holder took the lock" "yes" "$([ -f "$S/held" ] && echo yes || echo no)"
 ds ack f0-k7m2p4xq --doc docs/d.md --line 3 --note waited >/dev/null 2>&1 &
 acker=$!
 sleep 1

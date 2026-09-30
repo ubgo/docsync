@@ -3,8 +3,10 @@
 # The release ships ds.exe, cross-built on a Mac. Until this workflow ran, no
 # part of docsync had been started on Windows: the claim rested on a
 # cross-compile. This runs the Go tests of every module natively, builds ds.exe
-# from source and drives it through scripts/windows-smoke.ps1, then installs
-# the published release with install.ps1 and drives that binary the same way.
+# from source and drives it through scripts/windows-smoke.ps1 and through the
+# end-to-end matrices (scripts/e2e, under Git Bash), then installs the
+# published release with install.ps1 and drives that binary the same way. A
+# second job runs the same matrices on Linux.
 #
 # Manual only. Run it from the Actions tab, or: gh workflow run windows.yml
 # It belongs before every release and after any change to paths, locking,
@@ -118,6 +120,24 @@ jobs:
         shell: pwsh
         run: ./scripts/windows-smoke.ps1 -Ds bin/ds.exe
 
+      # The same matrices `task e2e` runs on a Mac, under Git Bash: several
+      # commands in sequence, git history, merges, more than one repo. The
+      # scripts are POSIX sh, so this also proves a Windows user working in
+      # Git Bash gets the same behaviour. autocrlf is turned off because the
+      # matrices commit fixtures whose exact bytes are the thing under test.
+      - name: End-to-end matrices under Git Bash
+        if: always()
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          # The scripts call python3; a Windows Python is often only `python`.
+          if ! command -v python3 >/dev/null 2>&1 && command -v python >/dev/null 2>&1; then
+            mkdir -p "$RUNNER_TEMP/shim"
+            printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/shim/python3"
+            PATH="$RUNNER_TEMP/shim:$PATH"
+          fi
+          sh scripts/e2e/run.sh
+
       - name: Install the published release with install.ps1
         if: always()
         shell: pwsh
@@ -131,3 +151,24 @@ jobs:
         if: always()
         shell: pwsh
         run: ./scripts/windows-smoke.ps1 -Ds (Join-Path $env:RUNNER_TEMP "ds-release/ds.exe")
+
+  # The end-to-end matrices on Linux. They are written on a Mac, and BSD and
+  # GNU tools differ (sed -i, date); this is the run that shows a contributor
+  # on Linux gets a working `task e2e`.
+  e2e-linux:
+    name: e2e on ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build ds and the plugins
+        working-directory: cli
+        run: |
+          mkdir -p ../bin
+          go build -o ../bin/ ./cmd/...
+      - name: End-to-end matrices
+        run: sh scripts/e2e/run.sh

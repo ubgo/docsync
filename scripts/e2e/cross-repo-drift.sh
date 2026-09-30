@@ -4,6 +4,9 @@
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
 set -e
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -30,7 +33,7 @@ p.write_text('workspace = \"$W/index\"\n'+t.replace('code = [\"**\"]','code = [\
 ds sync >/dev/null; ds scan >/dev/null; git add -A; git commit -qm b
 set +e; ds check --full >/dev/null 2>&1; check "xrepo: clean baseline" 0 $?; set -e
 
-upstream_edit() { cd "$W/docs"; sed -i '' "s/$1/$2/" spec/SPEC.md; ds scan >/dev/null; git add -A; git commit -qm e >/dev/null; ds publish >/dev/null; cd "$W/code"; ds sync >/dev/null; }
+upstream_edit() { cd "$W/docs"; sedi "s/$1/$2/" spec/SPEC.md; ds scan >/dev/null; git add -A; git commit -qm e >/dev/null; ds publish >/dev/null; cd "$W/code"; ds sync >/dev/null; }
 
 upstream_edit "12 deep" "6 deep"
 set +e; ds check --full >/dev/null 2>&1; check "xrepo: never-acked drift flags" 1 $?; set -e

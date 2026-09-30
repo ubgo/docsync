@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,9 +28,6 @@ import (
 // file and is treated as such: every guard here is deliberate.
 const (
 	RunsFile = "runs.json"
-	// runShell is what every command runs under; documented at the point
-	// of use per the library rules. It must be on PATH.
-	runShell = "sh"
 	// runOutputCap bounds what is kept from a command's output.
 	runOutputCap = 64 << 10
 	// Expectations (§9.4 expect=).
@@ -102,21 +100,27 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 	if env == "" {
 		env = cfg.Env.Default
 	}
+	shell := orDefault(cfg.Run.Shell, config.DefaultRunShell)
 	failed := 0
 	for _, ref := range rep.Scan.Refs {
 		if ref.Verb != extract.VerbRun {
 			continue
 		}
-		command, why := a.runCommand(ld, rep.Scan, ref, cfg.Run.Allow)
+		command, argv, why := a.runCommand(ld, rep.Scan, ref, cfg.Run.Allow, shell)
 		if command == "" {
 			fmt.Fprintf(out, "%s:%d  run skipped: %s\n", ref.Pos.File, ref.Pos.Start, why)
 			continue
+		}
+		// Asked once something is about to run: a repository with nothing
+		// runnable does not need a shell.
+		if err := requireShell(shell); err != nil {
+			return failed, err
 		}
 		refEnv := ref.Args[block.KeyEnv]
 		if refEnv == "" {
 			refEnv = env
 		}
-		rec := a.runOne(ctx, command, refEnv, cfg.Run.Env[refEnv], timeout, ref.Args["expect"])
+		rec := a.runOne(ctx, command, argv, refEnv, cfg.Run.Env[refEnv], timeout, ref.Args["expect"])
 		runs[runKey(ref.Pos.File, ref.Pos.Start)] = rec
 		status := "ok"
 		if !rec.OK {
@@ -131,38 +135,59 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 	return failed, nil
 }
 
-// runCommand resolves what a ds:run executes, or why it must not.
-func (a *App) runCommand(ld loaded, res scan.Result, ref block.Reference, allow []string) (string, string) {
+// ErrNoShell is returned when a ds:run or the [review] command is about to
+// execute and the shell it runs under is not on PATH. It is an error rather
+// than a skip: a check that was asked to run commands and ran none must not
+// look like one whose commands passed.
+var ErrNoShell = errors.New("the shell is not on PATH")
+
+// requireShell reports ErrNoShell, naming the shell and the two ways out.
+func requireShell(shell string) error {
+	if _, err := exec.LookPath(shell); err != nil {
+		return fmt.Errorf("%w: %s (on Windows, Git for Windows provides sh; or name another shell with [run] shell in %s/%s)", ErrNoShell, shell, DirName, ConfigFile)
+	}
+	return nil
+}
+
+// runCommand resolves what a ds:run executes -- the command as it is shown
+// and recorded, and the argv that runs it under shell -- or why it must not.
+func (a *App) runCommand(ld loaded, res scan.Result, ref block.Reference, allow []string, shell string) (string, []string, string) {
+	inline := func(command string) (string, []string, string) {
+		return command, []string{shell, "-c", command}, ""
+	}
 	switch {
 	case ref.ID != "":
 		b, ok := ld.sys.LocateID(res, ref.ID)
 		if !ok {
-			return "", ref.ID + " is not defined"
+			return "", nil, ref.ID + " is not defined"
 		}
 		if !b.IsRunnable() {
-			return "", ref.ID + " is not runnable=true"
+			return "", nil, ref.ID + " is not runnable=true"
 		}
-		return strings.TrimSpace(b.Content), ""
+		return inline(strings.TrimSpace(b.Content))
 	case ref.Args["cmd"] != "":
 		if why := allowedToRun(allow, ref, "cmd="); why != "" {
-			return "", why
+			return "", nil, why
 		}
-		return ref.Args["cmd"], ""
+		return inline(ref.Args["cmd"])
 	case ref.Args["file"] != "":
 		// A script is code as much as cmd= is, so it takes the same gate.
 		// It had none, and its path went into the shell line unquoted: any
 		// doc, run.allow or not, could write file="x; <anything>" and have
 		// CI execute it.
 		if why := allowedToRun(allow, ref, "file="); why != "" {
-			return "", why
+			return "", nil, why
 		}
 		file := ref.Args["file"]
 		if why := a.runnableFile(file); why != "" {
-			return "", why
+			return "", nil, why
 		}
-		return runShell + " " + shellQuote(file), ""
+		// The script is an argument of its own, never part of a command
+		// line: nothing in its name is read by the shell. The quoted form is
+		// what is shown and recorded.
+		return shell + " " + shellQuote(file), []string{shell, file}, ""
 	}
-	return "", "needs one of id=, cmd=, file="
+	return "", nil, "needs one of id=, cmd=, file="
 }
 
 // allowedToRun reports why a doc may not run what it names, or "" when it
@@ -211,10 +236,10 @@ func shellQuote(s string) string {
 
 // runOne executes a command under the shell with a timeout and the
 // configured environment, and judges it against expect=.
-func (a *App) runOne(ctx context.Context, command, envName string, extra map[string]string, timeout time.Duration, expect string) RunRecord {
+func (a *App) runOne(ctx context.Context, command string, argv []string, envName string, extra map[string]string, timeout time.Duration, expect string) RunRecord {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, runShell, "-c", command)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = a.dir
 	cmd.Env = os.Environ()
 	for k, v := range extra {

@@ -17,6 +17,9 @@
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -57,7 +60,7 @@ sweep() { # $1 describes the state
 }
 
 sweep "a clean tree"
-sed -i '' 's/SENTINELOLD/SENTINELNEW/' config/app.yaml 2>/dev/null || sed -i 's/SENTINELOLD/SENTINELNEW/' config/app.yaml
+sedi 's/SENTINELOLD/SENTINELNEW/' config/app.yaml
 sweep "a changed secret, not yet scanned"
 # A rotated value is still detected: only the content is withheld, never the hash.
 if ds check 2>&1 | grep -q "key-k7m2p4xq changed"; then ok "a rotated secret is still reported as changed"; else no "a rotated secret went unnoticed: $(ds check 2>&1 | tail -3)"; fi

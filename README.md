@@ -74,7 +74,7 @@ go install github.com/ubgo/docsync/cli/cmd/ds@latest
 go install github.com/ubgo/docsync/cli/cmd/ds-resolve-aws@latest   # a secret-resolver plugin, only if you use `ds check --resolve`: -aws -gcp -github -onepassword -vault
 ```
 
-Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64, windows/amd64 and windows/arm64, with a `checksums.txt`. The Windows builds are run on real Windows machines by `.github/workflows/windows.yml` (the Go tests of every module, then `scripts/windows-smoke.ps1` against the published binary); `ds:run` needs `sh` on PATH there, which Git for Windows provides. Check what you are running with `ds version`.
+Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64, windows/amd64 and windows/arm64, with a `checksums.txt`. The Windows builds are run on real Windows machines by `.github/workflows/windows.yml` (the Go tests of every module, then `scripts/windows-smoke.ps1` against the published binary); `ds:run` and `ds review --ai` run their commands under `sh`, which Git for Windows provides; name another shell with `[run] shell = "pwsh"`, and if the shell is missing `ds` says so and stops rather than skipping. Check what you are running with `ds version`.
 
 The library, for Go programs that embed docsync (standard library only):
 

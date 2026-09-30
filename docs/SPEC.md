@@ -798,6 +798,7 @@ providers = ["github", "1password"]
 enabled = false
 allow = ["runbooks/**"]
 timeout = "30s"
+shell = "sh"                                 # what runs the commands; looked up on PATH
 [run.env.staging]
 DATABASE_URL = "$STAGING_DATABASE_URL"
 
@@ -827,6 +828,8 @@ escalate_after = "7d"
 suffix_alphabet = "23456789abcdefghjkmnpqrstuvwxyz"
 suffix_length = 8
 ```
+
+`run.shell` names the program that `ds:run` commands and the `[review]` command run under: `<shell> -c <command>` for `cmd=`, `id=` and the review command, and `<shell> <file>` for `file=`. The default is `sh`, found on PATH; on Windows, Git for Windows provides it, and a team whose commands are written for another shell names that one (`shell = "pwsh"`). docsync never substitutes a shell by itself, because the same command text means different things to different shells. When a command is about to run and the shell is not on PATH, `ds check --run` and `ds review --ai` stop with an error naming the shell and this key; nothing is recorded as run, and a repository with nothing to run is not asked for a shell.
 
 Duration keys are checked when the config loads: `run.timeout` is a positive Go duration (`300ms`, `30s`, `2m`), and `url.ttl`, `sources.*.ttl`, `notify.escalate_after` and `notify.snapshot.digest_after` take a whole number with `m`, `h`, `d` or `w` (`90m`, `24h`, `7d`, `2w`). A value that does not parse stops the load with an error naming the key rather than falling back to the default, because a typo that runs with a setting nobody chose looks healthy. An empty value means the default.
 

@@ -93,7 +93,7 @@ func TestWriteBodiesReportsFailure(t *testing.T) {
 	}
 
 	// The directory exists but is not writable: the body write itself fails.
-	// Only where the platform enforces directory permissions.
+	// Everywhere but as root.
 	if !dirPermsEnforced(t) {
 		return
 	}
@@ -102,10 +102,7 @@ func TestWriteBodiesReportsFailure(t *testing.T) {
 	if err := os.MkdirAll(blocks, dirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(blocks, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(blocks, dirPerm) })
+	restrictDir(t, blocks, denyWrite)
 	if err := NewStore(dir).WriteBodies(map[string]string{hashA: "body"}); err == nil {
 		t.Fatal("want an error when the body cannot be written")
 	}

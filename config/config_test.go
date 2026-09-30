@@ -54,6 +54,7 @@ providers = ["github", "1password"]
 enabled = false
 allow = ["runbooks/**"]
 timeout = "30s"
+shell = "bash"
 [run.env.staging]
 DATABASE_URL = "$STAGING_DATABASE_URL"
 [run.env.prod]
@@ -124,7 +125,7 @@ func TestParseFull(t *testing.T) {
 	if c.Env.Default != "prod" || len(c.Env.Known) != 3 || c.Resolve.Enabled || len(c.Resolve.Providers) != 2 {
 		t.Errorf("env/resolve = %+v %+v", c.Env, c.Resolve)
 	}
-	if c.Run.Enabled || c.Run.Allow[0] != "runbooks/**" || c.Run.Env["staging"]["DATABASE_URL"] != "$STAGING_DATABASE_URL" || c.Run.Env["prod"]["DATABASE_URL"] != `$PROD "literal" url` {
+	if c.Run.Enabled || c.Run.Shell != "bash" || c.Run.Allow[0] != "runbooks/**" || c.Run.Env["staging"]["DATABASE_URL"] != "$STAGING_DATABASE_URL" || c.Run.Env["prod"]["DATABASE_URL"] != `$PROD "literal" url` {
 		t.Errorf("run = %+v", c.Run)
 	}
 	if c.URL.TTL != "7d" || c.URL.RatePerMinute != 30 {

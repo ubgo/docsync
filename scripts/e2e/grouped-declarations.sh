@@ -11,6 +11,9 @@
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0; n=0
@@ -51,10 +54,10 @@ esac
 printf '# Limits\n\nPasswords are at least [%s](ds:block?id=%s) characters.\n' 8 "$id" > docs/limits.md
 ds scan >/dev/null; git add -A; git commit -qm b >/dev/null
 # A neighbour in the same group changing must not touch this citation.
-sed -i.bak 's/MaxLength = 256/MaxLength = 512/' a.go && /bin/rm -f a.go.bak
+sedi 's/MaxLength = 256/MaxLength = 512/' a.go
 if [ "$(ds check 2>&1 | tail -1)" = "1 none" ]; then ok "a neighbour in the group changing leaves the citation alone"; else no "a neighbour changing disturbed the citation: $(ds check 2>&1 | tail -3)"; fi
 # The cited entry changing must flag it.
-sed -i.bak 's/MinLength = 8/MinLength = 12/' a.go && /bin/rm -f a.go.bak
+sedi 's/MinLength = 8/MinLength = 12/' a.go
 if ds check 2>&1 | grep -q unacked; then ok "the cited entry changing flags its citation as unacked"; else no "the cited entry changed and nothing flagged: $(ds check 2>&1 | tail -3)"; fi
 if ds check 2>&1 | grep unacked | grep -q "$id"; then ok "the finding names the cited id"; else no "the finding names something else: $(ds check 2>&1 | tail -3)"; fi
 
@@ -91,12 +94,12 @@ if [ "$(ds scan 2>&1 | head -1 | sed -E 's/.*, ([0-9]+) problems.*/\1/')" = 0 ];
 # A sibling member changing must not disturb a citation of this one.
 printf '# L\n\nAt least [x](ds:block?id=%s).\n' "$fid" > docs/l.md
 ds scan >/dev/null; git add -A; git commit -qm b >/dev/null
-sed -i.bak 's/MaxLength int/MaxLength int64/' a.go && /bin/rm -f a.go.bak
+sedi 's/MaxLength int/MaxLength int64/' a.go
 # The citation itself must be untouched. The summary is not checked as a
 # whole because this tree also holds an uncited def, which is its own finding
 # and nothing to do with the sibling.
 if ds check 2>&1 | grep -q unacked; then no "a sibling field disturbed the citation: $(ds check 2>&1 | tail -3)"; else ok "a sibling field changing leaves the citation alone"; fi
-sed -i.bak 's/MinLength int/MinLength uint8/' a.go && /bin/rm -f a.go.bak
+sedi 's/MinLength int/MinLength uint8/' a.go
 if ds check 2>&1 | grep -q unacked; then ok "the cited field changing flags it"; else no "the cited field changed and nothing flagged: $(ds check 2>&1 | tail -3)"; fi
 
 # --- an import entry names the dependency ---

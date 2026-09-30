@@ -42,6 +42,8 @@ at-frozen	test	a snapshot, frozen on purpose, never refreshed
 no-copy	prose: a design principle; the body store (section 15.1) is its documented exception, pinned by bodies-no-secret	the repository never holds a copy of a block.
 cfg-one-line	test	A pick that yields more than one line is refused with "use ds:block".
 run-gated	test	never on pull requests from forks, and `cmd=` and `file=` only in docs matching `run.allow`
+run-shell	test	When a command is about to run and the shell is not on PATH, `ds check --run` and `ds review --ai` stop with an error naming the shell and this key
+run-shell-no-fallback	test	docsync never substitutes a shell by itself, because the same command text means different things to different shells.
 def-must-bind	test	If the new id does not bind cleanly the write is refused with that tier's reason
 no-carrier	test	A type with no entry is refused with `no comment carrier for this file type`
 def-binds-below	test	the sentence citing the def would be measured against code its author never read

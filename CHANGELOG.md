@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `[run] shell` names the shell that `ds:run` commands and the `[review]` command run under (default `sh`).
+
+### Fixed
+
+- When the shell is not on PATH, `ds check --run` and `ds review --ai` now stop with an error naming the shell and the `[run] shell` key. Before, every command was recorded as a failed run with no output, which on a Windows machine without Git for Windows read as the runbook being broken.
+- A `ds:run file=` script is handed to the shell as an argument of its own instead of inside a quoted command line.
+
 ## [0.1.2] - 2026-09-30
 
 A release of the `ds` binary and the `cli` module, after the first run of docsync on Windows.

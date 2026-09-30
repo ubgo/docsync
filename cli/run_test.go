@@ -2,14 +2,18 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ubgo/docsync/config"
 )
 
 func TestRunExecution(t *testing.T) {
@@ -284,7 +288,7 @@ func TestRunFileIsGatedAndQuoted(t *testing.T) {
 func TestShellQuote(t *testing.T) {
 	t.Parallel()
 	for _, s := range []string{"plain", "with space", "it's", `a"b`, "$(id)", "`id`", "a; b", "\\n", "'", "''", ""} {
-		out, err := exec.Command(runShell, "-c", "printf %s "+shellQuote(s)).Output()
+		out, err := exec.Command(config.DefaultRunShell, "-c", "printf %s "+shellQuote(s)).Output()
 		if err != nil || string(out) != s {
 			t.Errorf("shellQuote(%q) came back as %q (%v)", s, out, err)
 		}
@@ -309,5 +313,58 @@ func TestRunnableFileRefusesRootedPathsOnEveryHost(t *testing.T) {
 	}
 	if !rooted("/x") || rooted("x/y") || rooted("") {
 		t.Error("rooted must match a leading separator only")
+	}
+}
+
+// TestRunShellIsConfigurableAndRequired pins [run] shell (promise:run-shell):
+// commands run under the shell the config names, a file= script reaches it as
+// one argument, and a shell that is not on PATH is an error rather than a run
+// that quietly did nothing -- but only once something is about to run.
+// With sh present and another shell named, sh is not used instead
+// (promise:run-shell-no-fallback).
+func TestRunShellIsConfigurableAndRequired(t *testing.T) {
+	t.Parallel()
+	dir, v := initialised(t)
+	write(t, dir, "scripts/smoke.sh", "echo smoke ok\n")
+	write(t, dir, "runbooks/r.md", "<!-- ds:run expect=ok -->\n")
+	setShell := func(shell string) {
+		write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"internal/**\"]\ndocs = [\"runbooks/**\"]\n[run]\nenabled = true\nallow = [\"runbooks/**\"]\nshell = \""+shell+"\"\n")
+	}
+	const absent = "ds-no-such-shell"
+	setShell(absent)
+	if r := run(t, dir, v, "scan"); r.code != 0 {
+		t.Fatal(r)
+	}
+	// Nothing runnable: the missing shell is not asked for.
+	if r := run(t, dir, v, "check", "--run"); r.code == ExitError || !strings.Contains(r.out, "run skipped: needs one of") {
+		t.Errorf("nothing to run, yet the shell was required: %+v", r)
+	}
+	write(t, dir, "runbooks/r.md", "<!-- ds:run cmd=\"echo hi\" expect=hi -->\n<!-- ds:run file=scripts/smoke.sh expect=ok -->\n")
+	if r := run(t, dir, v, "scan"); r.code != 0 {
+		t.Fatal(r)
+	}
+	r := run(t, dir, v, "check", "--run")
+	if r.code != ExitError || !strings.Contains(r.err, "the shell is not on PATH: "+absent) || !strings.Contains(r.err, "[run] shell") || strings.Contains(r.out, "run ok") {
+		t.Errorf("a missing shell must stop the run: %+v", r)
+	}
+	if err := requireShell(absent); !errors.Is(err, ErrNoShell) {
+		t.Errorf("requireShell = %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		return // the wrapper below is a #! script, which Windows cannot start
+	}
+	// A shell of the user's own: it logs its arguments, then hands them to sh.
+	wrapper := filepath.Join(t.TempDir(), "myshell")
+	log := wrapper + ".log"
+	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nfor a in \"$@\"; do printf '[%s]' \"$a\" >> "+shellQuote(log)+"; done\necho >> "+shellQuote(log)+"\nexec sh \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setShell(wrapper)
+	r = run(t, dir, v, "check", "--run")
+	if !strings.Contains(r.out, "runbooks/r.md:1  run ok: echo hi") || !strings.Contains(r.out, "runbooks/r.md:2  run ok: "+wrapper+" 'scripts/smoke.sh'") {
+		t.Errorf("the configured shell did not run the commands: %+v", r)
+	}
+	if got, _ := os.ReadFile(log); string(got) != "[-c][echo hi]\n[scripts/smoke.sh]\n" {
+		t.Errorf("the shell was started with %q", got)
 	}
 }

@@ -7,6 +7,9 @@
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -20,7 +23,7 @@ ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm b
 ck "a fresh repo with per-env defs checks clean" "2 none" "$(ds check 2>&1 | tail -1)"
 ck "render shows prod its value" "Prod listens on 443" "$(ds render docs/d.md 2>/dev/null)"
 ck "render shows dev its value" "Dev listens on 8080" "$(ds render docs/d.md 2>/dev/null)"
-sed -i '' 's/443/8443/' config/prod.yaml 2>/dev/null || sed -i 's/443/8443/' config/prod.yaml
+sedi 's/443/8443/' config/prod.yaml
 ds scan >/dev/null
 out=$(ds check 2>&1)
 ck "changing prod flags the prod citation" "3	error" "$(echo "$out" | tr -s ' ')"
@@ -57,7 +60,7 @@ printf 'port: 443 # ds:def id=port-k7m2p4xq env=prod\n' > config/prod.yaml
 printf '# D\n\nProd listens on [443](ds:cfg?id=port-k7m2p4xq&env=prod).\n\nDev listens on [8080](ds:cfg?id=port-k7m2p4xq&env=dev).\n' > docs/d.md
 ds init >/dev/null; git add -A; git commit -qm a
 ds scan >/dev/null; git add -A; git commit -qm b
-sed -i '' 's/443/8443/' config/prod.yaml 2>/dev/null || sed -i 's/443/8443/' config/prod.yaml
+sedi 's/443/8443/' config/prod.yaml
 diff=$(ds check --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f.get("diff") or "" for f in json.load(sys.stdin)["findings"] if f["state"]!="ok"))' | tr '\n' ' ')
 ck "prod's change is diffed against prod's own old value (bug 16)" "-443 +8443" "$diff"
 case "$diff" in *8080*) echo "  FAIL  prod was diffed against dev's body: $diff"; fail=$((fail+1));; *) echo "  PASS  dev's body is never used for prod's diff"; pass=$((pass+1));; esac

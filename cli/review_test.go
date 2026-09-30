@@ -24,6 +24,11 @@ func TestReview(t *testing.T) {
 	if r := run(t, dir, v, "review", "--ai"); r.code != ExitError || !strings.Contains(r.err, "[review] command") {
 		t.Errorf("ai without command = %+v", r)
 	}
+	// The command runs under [run] shell; one that is absent is said so.
+	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[run]\nshell = \"ds-no-such-shell\"\n[review]\ncommand = \"true\"\n")
+	if r := run(t, dir, v, "review", "--ai"); r.code != ExitError || !strings.Contains(r.err, "the shell is not on PATH: ds-no-such-shell") {
+		t.Errorf("ai without a shell = %+v", r)
+	}
 	// The model command receives the JSON request and returns a patch; the
 	// patch goes to stdout or --out. Acks are untouched.
 	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[review]\ncommand = \"tee request.json >/dev/null; printf -- '--- a/docs/sessions.md\\\\n+++ b/docs/sessions.md\\\\n'\"\n")

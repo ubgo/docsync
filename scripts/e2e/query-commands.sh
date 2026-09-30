@@ -7,6 +7,9 @@
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -16,7 +19,7 @@ git init -q -b main .; git config user.email t@t; git config user.name t
 printf 'package p\n\n// ds:def id=alpha-k7m2p4xq owner=@core tags=store\nfunc Alpha() int { return 1 }\n\n// ds:def id=limit-h3v8n2wd\nconst Limit = 10\n\n// ds:def id=orphan-t4k2b9rf\nfunc Orphan() {}\n' > internal/a.go
 printf '# Guide\n\nAlpha [returns one](ds:block?id=alpha-k7m2p4xq).\n\nThe limit is [10](ds:cfg?id=limit-h3v8n2wd).\n' > docs/d.md
 ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm base
-sed -i '' 's/return 1/return 2/' internal/a.go 2>/dev/null || sed -i 's/return 1/return 2/' internal/a.go
+sedi 's/return 1/return 2/' internal/a.go
 ds scan >/dev/null; ds ack limit-h3v8n2wd --doc docs/d.md --line 5 --note fine >/dev/null 2>&1; git add -A; git commit -qm drift
 tracked() { git ls-files -co --exclude-standard | sort | xargs cat 2>/dev/null | cksum; }
 id=alpha-k7m2p4xq

@@ -4,6 +4,9 @@
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
 set -u
+# sedi edits a file in place the one way BSD, GNU and busybox sed all accept:
+# a backup suffix attached to -i, and the backup removed.
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
@@ -43,7 +46,7 @@ ds check --frozen 2>/dev/null | grep -q "moved from"; ck "bug 8: frozen reports 
 
 # upstream CHANGES it
 cd "$W/docs" || exit 1
-sed -i '' 's/At most 12 deep/At most 6 deep/' spec/SPEC.md
+sedi 's/At most 12 deep/At most 6 deep/' spec/SPEC.md
 ds scan >/dev/null; git add -A; git commit -qm change >/dev/null; ds publish >/dev/null
 cd "$W/code" || exit 1
 ds status 2>/dev/null | grep -q "cited blocks behind"; ck "bug 6: status reports how far behind" 0 $?

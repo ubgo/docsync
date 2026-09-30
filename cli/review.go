@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/ubgo/docsync"
 	"github.com/ubgo/docsync/check"
+	"github.com/ubgo/docsync/config"
 )
 
 // `ds review [--ai]` (§22, §25): proposes prose edits for the current
@@ -24,8 +25,6 @@ import (
 const (
 	flagAI        = "ai"
 	reviewTimeout = 10 * time.Minute
-	// reviewShell runs the configured command; documented per the rules.
-	reviewShell = "sh"
 )
 
 // ErrNoReviewCommand is returned by --ai without [review] command.
@@ -96,7 +95,7 @@ func (a *App) reviewCmd() *cobra.Command {
 				return ErrNoReviewCommand
 			}
 			req := reviewRequest{Envelope: rep.Envelope, Instructions: reviewInstructions, Items: items}
-			patch, err := a.runReview(cmd.Context(), command, req)
+			patch, err := a.runReview(cmd.Context(), orDefault(ld.cfg.Run.Shell, config.DefaultRunShell), command, req)
 			if err != nil {
 				return err
 			}
@@ -141,11 +140,14 @@ func printWorklist(w interface{ Write([]byte) (int, error) }, items []reviewItem
 // runReview pipes the request into the configured command and returns its
 // stdout. The command's stderr is passed through; a non-zero exit is an
 // error carrying it.
-func (a *App) runReview(ctx context.Context, command string, req reviewRequest) ([]byte, error) {
+func (a *App) runReview(ctx context.Context, shell, command string, req reviewRequest) ([]byte, error) {
+	if err := requireShell(shell); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, reviewTimeout)
 	defer cancel()
 	in, _ := json.Marshal(req)
-	c := exec.CommandContext(ctx, reviewShell, "-c", command)
+	c := exec.CommandContext(ctx, shell, "-c", command)
 	c.Dir = a.dir
 	c.Stdin = bytes.NewReader(in)
 	var stdout, stderr bytes.Buffer
