@@ -21,6 +21,10 @@
 # a backup suffix attached to -i, and the backup removed.
 sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
+# Under Git Bash, mktemp gives an MSYS path (/tmp/...) that only MSYS programs
+# understand; ds.exe reads it from a config file as a path on no drive. The
+# mixed form (C:/...) is one both sides accept.
+command -v cygpath >/dev/null 2>&1 && S=$(cygpath -m "$S")
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
 ok() { echo "  PASS  $1"; pass=$((pass+1)); }

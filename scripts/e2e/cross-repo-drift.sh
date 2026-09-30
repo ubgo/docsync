@@ -8,6 +8,10 @@ set -e
 # a backup suffix attached to -i, and the backup removed.
 sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
+# Under Git Bash, mktemp gives an MSYS path (/tmp/...) that only MSYS programs
+# understand; ds.exe reads it from a config file as a path on no drive. The
+# mixed form (C:/...) is one both sides accept.
+command -v cygpath >/dev/null 2>&1 && S=$(cygpath -m "$S")
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
 check() { if [ "$2" = "$3" ]; then echo "  PASS  $1"; pass=$((pass+1)); else echo "  FAIL  $1 (want $2, got $3)"; fail=$((fail+1)); fi; }
@@ -45,7 +49,7 @@ set +e; ds check --full >/dev/null 2>&1; check "xrepo: ack clears" 0 $?; set -e
 
 upstream_edit "6 deep" "3 deep"
 set +e; ds check --full >/dev/null 2>&1; check "xrepo: acked drift flags" 1 $?; set -e
-CLASS=$(ds check --full --json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['findings'][0].get('class'))")
+CLASS=$(ds check --full --json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['findings'][0].get('class'))" | tr -d '\r')
 check "xrepo: classified (not unknown)" "['body']" "$CLASS"
 ds scan >/dev/null
 set +e; ds check --full >/dev/null 2>&1; check "xrepo: SURVIVES scan again" 1 $?; set -e

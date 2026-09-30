@@ -198,7 +198,7 @@ func (s *Store) LoadState() (ledger.Ledger, ledger.Refs, ledger.Acks, error) {
 }
 
 func (s *Store) read(name string) ([]byte, bool, error) {
-	raw, err := os.ReadFile(s.path(name))
+	raw, err := readFile(s.path(name))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
 	}
@@ -247,7 +247,7 @@ func (s *Store) loadShards() (map[string]ledger.Ledger, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tsv") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(s.path(LedgerDir), e.Name()))
+		raw, err := readFile(filepath.Join(s.path(LedgerDir), e.Name()))
 		if err != nil {
 			return nil, err
 		}
@@ -393,7 +393,14 @@ func (s *Store) writeLocked(name string, data []byte) error {
 	if err := os.WriteFile(tmp, data, filePerm); err != nil {
 		return err
 	}
-	return os.Rename(tmp, final)
+	return retrySharing(func() error { return os.Rename(tmp, final) })
+}
+
+// readFile is os.ReadFile for a file under .ds/ that another ds command may
+// be replacing at this instant (see retrySharing).
+func readFile(p string) (raw []byte, err error) {
+	err = retrySharing(func() (e error) { raw, e = os.ReadFile(p); return e })
+	return raw, err
 }
 
 // ApplyEdit applies a library Edit to its file in the tree: the only source

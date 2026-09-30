@@ -17,6 +17,10 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # a backup suffix attached to -i, and the backup removed.
 sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
 S=$(mktemp -d)
+# Under Git Bash, mktemp gives an MSYS path (/tmp/...) that only MSYS programs
+# understand; ds.exe reads it from a config file as a path on no drive. The
+# mixed form (C:/...) is one both sides accept.
+command -v cygpath >/dev/null 2>&1 && S=$(cygpath -m "$S")
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
 ok() { echo "  PASS  $1"; pass=$((pass+1)); }
@@ -244,10 +248,20 @@ sh "$ROOT/scripts/install-links.sh" "$IB" "$ID" >/dev/null 2>&1
 [ -L "$ID/ds" ] && x=clobbered || x=kept
 ck "install leaves a file it did not make alone" kept $x
 ck "install leaves its contents byte for byte" "a real install" "$(cat "$ID/ds")"
-/bin/rm "$ID/ds"; sh "$ROOT/scripts/install-links.sh" "$IB" "$ID" >/dev/null 2>&1
-[ -L "$ID/ds" ] && x=linked || x=missing
-ck "install links where nothing is in the way" linked $x
-sh "$ROOT/scripts/install-links.sh" "$IB" "$ID" >/dev/null 2>&1; ck "install replaces its own link again" 0 $?
+/bin/rm "$ID/ds"
+# Linking needs symbolic links. Git Bash on Windows has none by default (ln -s
+# copies), and `task install` is a development convenience for Unix, so the
+# two linking cases are skipped there by name. Not clobbering, above, holds
+# everywhere.
+ln -s "$IB/ds" "$S/probe-link" 2>/dev/null
+if [ -L "$S/probe-link" ]; then
+  sh "$ROOT/scripts/install-links.sh" "$IB" "$ID" >/dev/null 2>&1
+  [ -L "$ID/ds" ] && x=linked || x=missing
+  ck "install links where nothing is in the way" linked $x
+  sh "$ROOT/scripts/install-links.sh" "$IB" "$ID" >/dev/null 2>&1; ck "install replaces its own link again" 0 $?
+else
+  echo "  SKIP  install links: this shell cannot make symbolic links"
+fi
 
 echo; echo "  ---- $pass passed, $fail failed ----"
 [ "$fail" = "0" ]

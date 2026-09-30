@@ -5,6 +5,10 @@
 # which puts the binary built from this tree first on PATH.
 set -e
 S=$(mktemp -d)
+# Under Git Bash, mktemp gives an MSYS path (/tmp/...) that only MSYS programs
+# understand; ds.exe reads it from a config file as a path on no drive. The
+# mixed form (C:/...) is one both sides accept.
+command -v cygpath >/dev/null 2>&1 && S=$(cygpath -m "$S")
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
 ck() { if [ "$2" = "$3" ]; then echo "  PASS  $1"; pass=$((pass+1)); else echo "  FAIL  $1 (want $2, got $3)"; fail=$((fail+1)); fi; }
@@ -23,8 +27,8 @@ printf 'log:\n  level: info\n' > conf/log.yaml
 ds def "conf/log.yaml#log.level" --label lvl >/dev/null
 set +e
 ds undo --list >/dev/null 2>&1; ck "undo --list works" 0 $?
-BEFORE=$(shasum conf/log.yaml); ds undo --dry-run >/dev/null 2>&1; ck "undo --dry-run exits 0" 0 $?
-AFTER=$(shasum conf/log.yaml); ck "undo --dry-run writes nothing" "$BEFORE" "$AFTER"
+BEFORE=$(cksum < conf/log.yaml); ds undo --dry-run >/dev/null 2>&1; ck "undo --dry-run exits 0" 0 $?
+AFTER=$(cksum < conf/log.yaml); ck "undo --dry-run writes nothing" "$BEFORE" "$AFTER"
 ds undo >/dev/null 2>&1; ck "undo reverses the uncommitted write" 0 $?
 ds undo >/dev/null 2>&1; ck "undo STOPS at the commit boundary" 2 $?
 ds undo --force >/dev/null 2>&1; ck "--force still blocked by the citation guard" 2 $?

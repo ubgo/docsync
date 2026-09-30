@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - When the shell is not on PATH, `ds check --run` and `ds review --ai` now stop with an error naming the shell and the `[run] shell` key. Before, every command was recorded as a failed run with no output, which on a Windows machine without Git for Windows read as the runbook being broken.
+- On Windows, a `ds check` running beside a `ds scan` could fail, or make the scan fail, because Windows refuses to replace a file another process has open at that instant. Reads and writes under `.ds/` now wait that out.
 - A `ds:run file=` script is handed to the shell as an argument of its own instead of inside a quoted command line.
 
 ## [0.1.2] - 2026-09-30

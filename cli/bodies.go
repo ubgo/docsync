@@ -78,7 +78,7 @@ func (s *Store) BodyAt(hash string) (string, bool) {
 	if !hashNameOK(hash) {
 		return "", false
 	}
-	raw, err := os.ReadFile(filepath.Join(s.path(BlocksDir), hash))
+	raw, err := readFile(filepath.Join(s.path(BlocksDir), hash))
 	if err != nil {
 		return "", false
 	}

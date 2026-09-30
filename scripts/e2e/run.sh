@@ -9,6 +9,12 @@
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 PATH="$root/bin:$PATH"; export PATH
+# ds behaves differently under CI on purpose (check defaults to --frozen, fork
+# pull requests are refused, notify reads the GitHub variables). The matrices
+# describe interactive use and set these themselves where CI is the subject,
+# so a run on a CI machine must not inherit them -- the same list the cli
+# tests clear in TestMain.
+unset CI GITHUB_EVENT_PATH GITHUB_TOKEN GITHUB_REPOSITORY GITHUB_API_URL GITHUB_SERVER_URL
 total=0; bad=0
 for m in "$here"/*.sh; do
   [ "$(basename "$m")" = run.sh ] && continue
