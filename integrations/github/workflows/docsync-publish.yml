@@ -1,0 +1,32 @@
+# Triggers: manual only, by default. GitHub Actions minutes are billed on a
+# private repository, and a workflow that goes red for billing rather than for
+# the code teaches everyone to ignore it. Run `task` (or `ds check`) locally as
+# the real gate, and start this from the Actions tab when you want CI to agree.
+# On a public repository, or once budget is there, replace `on:` below with:
+#
+#   on:
+#     push:
+#       branches: [main]
+#
+# Until it is pasted back, run this after merging so the workspace index is
+# not left behind the default branch.
+# Default branch, after merge: publish the ledger (and test outcomes) into
+# the workspace index (spec §24). Copy into .github/workflows/.
+name: docsync publish
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: GOBIN="$RUNNER_TEMP" go install github.com/ubgo/docsync/cli/cmd/ds@latest && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - run: go test ./... -json > /dev/null 2>&1 || true
+      - run: ds publish --tests junit.xml || ds publish

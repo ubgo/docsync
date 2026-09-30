@@ -1,0 +1,31 @@
+# https://editorconfig.org — consistent whitespace across editors.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = tab
+indent_size = 4
+
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+[*.{yml,yaml,json,jsonc,toml}]
+indent_style = space
+indent_size = 2
+
+[*.{js,ts,jsx,tsx,css,html}]
+indent_style = space
+indent_size = 2
+
+# Fixtures hold exact bytes — tabs, trailing spaces, missing final newlines
+# and CRLF are often the thing under test. Editors must leave them alone.
+[testdata/**]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset

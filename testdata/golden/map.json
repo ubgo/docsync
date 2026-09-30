@@ -1,0 +1,99 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "pages": [
+    {
+      "path": "docs/sessions.md",
+      "covers": 1,
+      "cites": 7,
+      "state": {
+        "broken": 1,
+        "ok": 3,
+        "unacked": 2,
+        "unverifiable": 1
+      },
+      "tokens": 16
+    }
+  ],
+  "defs": [
+    {
+      "id": "sess-save-k7m2p4xq",
+      "file": "internal/store/write.go",
+      "lines": [
+        4,
+        6
+      ],
+      "cited_by": 2,
+      "stability": "stable",
+      "state": "unacked",
+      "tokens": 15
+    },
+    {
+      "id": "sess-ttl-p2c4y7mk",
+      "file": "internal/store/write.go",
+      "lines": [
+        9,
+        9
+      ],
+      "cited_by": 0,
+      "stability": "stable",
+      "state": "uncovered",
+      "tokens": 15
+    },
+    {
+      "id": "auth-port-h3v8n2wd",
+      "file": "config/auth.yaml",
+      "lines": [
+        2,
+        2
+      ],
+      "cited_by": 1,
+      "stability": "stable",
+      "state": "ok",
+      "tokens": 12
+    },
+    {
+      "id": "gh-stripe-key-r4t6x2mb",
+      "file": ".github/workflows/deploy.yml",
+      "lines": [
+        2,
+        2
+      ],
+      "cited_by": 1,
+      "stability": "stable",
+      "state": "ok",
+      "tokens": 16
+    },
+    {
+      "id": "op-stripe-key-p9c2v7ld",
+      "file": "config/secrets.env",
+      "lines": [
+        1,
+        1
+      ],
+      "cited_by": 0,
+      "stability": "stable",
+      "state": "ok",
+      "tokens": 14
+    }
+  ],
+  "chains": [
+    {
+      "root": "op-stripe-key-p9c2v7ld",
+      "hops": 2,
+      "state": "ok"
+    }
+  ],
+  "freshness": {
+    "broken": 1,
+    "ok": 3,
+    "unacked": 2,
+    "uncovered": 1,
+    "unverifiable": 1
+  },
+  "budget_tokens": 4000,
+  "used_tokens": 88,
+  "omitted": 0
+}

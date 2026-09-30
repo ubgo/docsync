@@ -1,0 +1,12 @@
+{{- /* docsync block shortcode: {{< ds id="sess-save-k7m2p4xq" >}} renders the block exported by `ds export hugo --out data/docsync`. */ -}}
+{{- $id := .Get "id" -}}
+{{- $blocks := index site.Data "docsync" | default dict -}}
+{{- $b := index ($blocks.blocks | default dict) $id -}}
+{{- if $b -}}
+<div class="docsync-block" data-ds-id="{{ $id }}" data-ds-change="{{ $b.change }}">
+<p class="docsync-caption"><strong>{{ $b.symbol | default $id }}</strong> · <code>{{ $b.file }}:{{ $b.start }}-{{ $b.end }}</code></p>
+{{ $b.rendered | markdownify }}
+</div>
+{{- else -}}
+<mark class="docsync-missing">docsync: {{ $id }} not exported; run <code>ds export hugo</code></mark>
+{{- end -}}

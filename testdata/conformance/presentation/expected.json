@@ -1,0 +1,47 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/p.md",
+      "line": 1,
+      "id": "long-m2q1s8vt",
+      "state": "too-large",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/p.md",
+      "line": 3,
+      "id": "long-m2q1s8vt",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/p.md",
+      "line": 5,
+      "id": "long-m2q1s8vt",
+      "state": "range",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/p.md",
+      "line": 7,
+      "id": "long-m2q1s8vt",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/p.md",
+      "line": 7,
+      "id": "long-m2q1s8vt",
+      "state": "range",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/p.md",
+      "line": 7,
+      "id": "port-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    }
+  ]
+}

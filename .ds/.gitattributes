@@ -1,0 +1,4 @@
+# Merge behaviour for docsync state; see SPEC section 6.
+# acks.tsv is append-only, so a union merge keeps both branches' acks.
+# Do not add ledger.tsv, refs.tsv or foreign.tsv: they are rewritten.
+acks.tsv merge=union

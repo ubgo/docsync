@@ -1,0 +1,91 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "nodes": [
+    {
+      "id": "gh-stripe-key-r4t6x2mb",
+      "kind": "def",
+      "label": "env.STRIPE_KEY",
+      "state": "ok"
+    },
+    {
+      "id": "auth-port-h3v8n2wd",
+      "kind": "def",
+      "label": "auth.port",
+      "state": "ok"
+    },
+    {
+      "id": "op-stripe-key-p9c2v7ld",
+      "kind": "def",
+      "label": "STRIPE_KEY",
+      "state": "ok"
+    },
+    {
+      "id": "sess-save-k7m2p4xq",
+      "kind": "def",
+      "label": "Store.Save",
+      "state": "unacked"
+    },
+    {
+      "id": "sess-ttl-p2c4y7mk",
+      "kind": "def",
+      "label": "TTL",
+      "state": "uncovered"
+    },
+    {
+      "id": "docs/sessions.md",
+      "kind": "doc",
+      "label": "docs/sessions.md"
+    }
+  ],
+  "edges": [
+    {
+      "from": "gh-stripe-key-r4t6x2mb",
+      "to": "op-stripe-key-p9c2v7ld",
+      "kind": "from"
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "sess-save-k7m2p4xq",
+      "kind": "cites",
+      "line": 7
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "auth-port-h3v8n2wd",
+      "kind": "cites",
+      "line": 7
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "sess-save-k7m2p4xq",
+      "kind": "cites",
+      "line": 9
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "gh-stripe-key-r4t6x2mb",
+      "kind": "cites",
+      "line": 11
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "nope-a2b6f8jk",
+      "kind": "cites",
+      "line": 13
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "remote-c4d8h2lm",
+      "kind": "cites",
+      "line": 15
+    },
+    {
+      "from": "docs/sessions.md",
+      "to": "sess-save-k7m2p4xq",
+      "kind": "covers"
+    }
+  ]
+}

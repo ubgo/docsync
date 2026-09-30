@@ -1,0 +1,5 @@
+[scan]
+code = ["**"]
+docs = ["docs/**"]
+[check]
+unacked = "warn"

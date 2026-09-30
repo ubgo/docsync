@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/i.md",
+      "line": 1,
+      "state": "expired",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/i.md",
+      "line": 1,
+      "id": "x-q9x1z6ch",
+      "state": "unacked",
+      "severity": "error"
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "total": 3,
+  "by_doc": [
+    {
+      "key": "docs/sessions.md",
+      "findings": [
+        {
+          "state": "unacked",
+          "severity": "error",
+          "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+          "doc": "docs/sessions.md",
+          "line": 7,
+          "sentence": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq).",
+          "id": "sess-save-k7m2p4xq",
+          "repo": "api",
+          "file": "internal/store/write.go",
+          "lines": [
+            4,
+            6
+          ],
+          "verb": "block",
+          "carrier": "link",
+          "owner": "@auth",
+          "class": [
+            "body"
+          ],
+          "baseline": "seen",
+          "hash": {
+            "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+          },
+          "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+          "remedy": {
+            "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 7 --note '…'",
+            "if_not": "edit the sentence at docs/sessions.md:7, then ack"
+          }
+        },
+        {
+          "state": "unacked",
+          "severity": "error",
+          "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+          "doc": "docs/sessions.md",
+          "line": 9,
+          "id": "sess-save-k7m2p4xq",
+          "repo": "api",
+          "file": "internal/store/write.go",
+          "lines": [
+            4,
+            6
+          ],
+          "verb": "block",
+          "carrier": "block",
+          "owner": "@auth",
+          "class": [
+            "body"
+          ],
+          "baseline": "seen",
+          "hash": {
+            "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+          },
+          "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+          "remedy": {
+            "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 9 --note '…'",
+            "if_not": "edit the sentence at docs/sessions.md:9, then ack"
+          }
+        },
+        {
+          "state": "broken",
+          "severity": "error",
+          "message": "nope-a2b6f8jk is not defined",
+          "doc": "docs/sessions.md",
+          "line": 13,
+          "sentence": "Broken [x](ds:block?id=nope-a2b6f8jk).",
+          "id": "nope-a2b6f8jk",
+          "repo": "api",
+          "lines": [
+            0,
+            0
+          ],
+          "verb": "block",
+          "carrier": "link",
+          "hash": {},
+          "remedy": {
+            "fix": "the id nope-a2b6f8jk is not defined; fix the id in docs/sessions.md:13 or re-add the ds:def on the block it meant"
+          }
+        }
+      ]
+    }
+  ],
+  "by_owner": [
+    {
+      "key": "",
+      "findings": [
+        {
+          "state": "broken",
+          "severity": "error",
+          "message": "nope-a2b6f8jk is not defined",
+          "doc": "docs/sessions.md",
+          "line": 13,
+          "sentence": "Broken [x](ds:block?id=nope-a2b6f8jk).",
+          "id": "nope-a2b6f8jk",
+          "repo": "api",
+          "lines": [
+            0,
+            0
+          ],
+          "verb": "block",
+          "carrier": "link",
+          "hash": {},
+          "remedy": {
+            "fix": "the id nope-a2b6f8jk is not defined; fix the id in docs/sessions.md:13 or re-add the ds:def on the block it meant"
+          }
+        }
+      ]
+    },
+    {
+      "key": "@auth",
+      "findings": [
+        {
+          "state": "unacked",
+          "severity": "error",
+          "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+          "doc": "docs/sessions.md",
+          "line": 7,
+          "sentence": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq).",
+          "id": "sess-save-k7m2p4xq",
+          "repo": "api",
+          "file": "internal/store/write.go",
+          "lines": [
+            4,
+            6
+          ],
+          "verb": "block",
+          "carrier": "link",
+          "owner": "@auth",
+          "class": [
+            "body"
+          ],
+          "baseline": "seen",
+          "hash": {
+            "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+          },
+          "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+          "remedy": {
+            "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 7 --note '…'",
+            "if_not": "edit the sentence at docs/sessions.md:7, then ack"
+          }
+        },
+        {
+          "state": "unacked",
+          "severity": "error",
+          "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+          "doc": "docs/sessions.md",
+          "line": 9,
+          "id": "sess-save-k7m2p4xq",
+          "repo": "api",
+          "file": "internal/store/write.go",
+          "lines": [
+            4,
+            6
+          ],
+          "verb": "block",
+          "carrier": "block",
+          "owner": "@auth",
+          "class": [
+            "body"
+          ],
+          "baseline": "seen",
+          "hash": {
+            "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+          },
+          "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+          "remedy": {
+            "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 9 --note '…'",
+            "if_not": "edit the sentence at docs/sessions.md:9, then ack"
+          }
+        }
+      ]
+    }
+  ],
+  "by_repo": [
+    {
+      "key": "api",
+      "findings": [
+        {
+          "state": "unacked",
+          "severity": "error",
+          "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+          "doc": "docs/sessions.md",
+          "line": 7,
+          "sentence": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq).",
+          "id": "sess-save-k7m2p4xq",
+          "repo": "api",
+          "file": "internal/store/write.go",
+          "lines": [
+            4,
+            6
+          ],
+          "verb": "block",
+          "carrier": "link",
+          "owner": "@auth",
+          "class": [
+            "body"
+          ],
+          "baseline": "seen",
+          "hash": {
+            "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+          },
+          "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+          "remedy": {
+            "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 7 --note '…'",
+            "if_not": "edit the sentence at docs/sessions.md:7, then ack"
+          }
+        },
+        {
+          "state": "unacked",
+          "severity": "error",
+          "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+          "doc": "docs/sessions.md",
+          "line": 9,
+          "id": "sess-save-k7m2p4xq",
+          "repo": "api",
+          "file": "internal/store/write.go",
+          "lines": [
+            4,
+            6
+          ],
+          "verb": "block",
+          "carrier": "block",
+          "owner": "@auth",
+          "class": [
+            "body"
+          ],
+          "baseline": "seen",
+          "hash": {
+            "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+          },
+          "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+          "remedy": {
+            "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 9 --note '…'",
+            "if_not": "edit the sentence at docs/sessions.md:9, then ack"
+          }
+        },
+        {
+          "state": "broken",
+          "severity": "error",
+          "message": "nope-a2b6f8jk is not defined",
+          "doc": "docs/sessions.md",
+          "line": 13,
+          "sentence": "Broken [x](ds:block?id=nope-a2b6f8jk).",
+          "id": "nope-a2b6f8jk",
+          "repo": "api",
+          "lines": [
+            0,
+            0
+          ],
+          "verb": "block",
+          "carrier": "link",
+          "hash": {},
+          "remedy": {
+            "fix": "the id nope-a2b6f8jk is not defined; fix the id in docs/sessions.md:13 or re-add the ds:def on the block it meant"
+          }
+        }
+      ]
+    }
+  ]
+}

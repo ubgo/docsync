@@ -1,0 +1,12 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/de/guide.md",
+      "line": 1,
+      "id": "intro-p2c4y7mk",
+      "state": "translation stale",
+      "severity": "error"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "exit_code": 0,
+  "findings": [
+    {
+      "doc": "docs/x.md",
+      "line": 1,
+      "id": "x-q9x1z6ch",
+      "state": "ok",
+      "severity": "none"
+    }
+  ]
+}

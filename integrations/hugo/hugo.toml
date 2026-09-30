@@ -1,0 +1,4 @@
+# Hugo module configuration: importing this module mounts its layouts.
+[module]
+  [module.hugoVersion]
+    min = "0.110.0"

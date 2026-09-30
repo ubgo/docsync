@@ -1,0 +1,44 @@
+{
+  "exit_code": 0,
+  "findings": [
+    {
+      "doc": "docs/defs.md",
+      "line": 1,
+      "id": "laptop-m2q1s8vt",
+      "state": "unverifiable",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/v.md",
+      "line": 1,
+      "state": "skipped",
+      "severity": "info"
+    },
+    {
+      "doc": "docs/v.md",
+      "line": 2,
+      "state": "unverifiable",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/v.md",
+      "line": 3,
+      "state": "unverifiable",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/v.md",
+      "line": 5,
+      "id": "x-q9x1z6ch",
+      "state": "unverifiable",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/v.md",
+      "line": 6,
+      "id": "laptop-m2q1s8vt",
+      "state": "unverifiable",
+      "severity": "warning"
+    }
+  ]
+}

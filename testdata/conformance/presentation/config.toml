@@ -1,0 +1,5 @@
+[scan]
+code = ["**"]
+docs = ["docs/**"]
+[include]
+max_lines = 5

@@ -1,0 +1,37 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/d.md",
+      "line": 1,
+      "id": "dup-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/d.md",
+      "line": 1,
+      "id": "gen-b3c7g9kl",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "internal/a.go",
+      "line": 3,
+      "state": "problem",
+      "severity": "error"
+    },
+    {
+      "doc": "internal/b.go",
+      "line": 3,
+      "state": "problem",
+      "severity": "error"
+    },
+    {
+      "doc": "internal/gen.pb.go",
+      "line": 3,
+      "state": "unknown",
+      "severity": "warning"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/sessions.md",
+      "line": 1,
+      "id": "sess-save-k7m2p4xz",
+      "state": "broken",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/sessions.md",
+      "line": 1,
+      "id": "session-save-k7m2p4xq",
+      "state": "broken",
+      "severity": "error"
+    },
+    {
+      "doc": "internal/store.go",
+      "line": 3,
+      "id": "sess-save-k7m2p4xq",
+      "state": "uncovered",
+      "severity": "info"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Copy into .github/workflows/docsync.yml
+name: docsync
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.26" }
+      - run: go install github.com/ubgo/docsync/cli/cmd/ds@latest
+      - run: ds check --json > docsync.json || (cat docsync.json; exit 1)

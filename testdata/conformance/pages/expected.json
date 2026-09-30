@@ -1,0 +1,26 @@
+{
+  "exit_code": 0,
+  "findings": [
+    {
+      "doc": "docs/a.md",
+      "line": 1,
+      "id": "ghost-p2c4y7mk",
+      "state": "orphan",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/b.md",
+      "line": 7,
+      "id": "x-q9x1z6ch",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "internal/x.go",
+      "line": 6,
+      "id": "lonely-m2q1s8vt",
+      "state": "uncovered",
+      "severity": "info"
+    }
+  ]
+}

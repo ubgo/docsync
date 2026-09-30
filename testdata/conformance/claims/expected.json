@@ -1,0 +1,36 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/c.md",
+      "line": 1,
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/c.md",
+      "line": 2,
+      "state": "expired",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/c.md",
+      "line": 3,
+      "state": "unknown",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/c.md",
+      "line": 4,
+      "id": "x-q9x1z6ch",
+      "state": "expired",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/c.md",
+      "line": 5,
+      "state": "ok",
+      "severity": "none"
+    }
+  ]
+}

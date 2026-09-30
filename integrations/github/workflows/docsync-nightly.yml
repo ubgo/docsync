@@ -1,0 +1,50 @@
+# Triggers: manual only, by default. GitHub Actions minutes are billed on a
+# private repository, and a workflow that goes red for billing rather than for
+# the code teaches everyone to ignore it. Run `task` (or `ds check`) locally as
+# the real gate, and start this from the Actions tab when you want CI to agree.
+# On a public repository, or once budget is there, replace `on:` below with:
+#
+#   on:
+#     schedule:
+#       - cron: "17 3 * * *"
+#     workflow_dispatch:
+#
+# A schedule spends minutes every night whether or not anything changed.
+# Nightly scheduled job (spec §24, §27 step 6): the only place `--resolve`
+# and `--run` are enabled, with credentials, never on pull requests. Sends
+# findings to the configured notifiers. Copy into .github/workflows/.
+name: docsync nightly
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # `ds notify` keeps its dedupe and escalation memory in
+      # .ds/notified.json, which is gitignored and so absent on a fresh
+      # checkout. Without this step every open finding is "new" every night
+      # and escalate_after never fires, because first-seen is always now.
+      # A unique key per run with a prefix restore, since cache entries are
+      # immutable; a nightly schedule keeps the entry from evicting.
+      - uses: actions/cache@v4
+        with:
+          path: .ds/notified.json
+          key: ds-notified-${{ github.run_id }}
+          restore-keys: ds-notified-
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: GOBIN="$RUNNER_TEMP" go install github.com/ubgo/docsync/cli/cmd/ds@latest github.com/ubgo/docsync/cli/cmd/ds-resolve-github@latest && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Check with live resolution and runbook execution
+        env:
+          GITHUB_TOKEN: ${{ secrets.DOCSYNC_RESOLVE_TOKEN }}
+          DS_SLACK_WEBHOOK: ${{ secrets.DS_SLACK_WEBHOOK }}
+        run: |
+          ds check --run --resolve || true
+          ds notify

@@ -1,0 +1,2 @@
+env:
+  STRIPE_KEY: ${{ secrets.STRIPE_KEY }}   # ds:def id=gh-stripe-r4t6x2mb secret=true from=op-stripe-p9c2v7ld sync=scripts/sync-secrets.sh

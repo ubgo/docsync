@@ -1,0 +1,19 @@
+{
+  "exit_code": 0,
+  "findings": [
+    {
+      "doc": "docs/guide.md",
+      "line": 3,
+      "id": "depth-k7m2p4xq",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/spec.md",
+      "line": 8,
+      "id": "width-h3v8n2wd",
+      "state": "uncovered",
+      "severity": "info"
+    }
+  ]
+}

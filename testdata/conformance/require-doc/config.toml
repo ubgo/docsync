@@ -1,0 +1,5 @@
+[scan]
+code = ["**"]
+docs = ["docs/**"]
+[policy]
+require_doc = ["pkg/api/**"]

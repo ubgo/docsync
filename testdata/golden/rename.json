@@ -1,0 +1,32 @@
+{
+  "mapping": {
+    "sess-save-k7m2p4xq": "session-save-k7m2p4xq",
+    "sess-ttl-p2c4y7mk": "session-ttl-p2c4y7mk"
+  },
+  "edits": [
+    {
+      "file": "docs/sessions.md",
+      "line": 7,
+      "old": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq). It listens on [8081](ds:cfg?id=auth-port-h3v8n2wd).",
+      "new": "Every write goes through [`Save`](ds:block?id=session-save-k7m2p4xq). It listens on [8081](ds:cfg?id=auth-port-h3v8n2wd)."
+    },
+    {
+      "file": "docs/sessions.md",
+      "line": 9,
+      "old": "\u003c!-- ds:block id=sess-save-k7m2p4xq --\u003e",
+      "new": "\u003c!-- ds:block id=session-save-k7m2p4xq --\u003e"
+    },
+    {
+      "file": "internal/store/write.go",
+      "line": 3,
+      "old": "// ds:def id=sess-save-k7m2p4xq owner=@auth stability=stable",
+      "new": "// ds:def id=session-save-k7m2p4xq owner=@auth stability=stable"
+    },
+    {
+      "file": "internal/store/write.go",
+      "line": 8,
+      "old": "// ds:def id=sess-ttl-p2c4y7mk",
+      "new": "// ds:def id=session-ttl-p2c4y7mk"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "name": "docsync",
+  "tagline": "Know the moment a sentence in your docs stops being true.",
+  "description": "Find the sentences in your docs that stopped being true. docsync binds documentation to the code, config and facts it describes, and `ds check` names every sentence whose code changed, moved or vanished, with the diff and the fix. Go CLI and library, MCP server for AI coding agents, LSP, GitHub Action, Hugo and Docusaurus.",
+  "repo": "ubgo/docsync",
+  "homepage": "",
+  "language": "go",
+  "kind": "cli",
+  "license": "AGPL-3.0-only",
+  "author": {
+    "name": "khanakia",
+    "email": "khanakia@gmail.com",
+    "github": "khanakia"
+  },
+  "topics": [
+    "documentation",
+    "docs-as-code",
+    "documentation-drift",
+    "stale-docs",
+    "ai-agents",
+    "mcp",
+    "mcp-server",
+    "lsp",
+    "developer-tools",
+    "cli",
+    "golang",
+    "static-analysis",
+    "ci",
+    "markdown",
+    "docusaurus",
+    "hugo"
+  ],
+  "positioning": {
+    "category": "documentation drift detection",
+    "audience": "Teams using AI coding agents",
+    "wedge": "An agent rewrites a function; docsync names every sentence in the docs that described the old one, and gives the agent MCP tools to read the cited code and ack or fix the sentence.",
+    "alternatives": [],
+    "differentiators": [
+      "Cites a block by id, not a path and line, so docs survive moves, renames and reformatting",
+      "Nothing is copied into the repository; values, snippets and permalinks render at build time from live source",
+      "Every finding comes with the diff and the exact command that clears it",
+      "An ack approves one sentence and is recorded with who approved it; an agent must name the human who delegated",
+      "Standard-library Go core with 100% statement coverage and a conformance suite as the spec"
+    ]
+  },
+  "install": {
+    "go": "go install github.com/ubgo/docsync/cli/cmd/ds@latest"
+  },
+  "khanakia": {
+    "addToApps": false
+  }
+}

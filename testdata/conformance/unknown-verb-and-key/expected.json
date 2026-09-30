@@ -1,0 +1,32 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/u.md",
+      "line": 1,
+      "state": "problem",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/u.md",
+      "line": 1,
+      "id": "x-q9x1z6ch",
+      "state": "unknown",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/u.md",
+      "line": 1,
+      "id": "x-q9x1z6ch",
+      "state": "unknown",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/u.md",
+      "line": 1,
+      "id": "x-q9x1z6ch",
+      "state": "ok",
+      "severity": "none"
+    }
+  ]
+}

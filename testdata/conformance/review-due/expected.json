@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/r.md",
+      "line": 1,
+      "state": "expired",
+      "severity": "error"
+    }
+  ]
+}

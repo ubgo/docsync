@@ -1,0 +1,3 @@
+func cacheInputs(rule int, prefix string, tiers []string, maxLineChars int) string {
+	return strconv.Itoa(rule) + "\x00" + prefix + "\x00" + strings.Join(tiers, ",") + "\x00" + strconv.Itoa(maxLineChars)
+}

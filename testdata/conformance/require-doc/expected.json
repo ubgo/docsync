@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/a.md",
+      "line": 1,
+      "id": "handle-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "pkg/api/h.go",
+      "line": 6,
+      "state": "undocumented export",
+      "severity": "error"
+    }
+  ]
+}

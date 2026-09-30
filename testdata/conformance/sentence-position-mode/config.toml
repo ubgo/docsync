@@ -1,0 +1,9 @@
+spec = "1.0"
+prefix = "ds"
+
+[scan]
+code = ["internal/**"]
+docs = ["docs/**"]
+
+[check]
+sentence = "position"

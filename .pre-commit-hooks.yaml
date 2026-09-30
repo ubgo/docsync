@@ -1,0 +1,21 @@
+# pre-commit hooks (spec §24 "pre-commit"): add to .pre-commit-config.yaml as
+#   - repo: https://github.com/ubgo/docsync
+#     rev: v0.1.0
+#     hooks: [{id: docsync-impact}, {id: docsync-literals}]
+#
+# This file is at the repository root because pre-commit reads it only there;
+# it used to sit under integrations/pre-commit/, where the documented `repo:`
+# line could not find it. The hooks run the `ds` on PATH (language: system),
+# so install ds first (README, Install).
+- id: docsync-impact
+  name: docsync impact of staged changes
+  description: Lists the doc sentences the staged code changes affect (`ds impact --staged`).
+  entry: ds impact --staged
+  language: system
+  pass_filenames: false
+- id: docsync-literals
+  name: docsync typed literals
+  description: Reports facts typed by hand that a `ds:cfg` cite should carry (`ds report --literals`).
+  entry: ds report --literals
+  language: system
+  pass_filenames: false

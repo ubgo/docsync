@@ -1,0 +1,44 @@
+[
+  {
+    "id": "gh-stripe-key-r4t6x2mb",
+    "value": "${{ secrets.STRIPE_KEY }}",
+    "file": ".github/workflows/deploy.yml",
+    "line": 2,
+    "secret": true,
+    "cited_by": [
+      {
+        "file": "docs/sessions.md",
+        "start": 11,
+        "end": 11
+      }
+    ]
+  },
+  {
+    "id": "auth-port-h3v8n2wd",
+    "value": "8081",
+    "file": "config/auth.yaml",
+    "line": 2,
+    "cited_by": [
+      {
+        "file": "docs/sessions.md",
+        "start": 7,
+        "end": 7
+      }
+    ]
+  },
+  {
+    "id": "op-stripe-key-p9c2v7ld",
+    "value": "op://Platform/stripe-prod/credential",
+    "file": "config/secrets.env",
+    "line": 1,
+    "secret": true,
+    "cited_by": null
+  },
+  {
+    "id": "sess-ttl-p2c4y7mk",
+    "value": "const TTL = 30",
+    "file": "internal/store/write.go",
+    "line": 9,
+    "cited_by": null
+  }
+]

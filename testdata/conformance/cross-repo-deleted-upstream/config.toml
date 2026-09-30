@@ -1,0 +1,19 @@
+spec = "1.0"
+prefix = "ds"
+
+[scan]
+code = ["**"]
+docs = ["docs/**", "pkg/**"]
+exclude = ["**/testdata/**"]
+generated = []
+
+[include]
+mode = "build"
+max_lines = 40
+
+[check]
+fuzzy_threshold = 0.8
+unacked = "error"
+
+[env]
+default = ""

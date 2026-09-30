@@ -1,0 +1,12 @@
+`# Machine-local docsync state; see SPEC section 6.
+# The ledger, refs, acks and blocks/ ARE committed - do not add them here.
+cache/
+index/
+journal.tsv
+urls.json
+runs.json
+notified.json
+hashes.json
+metrics.json
+lock
+`

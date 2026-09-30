@@ -1,0 +1,18 @@
+# Generated and build outputs
+*.out
+*.test
+.DS_Store
+/bin/
+/coverage/
+/dist/
+# Machine-local corpus paths (scripts/corpus.sh, scripts/extract-diff.sh):
+# private repositories whose names do not belong in this public tree.
+/scripts/corpus.local
+
+# JavaScript integrations (Docusaurus plugin, VS Code client)
+node_modules/
+*.vsix
+
+# BEGIN repolink (managed — do not edit)
+/docsi
+# END repolink

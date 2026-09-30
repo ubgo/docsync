@@ -1,0 +1,64 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/facts.md",
+      "line": 2,
+      "state": "pick failed",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/facts.md",
+      "line": 3,
+      "state": "pick failed",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/facts.md",
+      "line": 4,
+      "state": "pick failed",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/facts.md",
+      "line": 6,
+      "id": "badpick-b3c7g9kl",
+      "state": "broken",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/facts.md",
+      "line": 6,
+      "id": "miss-a2b6f8jk",
+      "state": "broken",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/facts.md",
+      "line": 6,
+      "id": "outside-c4d8h2lm",
+      "state": "broken",
+      "severity": "error"
+    },
+    {
+      "doc": "docs/facts.md",
+      "line": 6,
+      "id": "ver-c8t2m6qp",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/l.md",
+      "line": 1,
+      "id": "local-d5e9j3mn",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "internal/x.go",
+      "line": 3,
+      "state": "pick failed",
+      "severity": "error"
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "uncovered": [
+    {
+      "id": "sess-ttl-p2c4y7mk",
+      "kind": "const",
+      "symbol": "TTL",
+      "pos": {
+        "file": "internal/store/write.go",
+        "start": 9,
+        "end": 9
+      },
+      "directive_pos": {
+        "file": "internal/store/write.go",
+        "start": 8,
+        "end": 8
+      },
+      "carrier": "comment",
+      "hash": "4604bf1e0783bbda0905853bad6b4241a11b6ff88760f35b30b1ab1135fa1e6d",
+      "args": {
+        "id": "sess-ttl-p2c4y7mk"
+      }
+    }
+  ],
+  "unmarked": [
+    {
+      "file": "internal/store/write.go",
+      "symbol": "Persist",
+      "line": 11
+    }
+  ],
+  "stalest": [
+    {
+      "doc": "docs/sessions.md",
+      "oldest_ack": "0001-01-01T00:00:00Z",
+      "cites": 6,
+      "never_acked": true
+    }
+  ],
+  "literals": null,
+  "orphaned_owners": null,
+  "gaps": [
+    "review docs/sessions.md (cites never acked)",
+    "document or drop sess-ttl-p2c4y7mk (internal/store/write.go)"
+  ],
+  "per_page": [
+    {
+      "key": "docs/sessions.md",
+      "state": {
+        "broken": 1,
+        "ok": 3,
+        "unacked": 2,
+        "unverifiable": 1
+      }
+    }
+  ],
+  "per_owner": [
+    {
+      "key": "",
+      "state": {
+        "broken": 1,
+        "ok": 3,
+        "unverifiable": 1
+      }
+    },
+    {
+      "key": "@auth",
+      "state": {
+        "unacked": 2
+      }
+    }
+  ],
+  "mean_time_to_ack_ns": 0,
+  "busy_prefixes": null,
+  "served_bytes": 0,
+  "source_bytes": 0,
+  "context_savings": 0
+}

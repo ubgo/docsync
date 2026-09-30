@@ -1,0 +1,95 @@
+{
+  "id": "gh-stripe-key-r4t6x2mb",
+  "defs": [
+    {
+      "id": "gh-stripe-key-r4t6x2mb",
+      "kind": "key",
+      "symbol": "env.STRIPE_KEY",
+      "pos": {
+        "file": ".github/workflows/deploy.yml",
+        "start": 2,
+        "end": 2
+      },
+      "directive_pos": {
+        "file": ".github/workflows/deploy.yml",
+        "start": 2,
+        "end": 2
+      },
+      "carrier": "comment",
+      "hash": "8f5d8311a216a879edb0a6a9177b796f531899d29cf07e4c887032c373255c02",
+      "args": {
+        "from": "op-stripe-key-p9c2v7ld",
+        "id": "gh-stripe-key-r4t6x2mb",
+        "secret": "true",
+        "sync": "scripts/sync.sh"
+      }
+    }
+  ],
+  "refs": [
+    {
+      "verb": "chain",
+      "id": "gh-stripe-key-r4t6x2mb",
+      "pos": {
+        "file": "docs/sessions.md",
+        "start": 11,
+        "end": 11
+      },
+      "carrier": "comment",
+      "sentence": "Stripe:",
+      "sentence_hash": "d31697c8a4093ef52365326c004804d68e60c3fdc048ecc7f5fdb16c2c553e28",
+      "args": {
+        "id": "gh-stripe-key-r4t6x2mb"
+      }
+    }
+  ],
+  "covered_by": null,
+  "chain": [
+    {
+      "id": "gh-stripe-key-r4t6x2mb",
+      "kind": "key",
+      "symbol": "env.STRIPE_KEY",
+      "pos": {
+        "file": ".github/workflows/deploy.yml",
+        "start": 2,
+        "end": 2
+      },
+      "directive_pos": {
+        "file": ".github/workflows/deploy.yml",
+        "start": 2,
+        "end": 2
+      },
+      "carrier": "comment",
+      "hash": "8f5d8311a216a879edb0a6a9177b796f531899d29cf07e4c887032c373255c02",
+      "args": {
+        "from": "op-stripe-key-p9c2v7ld",
+        "id": "gh-stripe-key-r4t6x2mb",
+        "secret": "true",
+        "sync": "scripts/sync.sh"
+      }
+    },
+    {
+      "id": "op-stripe-key-p9c2v7ld",
+      "kind": "key",
+      "symbol": "STRIPE_KEY",
+      "pos": {
+        "file": "config/secrets.env",
+        "start": 1,
+        "end": 1
+      },
+      "directive_pos": {
+        "file": "config/secrets.env",
+        "start": 1,
+        "end": 1
+      },
+      "carrier": "comment",
+      "hash": "7ea0a927f0b3b75547448d8b82634378f03f0c783a0fe8344cbb810ac4ba0cd3",
+      "args": {
+        "id": "op-stripe-key-p9c2v7ld",
+        "secret": "true",
+        "truth": "true"
+      }
+    }
+  ],
+  "copies": null,
+  "history": null
+}

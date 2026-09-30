@@ -1,0 +1,3 @@
+func cacheInputs(prefix string, tiers []string) string {
+	return prefix + "\x00" + strings.Join(tiers, ",")
+}

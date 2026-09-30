@@ -1,0 +1,18 @@
+{
+  "name": "docusaurus-plugin-docsync",
+  "version": "0.1.0",
+  "description": "Docusaurus plugin for docsync: build-time rendering of ds: directives through `ds render`, and freshness data from `ds status --json`.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "type": "commonjs",
+  "files": ["index.js", "remark.js", "plugin.js", "README.md"],
+  "scripts": {
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include='*.js' --test-coverage-exclude='test/**' test/*.test.js"
+  },
+  "peerDependencies": {
+    "@docusaurus/core": ">=3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,6 @@
+[scan]
+code = ["**"]
+docs = ["docs/**"]
+[env]
+default = "prod"
+known = ["prod", "staging", "dev"]

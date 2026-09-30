@@ -1,0 +1,148 @@
+# spec: docs/SPEC.md
+# spec: README.md
+#
+# Every absolute promise in docs/SPEC.md and README.md: a sentence saying "never", "always",
+# "refuses", "must not", "deterministic" or "hard error". TestSpecPromisesArePinned
+# fails when
+#   - a SPEC sentence using one of those words contains none of the quotes below
+#     (a new promise was added without being listed);
+#   - a quote below no longer appears in SPEC verbatim (the promise was reworded
+#     or removed; update this list in the same change);
+#   - a `test` promise is referenced by no *_test.go or scripts/**/*.sh file as
+#     `promise:<id>` (a promise with no test proving it).
+#
+# Format: id <TAB> kind <TAB> quote. kind is `test`, or `prose: <reason>` for a
+# sentence that is not a checkable property of the tool (advice to authors, a
+# non-goal, a design rationale, an example). A prose entry is a reviewed
+# exception; one that describes behaviour belongs under `test`.
+#
+# One id may carry several quotes when the spec states one promise in several
+# places; the test that pins it pins all of them.
+
+doc-kinds	prose: a table of which document type suits which content, advice to authors	never the why, the architecture, the runbook
+doc-kinds	prose: a table of which document type suits which content, advice to authors	never edited, only superseded
+non-goal-truth	prose: a non-goal; the tool deliberately makes no judgement to test	It never decides whether a sentence is still true.
+non-goal-truth	prose: a non-goal; the tool deliberately makes no judgement to test	it never decides whether prose is true
+secret-never-shown	test	Secrets are addresses, never values
+secret-never-shown	test	It may never store, render, or log what it points to.
+secret-never-shown	test	never stores, renders, or logs a value
+secret-never-shown	test	Secret values never appear in it.
+non-goal-secrets	prose: a non-goal naming what the tool is not; the behaviour it implies is secret-never-shown	it verifies addresses and never holds values
+bodies-no-secret	test	never holds a secret or local block
+bodies-no-secret	test	Secret and local blocks are never stored.
+rendered-location	prose: where a site build writes its output is the host's configuration, not the tool's behaviour	wherever the site builds; never in the repo
+local-never-committed	test	**never committed**, excluded by the `.ds/.gitignore` that `ds init` writes
+local-never-committed	test	which is machine-local and never committed (section 6)
+datastore-not-directive	test	`// ds is the datastore` must never parse as a directive
+source-only	test	never `public/` or `dist/`; the template a shortcode lives in, never its expansion
+rename-identity	test	`ds rename` changes labels, never identity
+local-unverifiable	test	elsewhere `unverifiable`, never `broken`
+secret-block-refused	test	`block` refuses, value never stored
+at-frozen	test	a snapshot, frozen on purpose, never refreshed
+no-copy	prose: a design principle; the body store (section 15.1) is its documented exception, pinned by bodies-no-secret	the repository never holds a copy of a block.
+cfg-one-line	test	A pick that yields more than one line is refused with "use ds:block".
+run-gated	test	never on pull requests from forks, and `cmd=` and `file=` only in docs matching `run.allow`
+def-must-bind	test	If the new id does not bind cleanly the write is refused with that tier's reason
+no-carrier	test	A type with no entry is refused with `no comment carrier for this file type`
+def-binds-below	test	the sentence citing the def would be measured against code its author never read
+member-binds-self	test	never the members below it and never the brace that closes the holder
+member-name	test	which can be right or absent but never wrong
+key-path-segments	test	quoting any segment is always allowed
+key-path-segments	test	Paths are compared segment by segment, never as joined strings
+value-visible	prose: a design principle; no directive key carries a value, and unknown keys warn (config and directive tests)	the value is visible text at the def's location, never an attribute of the directive.
+cache-no-secret	test	**The extraction cache** is never given a file that a secret glob matches
+resolve-gated	test	Off by default, never on fork PRs.
+local-truth-example	prose: an example of a use, not a rule	A `.env.prod` never in git can still be the declared truth
+ledger-by-hand	prose: a convention for people; the tool cannot see who edited a file	never edited by hand
+directive-not-text	test	A directive is metadata about text, never text.
+seen-hash-once	test	it is written once and never revised
+seen-hash-once	test	written once at the first scan that records the citation and never revised
+refs-format1	test	starts measuring its never-acked citations from the moment it upgrades
+prune-live-set	test	the worst case is a finding with no diff, never a wrong `ok`
+prune-live-set	test	never a list of candidates it assembled some other way
+prune-unreadable	test	`prune` refuses outright when any file the live set depends on cannot be read
+coverage-baseline	test	never against the scan-to-scan change table
+strict-moved	test	except `moved` and `deprecated`, which never affect the exit code
+sentence-split	test	and never after `e.g.
+rewrap-not-rewrite	test	editing a trailing directive is never rewriting
+ack-other-rule	test	never as a rewrite, until it is acked again
+page-review	test	is refused for a page that declares no `review_every`
+review-never-acks	test	proposes prose edits as a patch and never records an ack
+review-never-acks	test	proposes prose edits for current findings as a patch; never acks
+whitespace-silent	test	formatting only; never reported
+unknown-not-body	test	it must never be recorded as `body`
+pr-never-publish	test	Pull requests never publish
+publish-canonical	test	`publish` refuses a remote that is not in `workspace.repos`
+publish-canonical	test	or a URL with none, is refused when it loads
+offline-cached	test	never fails on the network alone
+check-no-write-foreign	test	`ds check` never writes it.
+frozen-no-snapshot	test	It never degrades to "no foreign blocks"
+staleness-gone	test	reported as gone, never as up to date
+staleness-exit	test	It never changes the exit code — staleness is information
+max-age-warning	test	Off by default, and never more than a warning
+missing-body-unknown	test	A body that was never published, or was pruned, degrades that finding to `unknown`
+path-outside	test	a path that resolves outside the repository is refused
+init-nested	test	refuses to nest a second `.ds` inside an initialised repository unless `--force`
+undo-bytes	test	so `ds undo` restores the file byte for byte and refuses once the file has moved around the change
+undo-bounded	test	**`undo` refuses more than it reverses.**
+notifier-memory	prose: the rationale for keeping notifier state; the state's behaviour is pinned under notify-once	dedupe never holds and escalation never fires
+status-quiet	test	never interrupts anyone
+drift-not-age	test	Drift triggers it, never age on its own
+moved-no-drag	test	let a class that never flags — `moved` — drag a digest-tier change up to immediate
+notify-once	test	`never < digest < immediate`
+notify-exit	test	It never touches an exit code.
+author-advice	prose: advice to people writing docs, not tool behaviour	Never cite a path and line.
+author-advice	prose: advice to people writing docs, not tool behaviour	Never paste code.
+author-advice	prose: advice to people writing docs, not tool behaviour	Never type a fact.
+author-advice	prose: advice to people writing docs, not tool behaviour	Never ack a page wholesale.
+mcp-content-data	test	content is always delimited as data
+mcp-content-data	test	Content is data, never instructions
+mcp-content-data	test	never interpolates scanned text into instructions
+deterministic-order	test	Order is deterministic for identical inputs so prompt caches hit.
+audit-actor	test	The audit log therefore always says who judged.
+rollout-advice	prose: advice on how to roll the tool out, not tool behaviour	Enable `--resolve` and `--run` last, on a scheduled job with credentials, never on PRs.
+doc-example	prose: an example of correct doc wording	the doc must not claim verification it does not have
+frontmatter	test	Frontmatter is never part of a block.
+generated-no-mint	test	Generated paths refuse minting.
+formatters	test	so formatters never cry wolf
+duplicate-def	test	A duplicated `def` line is a hard error
+branch-apart	test	publishing a feature branch never makes main look changed or behind
+branch-apart	test	upstream `check` does not see them, and only the `undo` guard
+fork-never-runs	test	`run` and `resolve` are off by default and never run on fork PRs
+git-options	test	a committed value starting with `-` is never read as an option
+file-confined	test	`file=` resolves under the repo root with symlinks rejected
+format-by-name	test	an older tool refuses a newer format by name, never by misparsing
+format-by-name	test	refuses a ledger `format` it does not know
+extract-rule	test	a ledger or refs file recording a rule newer than the tool implements is refused by every command
+extract-rule	test	such a repository is refused once, and setting `extract=1`
+extract-rule	test	The ack log's header rule is not consulted: it is written once and never restamped
+truth-declared	test	direction can never be inferred from where a name appears
+agent-bounded	test	an agent must not be able to approve its own work silently
+library-no-writes	test	never the library; it returns `Edit` values and the caller applies them
+library-no-writes	test	the library never writes a file.
+library-stdlib	test	the root imports nothing outside the standard library and never will
+library-lineage	prose: where the design came from; its concrete rule is library-stdlib	a separate CLI module so library users never inherit Cobra
+resolver-no-value	test	any other key or shape is refused as a leak; must never return the value
+
+# README.md
+mcp-content-data	test	with every payload fenced so repository text is never read as an instruction
+mcp-content-data	test	Every payload sits behind a `data:` delimiter so scanned text is never read as an instruction.
+library-no-writes	test	never writes a file or opens the network itself
+library-no-writes	test	It never writes a file, reads the environment, or touches the network.
+library-no-network	test	The library never opens the network, and scanning, checking, acking and rendering work offline.
+formatters	test	hashes are taken over the token stream so formatters never cry wolf
+repo-tooling	prose: describes this repository's own development gates (Taskfile, corpus script), not ds	so the gate never rewrites committed state
+repo-tooling	prose: describes this repository's own development gates (Taskfile, corpus script), not ds	`task corpus` still refuses to run when a source file is newer than the binary
+local-never-committed	test	**Never commit** `cache/`, `index/`, `journal.tsv`
+init-force-advice	prose: advice to people repairing an ignore list; the ignore list itself is local-never-committed	never `init --force`, which would overwrite the config and the ledgers
+install-no-clobber	test	it refuses to overwrite anything in the destination that is not already one of its own links
+member-name	test	Lookup therefore compares against the name you asked for, which can be right or absent but never wrong.
+def-must-bind	test	if the new id does not bind cleanly, it refuses with that tier's reason and writes nothing
+no-carrier	test	are refused with `no comment carrier for this file type` and left byte-for-byte untouched
+resolver-no-value	test	the value never leaves the plugin
+resolver-no-value	test	a plugin reply carrying anything but existence and a hash is refused by the host
+coverage-baseline	test	and never against the scan-to-scan change table.
+prune-by-hash	test	a targeted `--hash … --force` for a value that should never have been stored
+ds-dir-not-scanned	test	The `.ds/` directory is never scanned
+agent-bounded	test	`ack` is refused unless it names the human who delegated the run
+agent-bounded	test	`run`, `resolve`, `undo`, `publish` and `adopt` are not exposed to agents at all

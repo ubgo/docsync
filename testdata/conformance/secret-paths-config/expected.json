@@ -1,0 +1,19 @@
+{
+  "exit_code": 0,
+  "findings": [
+    {
+      "doc": "config/.env.prod.tpl",
+      "line": 1,
+      "id": "db-a2b6f8jk",
+      "state": "unsourced",
+      "severity": "warning"
+    },
+    {
+      "doc": "docs/s.md",
+      "line": 1,
+      "id": "db-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    }
+  ]
+}

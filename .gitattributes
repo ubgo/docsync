@@ -1,0 +1,19 @@
+# Normalize line endings — keep LF in the repo regardless of OS.
+* text=auto eol=lf
+
+# Fixtures hold exact bytes: line endings and trailing whitespace are often
+# the thing under test, so git must never convert them.
+testdata/** -text
+**/testdata/** -text
+
+# .ds/ is docsync's own committed state. Block bodies under .ds/blocks/ are
+# stored under the hash of their exact bytes, so converting a CRLF body to LF
+# would leave it under a hash it no longer has.
+.ds/** -text
+
+# Binary assets (don't diff/normalize).
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary

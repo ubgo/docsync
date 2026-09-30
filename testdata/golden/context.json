@@ -1,0 +1,77 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "target": "docs/sessions.md",
+  "budget_tokens": 8000,
+  "used_tokens": 27,
+  "items": [
+    {
+      "rank": 1,
+      "why": "unacked",
+      "id": "sess-save-k7m2p4xq",
+      "file": "internal/store/write.go",
+      "lines": [
+        4,
+        6
+      ],
+      "tokens": 14,
+      "mode": "diff",
+      "content": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n"
+    },
+    {
+      "rank": 2,
+      "why": "broken",
+      "id": "nope-a2b6f8jk",
+      "file": "",
+      "lines": [
+        0,
+        0
+      ],
+      "tokens": 3,
+      "mode": "line",
+      "content": "not defined"
+    },
+    {
+      "rank": 3,
+      "why": "cited, unchanged",
+      "id": "auth-port-h3v8n2wd",
+      "file": "config/auth.yaml",
+      "lines": [
+        2,
+        2
+      ],
+      "tokens": 1,
+      "mode": "value",
+      "content": "8081"
+    },
+    {
+      "rank": 4,
+      "why": "cited, unchanged",
+      "id": "gh-stripe-key-r4t6x2mb",
+      "file": ".github/workflows/deploy.yml",
+      "lines": [
+        2,
+        2
+      ],
+      "tokens": 7,
+      "mode": "value",
+      "content": "${{ secrets.STRIPE_KEY }}"
+    },
+    {
+      "rank": 5,
+      "why": "cited, unchanged",
+      "id": "remote-c4d8h2lm",
+      "file": "x.go",
+      "lines": [
+        1,
+        1
+      ],
+      "tokens": 2,
+      "mode": "value",
+      "content": "remote"
+    }
+  ],
+  "omitted": null
+}

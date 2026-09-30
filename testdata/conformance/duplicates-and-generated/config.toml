@@ -1,0 +1,4 @@
+[scan]
+code = ["**"]
+docs = ["docs/**"]
+generated = ["**/*.pb.go"]

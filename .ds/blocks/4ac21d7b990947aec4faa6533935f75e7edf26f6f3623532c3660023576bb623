@@ -1,0 +1,30 @@
+func Flags(st Stability, classes []Class) bool {
+	for _, c := range classes {
+		switch c {
+		case ClassWhitespace, ClassMoved:
+			continue
+		case ClassComment:
+			if st == StabilityFrozen {
+				return true
+			}
+		case ClassSignature, ClassType, ClassRenamed, ClassValue:
+			if st != StabilityVolatile {
+				return true
+			}
+		case ClassBody:
+			if st == StabilityFrozen || st == StabilityStable {
+				return true
+			}
+		case ClassUnknown:
+			// Deliberately wider than ClassBody: an unclassified difference
+			// could be a signature change, and `api` exists to catch those.
+			// Reporting a change the reader may judge irrelevant costs an
+			// ack; staying silent costs a missed breaking change. Only
+			// `volatile`, which opts out of all prose flagging, stays quiet.
+			if st != StabilityVolatile {
+				return true
+			}
+		}
+	}
+	return false
+}

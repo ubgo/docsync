@@ -1,0 +1,32 @@
+{
+  "name": "docsync",
+  "displayName": "docsync",
+  "description": "Code lenses listing dependents of every ds:def, hover with the cited block and its diff, go-to-definition from a cite, and warnings when a defined symbol is renamed or deleted. A thin client for `ds lsp`.",
+  "version": "0.1.0",
+  "publisher": "ubgo",
+  "license": "AGPL-3.0-only",
+  "engines": { "vscode": "^1.85.0", "node": ">=20" },
+  "categories": ["Linters", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "docsync",
+      "properties": {
+        "docsync.path": { "type": "string", "default": "ds", "description": "Path to the ds binary." },
+        "docsync.args": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Extra arguments passed before `lsp`, for example [\"--dir\", \"/repo\"]." },
+        "docsync.languages": { "type": "array", "items": { "type": "string" }, "default": ["markdown", "mdx", "go", "typescript", "typescriptreact", "javascript", "python", "sql", "yaml", "toml", "terraform", "hcl"], "description": "Language ids the server attaches to." }
+      }
+    },
+    "commands": [
+      { "command": "docsync.why", "title": "docsync: show dependents of this block" },
+      { "command": "docsync.restart", "title": "docsync: restart the language server" }
+    ]
+  },
+  "scripts": {
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include='*.js' --test-coverage-exclude='test/**' test/*.test.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

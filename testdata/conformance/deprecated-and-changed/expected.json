@@ -1,0 +1,19 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/l.md",
+      "line": 1,
+      "id": "old-a2b6f8jk",
+      "state": "deprecated",
+      "severity": "info"
+    },
+    {
+      "doc": "docs/l.md",
+      "line": 1,
+      "id": "old-a2b6f8jk",
+      "state": "unacked",
+      "severity": "error"
+    }
+  ]
+}

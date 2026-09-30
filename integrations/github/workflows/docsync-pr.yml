@@ -1,0 +1,30 @@
+# Triggers: manual only, by default. GitHub Actions minutes are billed on a
+# private repository, and a workflow that goes red for billing rather than for
+# the code teaches everyone to ignore it. Run `task` (or `ds check`) locally as
+# the real gate, and start this from the Actions tab when you want CI to agree.
+# On a public repository, or once budget is there, replace `on:` below with:
+#
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened, labeled]
+#
+# The `docs-acked` label flow needs the pull_request trigger; until it is
+# pasted back, a manual run checks the branch it is started on.
+# Pull requests: findings become one comment per doc; the job fails on
+# errors so a required status blocks the merge. A reviewer who applies the
+# `docs-acked` label acks every finding for the PR (spec §24). Copy into
+# .github/workflows/.
+name: docsync
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ubgo/docsync/integrations/github@main

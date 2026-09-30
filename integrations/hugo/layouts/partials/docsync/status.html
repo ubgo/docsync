@@ -1,0 +1,9 @@
+{{- /* docsync status partial: emits one hidden element per cited reference so a small script (or CSS on data-ds-severity: none, warning, error) can paint green, amber, red dots beside cited sentences, with the ack note in data-ds-note for a hover. Data comes from status.json written by `ds export hugo`. */ -}}
+{{- $docsync := index site.Data "docsync" | default dict -}}
+{{- with $docsync.status -}}
+<div class="docsync-status" hidden data-ds-commit="{{ .commit }}">
+{{- range .refs }}
+<span data-ds-doc="{{ .doc }}" data-ds-line="{{ .line }}" data-ds-id="{{ .id }}" data-ds-state="{{ .state }}" data-ds-severity="{{ .severity }}"{{ with .note }} data-ds-note="{{ . }}"{{ end }}{{ with .acked_by }} data-ds-acked-by="{{ . }}"{{ end }}{{ with .acked_at }} data-ds-acked-at="{{ . }}"{{ end }}></span>
+{{- end }}
+</div>
+{{- end -}}

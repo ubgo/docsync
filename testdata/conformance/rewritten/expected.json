@@ -1,0 +1,19 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/sweep.md",
+      "line": 1,
+      "id": "old-h3v8n2wd",
+      "state": "broken",
+      "severity": "error"
+    },
+    {
+      "doc": "internal/sweep.go",
+      "line": 3,
+      "id": "new-p2c4y7mk",
+      "state": "uncovered",
+      "severity": "info"
+    }
+  ]
+}

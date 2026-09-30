@@ -1,0 +1,140 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "reference": {
+    "verb": "block",
+    "id": "sess-save-k7m2p4xq",
+    "pos": {
+      "file": "docs/sessions.md",
+      "start": 7,
+      "end": 7
+    },
+    "carrier": "link",
+    "sentence": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq).",
+    "sentence_hash": "43d95afe44db16374e0a4ca242e5b9ca9676ab501a5b2b5e20db39dfb9013c8f",
+    "args": {
+      "id": "sess-save-k7m2p4xq"
+    }
+  },
+  "block": {
+    "id": "sess-save-k7m2p4xq",
+    "kind": "func",
+    "symbol": "Store.Save",
+    "pos": {
+      "file": "internal/store/write.go",
+      "start": 4,
+      "end": 6
+    },
+    "directive_pos": {
+      "file": "internal/store/write.go",
+      "start": 3,
+      "end": 3
+    },
+    "carrier": "comment",
+    "hash": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592",
+    "args": {
+      "id": "sess-save-k7m2p4xq",
+      "owner": "@auth",
+      "stability": "stable"
+    }
+  },
+  "change": {
+    "ID": "sess-save-k7m2p4xq",
+    "State": "changed",
+    "Old": {
+      "ID": "sess-save-k7m2p4xq",
+      "Repo": "api",
+      "Kind": "func",
+      "File": "internal/store/write.go",
+      "Symbol": "Store.Save",
+      "Start": 4,
+      "End": 6,
+      "Hash": "39a41d553d17cea2a1b16f5d230dca32f1734ec4575a78a6dfd1403d4c259c9e",
+      "Owner": "@auth",
+      "Stability": "stable",
+      "Env": "",
+      "Args": {
+        "id": "sess-save-k7m2p4xq",
+        "owner": "@auth",
+        "stability": "stable"
+      }
+    },
+    "New": {
+      "id": "sess-save-k7m2p4xq",
+      "kind": "func",
+      "symbol": "Store.Save",
+      "pos": {
+        "file": "internal/store/write.go",
+        "start": 4,
+        "end": 6
+      },
+      "directive_pos": {
+        "file": "internal/store/write.go",
+        "start": 3,
+        "end": 3
+      },
+      "carrier": "comment",
+      "hash": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592",
+      "args": {
+        "id": "sess-save-k7m2p4xq",
+        "owner": "@auth",
+        "stability": "stable"
+      }
+    },
+    "Candidate": {
+      "id": "",
+      "kind": "",
+      "pos": {
+        "file": "",
+        "start": 0,
+        "end": 0
+      },
+      "directive_pos": {
+        "file": "",
+        "start": 0,
+        "end": 0
+      },
+      "carrier": "",
+      "hash": ""
+    },
+    "Ratio": 0,
+    "Classes": [
+      "body"
+    ],
+    "Diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+    "Flags": true
+  },
+  "finding": {
+    "state": "unacked",
+    "severity": "error",
+    "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+    "doc": "docs/sessions.md",
+    "line": 7,
+    "sentence": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq).",
+    "id": "sess-save-k7m2p4xq",
+    "repo": "api",
+    "file": "internal/store/write.go",
+    "lines": [
+      4,
+      6
+    ],
+    "verb": "block",
+    "carrier": "link",
+    "owner": "@auth",
+    "class": [
+      "body"
+    ],
+    "baseline": "seen",
+    "hash": {
+      "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+    },
+    "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+    "remedy": {
+      "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 7 --note '…'",
+      "if_not": "edit the sentence at docs/sessions.md:7, then ack"
+    }
+  },
+  "acks": null
+}

@@ -1,0 +1,28 @@
+# Bugs in docsync that are fixed, by docsync's own bug number. Each must be
+# referenced by a test or an e2e script that proves the fix, in the form
+# "bug N", "(bug N)" or "bugs N, M and K" -- TestEveryFixedBugIsPinned fails
+# for any that is not.
+#
+# The numbers are the order the bugs were reported in; the original reports
+# are archived with the maintainers, not in this repository. When a bug is
+# fixed, add it here in the same change as its test. A duplicate is listed
+# with the bug that carries its fix.
+1  cross-repo references never flagged when the cited block changed
+2  secret values written to the extraction cache and the journal
+3  ds undo reached past the last commit and could delete a cited def
+4  anchoring a markdown heading changed the previous section's hash
+5  ds check not reproducible across repositories
+6  ds status snapshot staleness, and ds prune for the body store
+7  ds def on .adoc/.rst rejected #Symbol
+8  cross-repo moved never reported
+9  ds notify raises a stale snapshot
+10 ds notify lost dedupe state on every CI run (duplicate of 11)
+11 ds notify had no memory between CI runs
+12 an extraction-rule change reported every citation as changed
+13 a citation's sentence across wrapped lines and abbreviations
+14 --dry-run for ds ack and ds publish
+15 finding the repository root from a subdirectory
+16 the old-content hook could not name a per-environment row
+17 acks under another rule rejected though their sentence was unchanged
+18 a const inside a const ( ... ) group bound a later declaration
+19 ds def missed a standalone typed Go constant

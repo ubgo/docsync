@@ -1,0 +1,82 @@
+{
+  "exit_code": 0,
+  "findings": [
+    {
+      "doc": "docs/all.md",
+      "line": 1,
+      "id": "go-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 1,
+      "id": "py-b3c7g9kl",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 1,
+      "id": "sql-c4d8h2lm",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 2,
+      "id": "env-f7g3l5pq",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 2,
+      "id": "ini-g8h4m6qr",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 2,
+      "id": "toml-e6f2k4np",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 2,
+      "id": "yaml-d5e9j3mn",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 3,
+      "id": "fact-j3k5n7rs",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 3,
+      "id": "md-h2n8wq4t",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 3,
+      "id": "txt-k4m6p8st",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 4,
+      "id": "sql-c4d8h2lm",
+      "state": "skipped",
+      "severity": "info"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+# ds includes the tree-sitter syntax tier, which is C, so cgo must be on: a
+# build without it would hash Go, TypeScript and Python blocks as plain text,
+# and a teammate on that build would see every citation as drifted. zig is the
+# C cross-compiler for linux and windows; darwin/arm64 builds natively on a
+# macOS arm64 host. darwin/amd64 is absent because cgo cannot be cross-built
+# for macOS (Apple's SDK is not redistributable): Intel Macs install with
+# `go install github.com/ubgo/docsync/cli/cmd/ds@<version>`.
+cgo: true
+platforms: [darwin/arm64, linux/amd64, linux/arm64, windows/amd64]
+toolchain:
+  # A native target has no zig triple and builds with the host compiler.
+  cc: "{{if .ZigTarget}}zig cc -target {{.ZigTarget}}{{else}}clang{{end}}"
+  cxx: "{{if .ZigTarget}}zig c++ -target {{.ZigTarget}}{{else}}clang++{{end}}"
+extra_files: [../../../README.md, ../../../LICENSE]
+ldflags:
+  vars:
+    github.com/ubgo/docsync/cli.releaseVersion: "{{.Version}}"

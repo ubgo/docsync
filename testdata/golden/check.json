@@ -1,0 +1,201 @@
+{
+  "json_format": 1,
+  "generated_at": "2026-09-06T12:00:00Z",
+  "repo": "api",
+  "commit": "7c1e2a",
+  "summary": {
+    "error": 3,
+    "info": 1,
+    "none": 3,
+    "warning": 1
+  },
+  "states": {
+    "broken": 1,
+    "ok": 3,
+    "unacked": 2,
+    "uncovered": 1,
+    "unverifiable": 1
+  },
+  "findings": [
+    {
+      "state": "ok",
+      "severity": "none",
+      "message": "up to date",
+      "doc": "docs/sessions.md",
+      "line": 7,
+      "sentence": "It listens on [8081](ds:cfg?id=auth-port-h3v8n2wd).",
+      "id": "auth-port-h3v8n2wd",
+      "repo": "api",
+      "file": "config/auth.yaml",
+      "lines": [
+        2,
+        2
+      ],
+      "verb": "cfg",
+      "carrier": "link",
+      "hash": {
+        "current": "a7fc04e4c6f7823a3ccbd1dd99a7300ded02962e8b259da67fe0af937903eed5"
+      },
+      "remedy": {}
+    },
+    {
+      "state": "unacked",
+      "severity": "error",
+      "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+      "doc": "docs/sessions.md",
+      "line": 7,
+      "sentence": "Every write goes through [`Save`](ds:block?id=sess-save-k7m2p4xq).",
+      "id": "sess-save-k7m2p4xq",
+      "repo": "api",
+      "file": "internal/store/write.go",
+      "lines": [
+        4,
+        6
+      ],
+      "verb": "block",
+      "carrier": "link",
+      "owner": "@auth",
+      "class": [
+        "body"
+      ],
+      "baseline": "seen",
+      "hash": {
+        "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+      },
+      "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+      "remedy": {
+        "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 7 --note '…'",
+        "if_not": "edit the sentence at docs/sessions.md:7, then ack"
+      }
+    },
+    {
+      "state": "unacked",
+      "severity": "error",
+      "message": "sess-save-k7m2p4xq changed (body) since this sentence was first cited",
+      "doc": "docs/sessions.md",
+      "line": 9,
+      "id": "sess-save-k7m2p4xq",
+      "repo": "api",
+      "file": "internal/store/write.go",
+      "lines": [
+        4,
+        6
+      ],
+      "verb": "block",
+      "carrier": "block",
+      "owner": "@auth",
+      "class": [
+        "body"
+      ],
+      "baseline": "seen",
+      "hash": {
+        "current": "a77c1ded92a1f34964fa4d5428c6e53707b62333a104370c39f2b42c701cc592"
+      },
+      "diff": "-\treturn s.legacy.Save()\n+\treturn s.sessions.Insert()\n",
+      "remedy": {
+        "if_still_true": "ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 9 --note '…'",
+        "if_not": "edit the sentence at docs/sessions.md:9, then ack"
+      }
+    },
+    {
+      "state": "ok",
+      "severity": "none",
+      "message": "up to date",
+      "doc": "docs/sessions.md",
+      "line": 11,
+      "sentence": "Stripe:",
+      "id": "gh-stripe-key-r4t6x2mb",
+      "repo": "api",
+      "file": ".github/workflows/deploy.yml",
+      "lines": [
+        2,
+        2
+      ],
+      "verb": "chain",
+      "carrier": "comment",
+      "hash": {
+        "current": "8f5d8311a216a879edb0a6a9177b796f531899d29cf07e4c887032c373255c02"
+      },
+      "remedy": {}
+    },
+    {
+      "state": "unverifiable",
+      "severity": "warning",
+      "message": "external link not checked",
+      "doc": "docs/sessions.md",
+      "line": 13,
+      "sentence": "See [pg](ds:url?href=https://example.com/pg).",
+      "repo": "api",
+      "lines": [
+        0,
+        0
+      ],
+      "verb": "url",
+      "carrier": "link",
+      "hash": {},
+      "remedy": {
+        "fix": "external link checks need --resolve with network access"
+      }
+    },
+    {
+      "state": "broken",
+      "severity": "error",
+      "message": "nope-a2b6f8jk is not defined",
+      "doc": "docs/sessions.md",
+      "line": 13,
+      "sentence": "Broken [x](ds:block?id=nope-a2b6f8jk).",
+      "id": "nope-a2b6f8jk",
+      "repo": "api",
+      "lines": [
+        0,
+        0
+      ],
+      "verb": "block",
+      "carrier": "link",
+      "hash": {},
+      "remedy": {
+        "fix": "the id nope-a2b6f8jk is not defined; fix the id in docs/sessions.md:13 or re-add the ds:def on the block it meant"
+      }
+    },
+    {
+      "state": "ok",
+      "severity": "none",
+      "message": "up to date",
+      "doc": "docs/sessions.md",
+      "line": 15,
+      "sentence": "Other repo: [remote](ds:block?id=remote-c4d8h2lm).",
+      "id": "remote-c4d8h2lm",
+      "repo": "api",
+      "file": "x.go",
+      "lines": [
+        1,
+        1
+      ],
+      "verb": "block",
+      "carrier": "link",
+      "hash": {
+        "current": "b71199ebd070b36beab7317920c2c2f1d777df8d05e5527d8458fda57cb17a7a"
+      },
+      "remedy": {}
+    },
+    {
+      "state": "uncovered",
+      "severity": "info",
+      "message": "defined but never cited or covered",
+      "doc": "internal/store/write.go",
+      "line": 8,
+      "id": "sess-ttl-p2c4y7mk",
+      "repo": "api",
+      "file": "internal/store/write.go",
+      "lines": [
+        0,
+        0
+      ],
+      "hash": {},
+      "remedy": {
+        "fix": "sess-ttl-p2c4y7mk is defined but nothing cites or covers it; cite it from a page or remove the def"
+      }
+    }
+  ],
+  "exit_code": 1
+}

@@ -1,0 +1,262 @@
+version: '3'
+
+# docsync build and quality gates. The root module is stdlib-only and every package
+# must hold 100% statement coverage (scripts/coverage-gate.sh enforces it). The
+# conformance fixtures under testdata/conformance are the executable spec.
+
+vars:
+  COVER_DIR: coverage
+  # Where `task install` puts the symlinks. It must be on PATH; override
+  # per invocation with `task install DEST=/usr/local/bin`.
+  DEST: '{{.DEST | default "$HOME/.local/bin"}}'
+  BIN_DIR: '{{.ROOT_DIR}}/bin' 
+
+tasks:
+  default:
+    desc: Run the full gate on every module (fmt, vet, lint, race tests, 100% coverage)
+    cmds:
+      - task: fmt:check
+      - task: vet
+      - task: lint
+      - task: test
+      - task: cover
+      - task: cli
+      - task: ext
+      - task: ext:treesitter
+      - task: ext:sqlite
+      - task: js
+      - task: dogfood
+      - task: corpus
+      - task: extract:diff
+        vars: { REF: HEAD }
+      - task: e2e
+      - task: xbuild
+
+  cli:
+    desc: Gate the cli module (vet, lint, race tests, 100% coverage); it has its own go.mod
+    dir: cli
+    cmds:
+      - go vet ./...
+      - staticcheck ./...
+      - go test -race -count=1 ./...
+      - mkdir -p ../{{.COVER_DIR}}
+      - go test -count=1 -coverprofile=../{{.COVER_DIR}}/cli.out -covermode=atomic ./...
+      - sh ../scripts/coverage-gate.sh ../{{.COVER_DIR}}/cli.out
+
+  ext:
+    desc: Gate the ext/structured module (yaml, toml, hcl; vet, lint, race tests, 100% coverage); it has its own go.mod
+    dir: ext/structured
+    cmds:
+      - go vet ./...
+      - staticcheck ./...
+      - go test -race -count=1 ./...
+      - mkdir -p ../../{{.COVER_DIR}}
+      - go test -count=1 -coverprofile=../../{{.COVER_DIR}}/ext.out -covermode=atomic ./...
+      - sh ../../scripts/coverage-gate.sh ../../{{.COVER_DIR}}/ext.out
+
+  ext:treesitter:
+    desc: Gate the ext/treesitter module (cgo; vet, lint, race tests, 100% coverage); it has its own go.mod
+    dir: ext/treesitter
+    cmds:
+      - go vet ./...
+      - staticcheck ./...
+      - go test -race -count=1 ./...
+      - mkdir -p ../../{{.COVER_DIR}}
+      - go test -count=1 -coverprofile=../../{{.COVER_DIR}}/treesitter.out -covermode=atomic ./...
+      - sh ../../scripts/coverage-gate.sh ../../{{.COVER_DIR}}/treesitter.out
+
+  ext:sqlite:
+    desc: Gate the ext/records/sqlite module (vet, lint, race tests, 100% coverage); it has its own go.mod
+    dir: ext/records/sqlite
+    cmds:
+      - go vet ./...
+      - staticcheck ./...
+      - go test -race -count=1 ./...
+      - mkdir -p ../../../{{.COVER_DIR}}
+      - go test -count=1 -coverprofile=../../../{{.COVER_DIR}}/sqlite.out -covermode=atomic ./...
+      - sh ../../../scripts/coverage-gate.sh ../../../{{.COVER_DIR}}/sqlite.out
+
+  js:
+    desc: Test the JavaScript integrations (Docusaurus plugin, VS Code client) with node --test at 100% coverage
+    cmds:
+      - task: js:docusaurus
+      - task: js:vscode
+
+  js:docusaurus:
+    desc: Test the Docusaurus plugin (node --test, 100% line/branch/function coverage)
+    dir: integrations/docusaurus
+    cmds:
+      - npm test --silent
+
+  js:vscode:
+    desc: Test the VS Code client (node --test, 100% line/branch/function coverage)
+    dir: editors/vscode
+    cmds:
+      - npm test --silent
+
+  dogfood:
+    desc: Run ds on this repo's own docs (prefix dsself); fails if a doc cites a block that changed
+    deps: [cli:build]
+    cmds:
+      # check only, never scan: scan rewrites the ledger (its header carries
+      # scanned_at), and a gate that dirties committed state every run trains
+      # everyone to ignore a dirty tree. Updating the baseline is a deliberate
+      # `ds scan` + `ds ack`, not a side effect of running the tests.
+      #
+      # The binary under test, not whatever is on PATH, so the gate measures
+      # this tree. --full bypasses the extraction cache, because a cache that
+      # serves a stale entry is one of the bugs this task exists to catch.
+      - ./bin/ds check --full
+
+  e2e:
+    desc: Drive the built ds binary through the end-to-end matrices in scripts/e2e (several commands, git history, more than one repo)
+    deps: [cli:build]
+    cmds:
+      - sh scripts/e2e/run.sh
+
+  perf:
+    desc: 'Time the built ds binary against the SPEC section 33 targets on a generated repo of FILES files (default 100000): scan under 60s, incremental check under 2s, impact --staged under 1s'
+    deps: [cli:build]
+    cmds:
+      - PATH="$PWD/bin:$PATH" sh scripts/perf.sh
+
+  fuzz:all:
+    desc: Search every fuzz target for new failing inputs (FUZZTIME=30s each by default); failures are saved under testdata/fuzz and replayed by every later go test
+    vars:
+      FUZZTIME: '{{.FUZZTIME | default "30s"}}'
+    cmds:
+      - for: [.:FuzzEditApply, ledger:FuzzEsc, ledger:FuzzPct, ledger:FuzzHeaderRoundTrip, ledger:FuzzRowRoundTrip, ledger:FuzzDecodeLedger, ledger:FuzzDecodeRefs, ledger:FuzzDecodeAcks, ledger:FuzzDecodeForeign, internal/textnorm:FuzzNormalize, internal/glob:FuzzMatch, id:FuzzIdentity, extract:FuzzExtract, extract:FuzzMaskCodeSpans, extract:FuzzRewrapKeepsSentence, config:FuzzParse, pick:FuzzPick, pick:FuzzPickLineEndings, sentence:FuzzBind, sentence:FuzzBindKeepsLinksWhole, internal/mdspan:FuzzCodeSpans, directive:FuzzParse, directive:FuzzParseLink, internal/duration:FuzzParse, internal/linerange:FuzzParse, internal/difflib:FuzzDiff, workspace:FuzzTestsRoundTrip, workspace:FuzzParseJUnit, records:FuzzParse, records:FuzzApply, render:FuzzRenderActsOnlyOnExtractedLines]
+        cmd: go test ./{{splitList ":" .ITEM | first}}/ -run '^$' -fuzz '^{{splitList ":" .ITEM | last}}$' -fuzztime {{.FUZZTIME}}
+
+  xbuild:
+    desc: Cross-compile and vet every cgo-free module for linux, windows, darwin, freebsd on amd64 and arm64
+    cmds:
+      # A platform nobody builds for is a claim nobody has checked: the
+      # Windows file lock in cli/lock_windows.go is only proven to compile
+      # here. ext/treesitter is left out on purpose — it needs cgo and a C
+      # toolchain per target, and its tier is platform-neutral Go over it.
+      - |
+        set -e
+        for os in linux windows darwin freebsd; do
+          for arch in amd64 arm64; do
+            echo "xbuild $os/$arch"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build ./...
+            (cd cli && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build . && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go vet .)
+            (cd ext/structured && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build ./...)
+            (cd ext/records/sqlite && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build ./...)
+          done
+        done
+
+  corpus:
+    desc: Run ds over real third-party repos and assert invariants only (SKIPs when no corpus is present)
+    deps: [cli:build]
+    cmds:
+      # The only gate here with no oracle of intent: no expected values, just
+      # properties that hold for any source. Every other gate tests docsync
+      # against code shaped like the code in this repository, which is how a
+      # grouped constant went unhandled through 245 e2e cases and five modules
+      # at 100% statements (bug 18). Set CORPUS=/path/a:/path/b to add trees.
+      - sh scripts/corpus.sh
+
+  extract:diff:
+    desc: Compare what two builds extract from the same source; fails if a block that was bound correctly now hashes differently (REF=<git ref>)
+    deps: [cli:build]
+    cmds:
+      # Run before any change to an extractor, a grammar table or a hashing
+      # rule. The danger there is not a new bug but a changed hash: a block that
+      # still binds, to the same thing, over the same lines, hashed differently
+      # makes every acked citation of it report drift in every repository that
+      # had it -- a repo-wide false alarm no unit test can see, because each
+      # test asserts what the current build does and nothing compares builds.
+      - REF={{.REF | default "HEAD~1"}} sh scripts/extract-diff.sh
+
+  cli:build:
+    desc: Build ds and the resolver plugins into bin/ (the whole toolchain, so --resolve works)
+    dir: cli
+    cmds:
+      - mkdir -p ../bin
+      # -o <dir>/ names each binary after its command package, so a new
+      # cmd/ds-* is picked up without editing this task.
+      - go build -o ../bin/ ./cmd/...
+
+  install:
+    desc: Build, then symlink the dev binaries onto PATH (default ~/.local/bin; override with DEST=…). Symlinks, so a later `task cli:build` needs no reinstall.
+    deps: [cli:build]
+    cmds:
+      - sh scripts/install-links.sh "{{.BIN_DIR}}" "{{.DEST}}"
+
+  uninstall:
+    desc: Remove the symlinks `task install` created (only links pointing into this repo's bin/)
+    cmds:
+      - sh scripts/uninstall-links.sh "{{.BIN_DIR}}" "{{.DEST}}"
+
+  cli:install:
+    desc: go install a snapshot copy of ds into GOBIN (not a symlink; use `task install` for the dev build)
+    dir: cli
+    cmds:
+      - go install ./cmd/ds
+
+  fmt:
+    desc: Format all Go files with gofumpt
+    cmds:
+      - gofumpt -w .
+
+  fmt:check:
+    desc: Fail if any file is not gofumpt-formatted
+    cmds:
+      - test -z "$(gofumpt -l .)" || (gofumpt -l . && exit 1)
+
+  vet:
+    desc: go vet every package
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: staticcheck every package
+    cmds:
+      - staticcheck ./...
+
+  test:
+    desc: Run all tests with the race detector
+    cmds:
+      - go test -race -count=1 ./...
+
+  cover:
+    desc: Run tests with coverage and fail if any package is below 100% statements
+    cmds:
+      - mkdir -p {{.COVER_DIR}}
+      - go test -count=1 -coverprofile={{.COVER_DIR}}/cover.out -covermode=atomic ./...
+      - sh scripts/coverage-gate.sh {{.COVER_DIR}}/cover.out
+
+  cover:html:
+    desc: Open the HTML coverage report
+    deps: [cover]
+    cmds:
+      - go tool cover -html={{.COVER_DIR}}/cover.out
+
+  conformance:update:
+    desc: Regenerate testdata/conformance/*/expected.json and JSON goldens from current behaviour (review the diff; a changed expectation is a changed rule)
+    cmds:
+      - go test -count=1 -run 'TestConformance$|TestJSONContract' . -update
+      - git --no-pager diff --stat -- testdata
+
+  conformance:
+    desc: Run only the conformance suite and the JSON contract goldens
+    cmds:
+      - go test -count=1 -run 'TestConformance|TestJSONContract' -v . | grep -E '^(=== RUN|--- (PASS|FAIL)|ok|FAIL)' | grep -v '=== RUN'
+
+  fuzz:
+    desc: 'Run a fuzz target for 30s: task fuzz -- ./directive FuzzParse'
+    cmds:
+      - go test -run=^$ -fuzz={{splitList " " .CLI_ARGS | last}} -fuzztime=30s {{splitList " " .CLI_ARGS | first}}
+
+  tidy:
+    desc: go mod tidy and fail if it changed anything
+    cmds:
+      - go mod tidy
+      - git diff --exit-code -- go.mod go.sum || (echo "go mod tidy changed files" && exit 1)
+
+  clean:
+    desc: Remove coverage output
+    cmds:
+      - /bin/rm -rf {{.COVER_DIR}} bin

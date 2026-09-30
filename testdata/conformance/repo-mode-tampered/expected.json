@@ -1,0 +1,12 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/r.md",
+      "line": 3,
+      "id": "save-a2b6f8jk",
+      "state": "tampered",
+      "severity": "error"
+    }
+  ]
+}

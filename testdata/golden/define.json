@@ -1,0 +1,30 @@
+{
+  "id": "store-persist-XXXXXXXX",
+  "existing": false,
+  "block": {
+    "id": "store-persist-XXXXXXXX",
+    "kind": "func",
+    "symbol": "Store.Persist",
+    "pos": {
+      "file": "internal/store/write.go",
+      "start": 11,
+      "end": 13
+    },
+    "directive_pos": {
+      "file": "",
+      "start": 0,
+      "end": 0
+    },
+    "carrier": "",
+    "hash": "74b840c90d281e8ee2f98ac9a3e3eec019e8da97ab4fae4205a097ec88113109",
+    "args": {
+      "id": "store-persist-XXXXXXXX",
+      "owner": "@auth"
+    }
+  },
+  "edit": {
+    "file": "internal/store/write.go",
+    "line": 11,
+    "new": "// ds:def id=store-persist-XXXXXXXX owner=@auth"
+  }
+}

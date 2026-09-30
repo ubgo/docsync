@@ -1,0 +1,54 @@
+name: docsync
+description: Check that docs still match the code they cite and comment findings on the pull request, one comment per doc.
+author: ubgo
+branding:
+  icon: link
+  color: blue
+inputs:
+  version:
+    description: Version of ds to install with `go install` (a tag or `latest`). Ignored when `source` is set.
+    default: latest
+  source:
+    description: Path to a checked-out docsync repository to build `ds` from; for pinning to a commit or working before a release.
+    default: ""
+  go-version:
+    description: Go version for the install step.
+    default: "1.26"
+  ack-label:
+    description: Pull request label under which every finding is acked for the reviewer who applied it (spec §24). Empty disables.
+    default: docs-acked
+  args:
+    description: Extra arguments for `ds check` (for example `--full`).
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+    - name: Install ds
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "${{ inputs.source }}" ]; then
+          (cd "${{ inputs.source }}/cli" && go build -o "$RUNNER_TEMP/ds" ./cmd/ds)
+        else
+          GOBIN="$RUNNER_TEMP" go install "github.com/ubgo/docsync/cli/cmd/ds@${{ inputs.version }}"
+        fi
+        echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+    - name: Check
+      shell: bash
+      # The check's exit code is carried by the comment step, which reads
+      # the report; this step must not stop the job on findings.
+      run: ds check --json ${{ inputs.args }} > "$RUNNER_TEMP/docsync-report.json" || true
+    - name: Comment on the pull request
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: ds github comment --report "$RUNNER_TEMP/docsync-report.json" --ack-label "${{ inputs.ack-label }}"
+    - name: Report (not a pull request)
+      if: github.event_name != 'pull_request'
+      shell: bash
+      run: ds check ${{ inputs.args }}
