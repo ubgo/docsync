@@ -1,0 +1,105 @@
+# Windows: does docsync work there, not merely compile for it.
+#
+# The release ships ds.exe, cross-built on a Mac. Until this workflow ran, no
+# part of docsync had been started on Windows: the claim rested on a
+# cross-compile. This runs the Go tests of every module natively, builds ds.exe
+# from source and drives it through scripts/windows-smoke.ps1, then installs
+# the published release with install.ps1 and drives that binary the same way.
+#
+# Manual only. Run it from the Actions tab, or: gh workflow run windows.yml
+# It belongs before every release and after any change to paths, locking,
+# process spawning or line-ending handling. To run it automatically, replace
+# the `on:` block with:
+#
+#   on:
+#     workflow_dispatch:
+#     push:
+#       branches: [main]
+#     pull_request:
+name: windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Toolchain
+        shell: pwsh
+        run: |
+          go version
+          gcc --version | Select-Object -First 1
+          git --version
+
+      # Every test step runs even when an earlier one failed, so one run
+      # reports everything that is wrong on this platform.
+      - name: Test the root library
+        if: always()
+        shell: pwsh
+        run: go test -count=1 ./...
+
+      - name: Test ext/structured
+        if: always()
+        shell: pwsh
+        working-directory: ext/structured
+        run: go test -count=1 ./...
+
+      - name: Test ext/records/sqlite
+        if: always()
+        shell: pwsh
+        working-directory: ext/records/sqlite
+        run: go test -count=1 ./...
+
+      - name: Test ext/treesitter (cgo)
+        if: always()
+        shell: pwsh
+        working-directory: ext/treesitter
+        run: go test -count=1 ./...
+
+      - name: Test the cli module
+        if: always()
+        shell: pwsh
+        working-directory: cli
+        run: go test -count=1 ./...
+
+      - name: Build ds.exe and the plugins from source
+        if: always()
+        shell: pwsh
+        working-directory: cli
+        run: |
+          New-Item -ItemType Directory -Force -Path ../bin | Out-Null
+          go build -o ../bin/ ./cmd/...
+          Get-ChildItem ../bin
+
+      - name: Smoke the build from source
+        if: always()
+        shell: pwsh
+        run: ./scripts/windows-smoke.ps1 -Ds bin/ds.exe
+
+      - name: Install the published release with install.ps1
+        if: always()
+        shell: pwsh
+        run: |
+          $env:INSTALL_DIR = Join-Path $env:RUNNER_TEMP "ds-release"
+          ./install.ps1
+          Get-ChildItem $env:INSTALL_DIR
+          & (Join-Path $env:INSTALL_DIR "ds.exe") version
+
+      - name: Smoke the published release
+        if: always()
+        shell: pwsh
+        run: ./scripts/windows-smoke.ps1 -Ds (Join-Path $env:RUNNER_TEMP "ds-release/ds.exe")
