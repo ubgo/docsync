@@ -91,7 +91,9 @@ func TestInvariantRootPurity(t *testing.T) {
 			if forbiddenImports[path] {
 				t.Errorf("%s imports %s", p, path)
 			}
-			if path == "os/exec" && !strings.HasPrefix(p, "procplugin/") {
+			// WalkDir yields the platform's separator; on Windows the file is
+			// procplugin\procplugin.go and a "/" prefix never matched it.
+			if path == "os/exec" && !strings.HasPrefix(filepath.ToSlash(p), "procplugin/") {
 				t.Errorf("%s imports os/exec outside procplugin", p)
 			}
 		}

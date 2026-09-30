@@ -621,13 +621,17 @@ func TestStoreAndHelpers(t *testing.T) {
 	if err := st.AppendAcks(nil); err != nil {
 		t.Errorf("save acks: %v", err)
 	}
-	if err := os.Chmod(filepath.Join(dir, DirName), 0o500); err != nil {
-		t.Fatal(err)
+	// A directory that cannot be written to: only where the platform enforces
+	// directory permissions (not Windows, not root).
+	if dirPermsEnforced(t) {
+		if err := os.Chmod(filepath.Join(dir, DirName), 0o500); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Write("x", []byte("y")); err == nil {
+			t.Error("unwritable dir")
+		}
+		_ = os.Chmod(filepath.Join(dir, DirName), 0o755)
 	}
-	if err := st.Write("x", []byte("y")); err == nil {
-		t.Error("unwritable dir")
-	}
-	_ = os.Chmod(filepath.Join(dir, DirName), 0o755)
 	// ApplyEdit paths.
 	write(t, dir, "a.txt", "one\ntwo\n")
 	if err := st.ApplyEdit(docsync.Edit{File: "a.txt", Line: 2, New: "mid"}); err != nil {

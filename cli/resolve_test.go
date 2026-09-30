@@ -5,24 +5,38 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-// plugin writes a shell script answering the procplugin protocol with the
-// given reply line and returns a lookup that finds it by name.
+// plugins writes, for each name, a program answering the procplugin protocol
+// with the given reply line, and returns a lookup that finds it by name. The
+// program is a real child process on every platform: a shell script on Unix,
+// and a batch file on Windows, where a script with a #! line is not
+// executable. Replies must not hold a character cmd.exe interprets
+// (& | < > ^ %); the JSON the tests use does not.
 func plugins(t *testing.T, replies map[string]string) func(string) (string, error) {
 	t.Helper()
 	dir := t.TempDir()
+	file := func(name string) string {
+		if runtime.GOOS == windowsOS {
+			return filepath.Join(dir, name+".bat")
+		}
+		return filepath.Join(dir, name)
+	}
 	for name, reply := range replies {
-		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, []byte("#!/bin/sh\nprintf '{\"protocol\":1}\\n"+reply+"\\n'\n"), 0o755); err != nil {
+		body := "#!/bin/sh\nprintf '{\"protocol\":1}\\n" + reply + "\\n'\n"
+		if runtime.GOOS == windowsOS {
+			body = "@echo off\r\necho {\"protocol\":1}\r\necho " + reply + "\r\n"
+		}
+		if err := os.WriteFile(file(name), []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return func(name string) (string, error) {
 		if _, ok := replies[name]; ok {
-			return filepath.Join(dir, name), nil
+			return file(name), nil
 		}
 		return "", errors.New("not installed")
 	}

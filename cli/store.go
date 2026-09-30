@@ -208,13 +208,38 @@ func (s *Store) read(name string) ([]byte, bool, error) {
 	return raw, true, nil
 }
 
-// loadShards reads .ds/ledger/*.tsv; nil when the directory is absent.
-func (s *Store) loadShards() (map[string]ledger.Ledger, error) {
-	entries, err := os.ReadDir(s.path(LedgerDir))
+// ErrNotDir is a path docsync keeps a directory at that holds something else.
+var ErrNotDir = errors.New("exists but is not a directory")
+
+// listDir lists dir. A directory that does not exist is exists=false and no
+// error, which callers read as "nothing stored yet"; anything else at that
+// path is ErrNotDir.
+//
+// What the path is gets asked before it is listed, because the listing's own
+// error differs by platform: reading a file as a directory is ENOTDIR on
+// Unix and "path not found" on Windows, and the second satisfies
+// fs.ErrNotExist. Treating that as absent read a corrupted store as an empty
+// one, which for the body store means every body is dead, and for the ledger
+// shards means no previous state at all.
+func listDir(dir string) (entries []os.DirEntry, exists bool, err error) {
+	info, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		return nil, false, nil
 	}
 	if err != nil {
+		return nil, false, err
+	}
+	if !info.IsDir() {
+		return nil, true, fmt.Errorf("%s: %w", dir, ErrNotDir)
+	}
+	entries, err = os.ReadDir(dir)
+	return entries, true, err
+}
+
+// loadShards reads .ds/ledger/*.tsv; nil when the directory is absent.
+func (s *Store) loadShards() (map[string]ledger.Ledger, error) {
+	entries, exists, err := listDir(s.path(LedgerDir))
+	if err != nil || !exists {
 		return nil, err
 	}
 	shards := map[string]ledger.Ledger{}

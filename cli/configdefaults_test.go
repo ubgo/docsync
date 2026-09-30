@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -241,6 +242,11 @@ func TestSubdirectoryFindsTheRoot(t *testing.T) {
 // was deleted: a relative root cannot be resolved, and there are no
 // ancestors to report rather than a guess.
 func TestAncestorRootWithoutAWorkingDirectory(t *testing.T) {
+	// Windows does not let a process delete its own working directory, so
+	// the state this test is about cannot arise there.
+	if runtime.GOOS == windowsOS {
+		t.Skip("a working directory cannot be deleted on Windows")
+	}
 	gone := t.TempDir()
 	t.Chdir(gone)
 	if err := os.Remove(gone); err != nil {

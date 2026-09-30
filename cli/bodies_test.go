@@ -93,6 +93,10 @@ func TestWriteBodiesReportsFailure(t *testing.T) {
 	}
 
 	// The directory exists but is not writable: the body write itself fails.
+	// Only where the platform enforces directory permissions.
+	if !dirPermsEnforced(t) {
+		return
+	}
 	dir = t.TempDir()
 	blocks := filepath.Join(dir, DirName, BlocksDir)
 	if err := os.MkdirAll(blocks, dirPerm); err != nil {

@@ -539,10 +539,7 @@ func TestPruneResidualPaths(t *testing.T) {
 	if err := os.WriteFile(body, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(ro, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
+	makeUnremovable(t, ro)
 	err = report(io.Discard, ro, []deadBody{{Hash: "ccccccccdddddddd", Path: body}}, 1, 0, 0, DefaultKeep, false)
 	if err == nil {
 		t.Error("a body that cannot be removed must surface")
@@ -666,10 +663,7 @@ func TestPruneInternalFailures(t *testing.T) {
 	}
 	hash := entries[0].Name()
 	blocks := filepath.Join(dir3, DirName, BlocksDir)
-	if err := os.Chmod(blocks, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(blocks, 0o755) })
+	makeUnremovable(t, blocks)
 	if err := a3.pruneOne(io.Discard, st3, cfg3, hash, false, true, false); err == nil {
 		t.Error("an unremovable body must surface")
 	}
@@ -729,10 +723,7 @@ func TestPruneIndexRemovalFailure(t *testing.T) {
 	api, _, index, apiVCS, _ := staleSetup(t)
 	moveUpstream(t, api, apiVCS, "s.sessions.Insert()")
 	blocks := filepath.Join(index, "repos", "api", BlocksDir)
-	if err := os.Chmod(blocks, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(blocks, 0o755) })
+	makeUnremovable(t, blocks)
 	if r := run(t, api, apiVCS, "prune", "--index", "--keep", "0h"); r.code != ExitError {
 		t.Errorf("an unremovable index body must stop the prune: %+v", r)
 	}

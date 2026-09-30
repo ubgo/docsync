@@ -102,11 +102,8 @@ func (s *Store) liveFrom(prev ledger.Ledger, refs ledger.Refs, acks ledger.Acks)
 // mtimes would make every body look newer than it is and quietly prune
 // nothing, which is the failure that hides itself.
 func deadIn(dir string, live map[string]bool, keep time.Duration, now time.Time) (dead []deadBody, total, kept int, err error) {
-	entries, err := os.ReadDir(dir)
+	entries, _, err := listDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, 0, 0, nil
-		}
 		return nil, 0, 0, err
 	}
 	for _, e := range entries {

@@ -184,7 +184,11 @@ func allowedToRun(allow []string, ref block.Reference, what string) string {
 // is not a symlink, which could point outside.
 func (a *App) runnableFile(file string) string {
 	clean := filepath.ToSlash(filepath.Clean(file))
-	if file == "" || filepath.IsAbs(file) || strings.HasPrefix(file, "-") || clean != filepath.ToSlash(file) || clean == ".." || strings.HasPrefix(clean, "../") {
+	// file= is text committed in a doc, the same on every platform, so what
+	// counts as rooted is decided by the text and not by the host: a leading
+	// slash of either kind, or a drive (`C:`). filepath.IsAbs alone let
+	// file="/etc/hosts" through on Windows, where that is not "absolute".
+	if file == "" || filepath.IsAbs(file) || strings.HasPrefix(file, "/") || strings.HasPrefix(file, `\`) || hasDrive(file) || strings.HasPrefix(file, "-") || clean != filepath.ToSlash(file) || clean == ".." || strings.HasPrefix(clean, "../") {
 		return fmt.Sprintf("file=%q must be a clean path inside the repository", file)
 	}
 	info, err := os.Lstat(filepath.Join(a.dir, filepath.FromSlash(clean)))
@@ -192,6 +196,11 @@ func (a *App) runnableFile(file string) string {
 		return fmt.Sprintf("file=%q is not a regular file in the repository", file)
 	}
 	return ""
+}
+
+// hasDrive reports whether p begins with a drive, `C:`, whatever the host.
+func hasDrive(p string) bool {
+	return len(p) >= 2 && p[1] == ':' && (p[0]|0x20 >= 'a' && p[0]|0x20 <= 'z')
 }
 
 // shellQuote makes s one word for sh: wrapped in single quotes, with each

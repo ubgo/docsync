@@ -326,7 +326,11 @@ var ErrOutsideRepo = fmt.Errorf("%w: path is outside the repository", ErrUsage)
 func (a *App) repoPath(p string) (string, error) {
 	root, _ := filepath.Abs(a.dir)
 	full := filepath.FromSlash(p)
-	if !filepath.IsAbs(full) {
+	// A rooted path is taken from the root, not from where the user is. On
+	// Windows IsAbs is false for `\etc\hosts` (rooted, no drive letter), so
+	// joining it onto the start directory turned a path outside the
+	// repository into one inside it, which was then accepted.
+	if !filepath.IsAbs(full) && !rooted(full) {
 		full = filepath.Join(a.startDir(), full)
 	}
 	full, _ = filepath.Abs(full)
@@ -335,6 +339,13 @@ func (a *App) repoPath(p string) (string, error) {
 		return "", fmt.Errorf("%w: %s", ErrOutsideRepo, p)
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+// rooted reports whether p starts at a root: a leading separator, which on
+// Windows is either slash. filepath.IsAbs misses that case there, because a
+// path needs a drive letter to be absolute.
+func rooted(p string) bool {
+	return p != "" && os.IsPathSeparator(p[0])
 }
 
 // repoTarget is repoPath for a def target, `<file>#<symbol>` or

@@ -62,7 +62,13 @@ func TestSource(t *testing.T) {
 	if _, err := src(map[string]string{records.KeyLimit: "0"}); !errors.Is(err, records.ErrBadLimit) {
 		t.Errorf("apply errors pass through = %v", err)
 	}
-	none, _, _ := Open(path, "")
+	// Every handle is closed: an open one keeps the file locked on Windows
+	// and the temp dir cannot be removed.
+	none, noneCloser, err := Open(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer noneCloser.Close()
 	if _, err := none(nil); !errors.Is(err, ErrNoTable) {
 		t.Errorf("no table = %v", err)
 	}

@@ -132,14 +132,17 @@ func TestCollapseCacheAndShards(t *testing.T) {
 	if _, _, _, err := st.LoadState(); err == nil {
 		t.Error("unreadable shard must fail")
 	}
-	if err := os.Chmod(filepath.Join(dir, ".ds", "ledger"), 0); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.SaveLedgerSharded(ledger.Ledger{}, ledger.Refs{}, true); err == nil {
-		t.Error("unlistable shard dir must fail")
-	}
-	if err := os.Chmod(filepath.Join(dir, ".ds", "ledger"), 0o755); err != nil {
-		t.Fatal(err)
+	// An unlistable directory: only where directory permissions are enforced.
+	if dirPermsEnforced(t) {
+		if err := os.Chmod(filepath.Join(dir, ".ds", "ledger"), 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.SaveLedgerSharded(ledger.Ledger{}, ledger.Refs{}, true); err == nil {
+			t.Error("unlistable shard dir must fail")
+		}
+		if err := os.Chmod(filepath.Join(dir, ".ds", "ledger"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	os.RemoveAll(filepath.Join(dir, ".ds", "ledger"))
 	// The cache directory as a file blocks the cache write.

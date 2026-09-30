@@ -290,3 +290,24 @@ func TestShellQuote(t *testing.T) {
 		}
 	}
 }
+
+// TestRunnableFileRefusesRootedPathsOnEveryHost pins that a ds:run file= is
+// judged by its text, not by the host's idea of "absolute". file= is committed
+// in a doc and read on every platform; filepath.IsAbs alone let "/etc/hosts"
+// through on Windows, where a path needs a drive letter to be absolute.
+func TestRunnableFileRefusesRootedPathsOnEveryHost(t *testing.T) {
+	t.Parallel()
+	a := &App{dir: t.TempDir()}
+	for _, file := range []string{"/etc/hosts", `\etc\hosts`, `C:\Windows\x.bat`, "c:/x.sh", `\\server\share\x.sh`} {
+		if got := a.runnableFile(file); !strings.Contains(got, "must be a clean path inside the repository") {
+			t.Errorf("runnableFile(%q) = %q, want it refused as not a clean path", file, got)
+		}
+	}
+	// A name that merely contains a colon later on is not a drive.
+	if hasDrive("scripts/a:b.sh") || hasDrive("1:x") || hasDrive("") || !hasDrive("Z:") {
+		t.Error("hasDrive must match a leading letter and colon only")
+	}
+	if !rooted("/x") || rooted("x/y") || rooted("") {
+		t.Error("rooted must match a leading separator only")
+	}
+}

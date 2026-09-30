@@ -62,8 +62,8 @@ func TestLSP(t *testing.T) {
 		t.Fatal(r)
 	}
 	abs, _ := filepath.Abs(dir)
-	docURI := "file://" + filepath.Join(abs, "docs/sessions.md")
-	goURI := "file://" + filepath.Join(abs, "internal/store/write.go")
+	docURI := fileURI(filepath.Join(abs, "docs/sessions.md"))
+	goURI := fileURI(filepath.Join(abs, "internal/store/write.go"))
 	src, _ := os.ReadFile(filepath.Join(dir, "internal/store/write.go"))
 	v.files["abc1234:internal/store/write.go"] = src
 	write(t, dir, "internal/store/write.go", goV2)
@@ -204,7 +204,7 @@ func TestLSPDiagnostics(t *testing.T) {
 		t.Fatal(r)
 	}
 	abs, _ := filepath.Abs(dir)
-	goURI := "file://" + filepath.Join(abs, "internal/store/write.go")
+	goURI := fileURI(filepath.Join(abs, "internal/store/write.go"))
 	open := func(text string) string {
 		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{"textDocument": map[string]any{"uri": goURI, "text": text}}})
 		return string(raw)
@@ -293,6 +293,30 @@ func TestLSPURIsRoundTrip(t *testing.T) {
 	}
 }
 
+// fileURI is the file URI an editor sends for an absolute path, built the way
+// the server builds its own: through url.URL, with the leading slash a drive
+// path needs. Concatenating "file://" and a path is right only on Unix, where
+// the path already starts with a slash; on Windows it gave file://C:\Users\...,
+// which no editor sends and the server rightly does not resolve.
+func fileURI(abs string) string {
+	return (&url.URL{Scheme: "file", Path: pathToURI(filepath.ToSlash(abs))}).String()
+}
+
+// TestRelPathAcceptsTheEditorsWindowsURI pins the shape VS Code sends on
+// Windows: a lowercase drive letter with its colon percent-encoded,
+// file:///c%3A/Users/k/repo/docs/a.md. url.Parse decodes the colon and
+// uriToPath drops the leading slash, leaving a drive path.
+func TestRelPathAcceptsTheEditorsWindowsURI(t *testing.T) {
+	t.Parallel()
+	u, err := url.Parse("file:///c%3A/Users/k/repo/docs/a.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := uriToPath(u.Path, windowsOS); got != "c:/Users/k/repo/docs/a.md" {
+		t.Errorf("uriToPath(%q) = %q", u.Path, got)
+	}
+}
+
 // TestURIPathShapes pins the Windows half of the mapping, which a Unix host
 // never exercises through relPath: a drive path gets the leading slash a
 // file URI needs, and loses it again on the way back.
@@ -327,7 +351,7 @@ func TestLSPPicksTheCitationUnderTheCursor(t *testing.T) {
 		t.Fatal(r)
 	}
 	abs, _ := filepath.Abs(dir)
-	uri := "file://" + filepath.Join(abs, "docs/two.md")
+	uri := fileURI(filepath.Join(abs, "docs/two.md"))
 	// utf16At is where s begins in line, in UTF-16 code units.
 	utf16At := func(s string) int {
 		return len(utf16.Encode([]rune(line[:strings.Index(line, s)])))
@@ -418,7 +442,7 @@ func TestLSPDiagnosticsPerEnvironment(t *testing.T) {
 		t.Fatal(r)
 	}
 	abs, _ := filepath.Abs(dir)
-	uri := "file://" + filepath.Join(abs, "config/envs.yaml")
+	uri := fileURI(filepath.Join(abs, "config/envs.yaml"))
 	open := func(text string) string {
 		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{"textDocument": map[string]any{"uri": uri, "text": text}}})
 		return string(raw)
