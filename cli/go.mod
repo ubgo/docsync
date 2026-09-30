@@ -4,10 +4,11 @@ go 1.26
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/ubgo/docsync v0.0.0
-	github.com/ubgo/docsync/ext/records/sqlite v0.0.0
-	github.com/ubgo/docsync/ext/structured v0.0.0
-	github.com/ubgo/docsync/ext/treesitter v0.0.0
+	github.com/ubgo/docsync v0.1.0
+	github.com/ubgo/docsync/ext/records/sqlite v0.1.0
+	github.com/ubgo/docsync/ext/structured v0.1.0
+	github.com/ubgo/docsync/ext/treesitter v0.1.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
@@ -27,7 +28,6 @@ require (
 	github.com/zclconf/go-cty v1.16.3 // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -36,11 +36,3 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.58.0 // indirect
 )
-
-replace github.com/ubgo/docsync => ../
-
-replace github.com/ubgo/docsync/ext/records/sqlite => ../ext/records/sqlite
-
-replace github.com/ubgo/docsync/ext/structured => ../ext/structured
-
-replace github.com/ubgo/docsync/ext/treesitter => ../ext/treesitter
