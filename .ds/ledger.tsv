@@ -1,4 +1,4 @@
-# docsync ledger format=2 extract=1 repo=docsync commit=c7004f8 scanned_at=2026-09-29T16:01:43Z
+# docsync ledger format=2 extract=1 repo=docsync commit=d32853b scanned_at=2026-09-30T06:44:14Z
 id	repo	kind	file	symbol	lines	hash	owner	stability	env	args
 cacheinputs-vyhx6vbz	docsync	func	cli/cache.go	cacheInputs	118-120	1f4f8574ace9ca741a8df080c4a34b248191831a678b28a996202bef00cf9cd2	@docsync	stable		id=cacheinputs-vyhx6vbz owner=@docsync stability=stable
 flags-zfrzu4vz	docsync	func	block/constants.go	Flags	108-137	4ac21d7b990947aec4faa6533935f75e7edf26f6f3623532c3660023576bb623	@docsync	stable		id=flags-zfrzu4vz owner=@docsync stability=stable
