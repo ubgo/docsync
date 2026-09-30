@@ -1,0 +1,9 @@
+go 1.26
+
+use (
+	.
+	./cli
+	./ext/records/sqlite
+	./ext/structured
+	./ext/treesitter
+)
