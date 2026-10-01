@@ -129,7 +129,7 @@ Fails: <!-- ds:run cmd="exit 3" expect=ok -->
 ds scan
 -->
 
-The `sleep 2` is stopped at its directive's `timeout=1s`, which replaces the 30 seconds of `run.timeout` for that line. A command that misses its expectation or its time limit prints `run FAILED` and makes `ds check` exit 1, although it adds no row to the findings summary:
+The `sleep 2` is stopped at its directive's `timeout=1s`, which replaces the 30 seconds of `run.timeout` for that line. A command that misses its expectation or its time limit prints `run FAILED` as it goes and is a `run failed` finding, an error naming the command, so `ds check` exits 1; a run that was not executed, here a `cmd=` outside `run.allow`, is `skipped` with the reason:
 
 ```console
 $ STAGING_DATABASE_URL=postgres://staging-db/app ds check --run; echo "exit=$?"
@@ -139,9 +139,11 @@ runbooks/deploy.md:11  run FAILED: exit 3
 docs/readme.md
   3	info     skipped            run not executed: cmd= is allowed only in docs matching run.allow
 runbooks/deploy.md
+  9	error    run failed         run failed: sleep 2
+      fix: run `sleep 2` by hand to see why; fix the command, or the sentence at runbooks/deploy.md:9 if it no longer holds
   11	error    run failed         run failed: exit 3
       fix: run `exit 3` by hand to see why; fix the command, or the sentence at runbooks/deploy.md:11 if it no longer holds
-1 error, 1 info, 4 ok
+2 error, 1 info, 3 ok
 exit=1
 ```
 
@@ -327,7 +329,7 @@ docs/links.md
       fix: the page at http://127.0.0.1:8765/guide no longer has title "Manual"; confirm it is still the right page
   11	warning  retitled           title is now "Storage guide, 2nd edition"
       fix: the page at http://127.0.0.1:8765/guide no longer has title "\"Storage\""; confirm it is still the right page
-1 error, 3 warning, 3 none
+1 error, 3 warning, 3 ok
 ```
 
 Line 3 is missing from both runs, and line 11 is reported although the page title does contain "Storage"; [Writing the link form](#writing-the-link-form) explains both. Lines 13, 15 and 18 are `ok` (line 18 answers the 404 it expects) and, like every `ok`, are counted in the summary rather than listed.
@@ -531,7 +533,7 @@ $ ds check
 docs/payments.md
   7	info     uncovered          defined but never cited or covered
       fix: prod-env-file-x4y5z6a7 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 info, 3 none
+1 info, 3 ok
 ```
 
 A file that is there but lacks the key is `pick failed`, an error, because that is a mistake on the machine that can see it:
@@ -544,7 +546,7 @@ docs/payments.md
       fix: fix the def's file= or pick= at docs/payments.md:7
   7	info     uncovered          defined but never cited or covered
       fix: prod-env-file-x4y5z6a7 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 error, 1 info, 2 none
+1 error, 1 info, 2 ok
 ```
 
 <!-- doctest
@@ -633,7 +635,7 @@ $ PATH="$PWD/../plugins:$PATH" ds check --resolve
 internal/pay/stripe.go
   6	warning  unverifiable       provider env not reachable: procplugin: plugin reported an error: STRIPE_KEY is not set in the environment ds check runs in
       fix: install the ds-resolve plugin for env on PATH and log in to the CLI it wraps, or leave env out of resolve.providers; the message says what failed
-1 warning, 2 none
+1 warning, 2 ok
 ```
 
 The runs below set it, as the deploy job that runs `--resolve` would.
@@ -657,7 +659,7 @@ $ STRIPE_KEY=sk_live_one PATH="$PWD/../plugins:$PATH" ds check --resolve
 .env.tpl
   2	info     uncovered          defined but never cited or covered
       fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 info, 2 none
+1 info, 2 ok
 $ cat .ds/hashes.json
 {
   "op-stripe-key-p9c2v7ld": "a245b332a780393cd4fafdcb467e7bb40ae2880f160782704d5bc2fdcab6bd8f"
@@ -682,7 +684,7 @@ $ STRIPE_KEY=sk_live_one PATH="$PWD/../plugins:$PATH" ds check --resolve
 internal/pay/stripe.go
   6	error    stale copy         app-stripe-key-m4w8k2qn still holds the value from before op-stripe-key-p9c2v7ld was rotated
       fix: app-stripe-key-m4w8k2qn still holds the value op-stripe-key-p9c2v7ld had before it was rotated; run the sync (no sync= declared)
-2 error, 1 warning, 1 info, 2 none
+2 error, 1 warning, 1 info, 2 ok
 ```
 
 A copy that holds neither value is `out of sync`, the cause unknown:
@@ -693,7 +695,7 @@ $ STRIPE_KEY=sk_live_typo PATH="$PWD/../plugins:$PATH" ds check --resolve
 internal/pay/stripe.go
   6	error    out of sync        app-stripe-key-m4w8k2qn differs from truth op-stripe-key-p9c2v7ld
       fix: app-stripe-key-m4w8k2qn differs from its truth op-stripe-key-p9c2v7ld; run the sync (no sync= declared) and ack the runbooks that cite the chain
-2 error, 1 warning, 1 info, 2 none
+2 error, 1 warning, 1 info, 2 ok
 ```
 
 And with the GitHub secret deleted:
@@ -844,12 +846,12 @@ $ STRIPE_KEY=sk_live_two PATH="$PWD/../gobin:$PWD/../plugins:$PATH" ds check --r
       fix: the truth op-stripe-key-p9c2v7ld changed since its stored hash; run the syncs of its copies and ack the runbooks
   2	info     uncovered          defined but never cited or covered
       fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 warning, 1 info, 2 none
+1 warning, 1 info, 2 ok
 $ STRIPE_KEY=sk_live_two PATH="$PWD/../gobin:$PWD/../plugins:$PATH" ds check --resolve
 .env.tpl
   2	info     uncovered          defined but never cited or covered
       fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 info, 2 none
+1 info, 2 ok
 ```
 
 The same protocol serves other plugin kinds: `ds-pick-<scheme>` for a new `pick=` scheme and `ds-<verb>` for a new directive verb, each listed in config (`[plugins] picks = […]`, `verbs = […]`), and `ds-records-<source>` for a `ds:table` source named in `[records] source`. The request and reply shapes for each are in [the spec](../SPEC.md#374-process-plugins-for-any-language).
@@ -930,7 +932,7 @@ docs/hosts.md
       fix: env=dev at docs/hosts.md:7 is not in [env] known (prod, staging); fix the name or add it to the list
   7	error    broken             api-host-d4k8w2mn is not defined for env=dev
       fix: api-host-d4k8w2mn has no definition for env=dev; add one or cite a defined environment
-1 error, 1 warning, 2 none
+1 error, 1 warning, 2 ok
 ```
 
 Secrets work the same way: one `truth=true` def per environment for the same id.

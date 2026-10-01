@@ -74,7 +74,7 @@ case "$diff" in *8080*) echo "  FAIL  prod was diffed against dev's body: $diff"
 # to run quietly against an environment nothing defines.
 cd "$W" || exit 1
 printf '\n[env]\nknown = ["dev", "prod"]\n' >> .ds/config.toml
-ck "a listed --env runs" "none" "$(ds check --env prod 2>&1 | tail -1)"
+ck "a listed --env runs" "2 ok" "$(ds check --env prod 2>&1 | tail -1)"
 ck "a misspelled --env is refused naming the list" "env.known is dev, prod" "$(ds check --env prdo 2>&1)"
 ck "render --env is held to the same list" "environment not in env.known" "$(ds render docs/d.md --env stage 2>&1)"
 printf '\nStage listens on [x](ds:cfg?id=port-k7m2p4xq&env=stage).\n' >> docs/d.md; ds scan >/dev/null 2>&1

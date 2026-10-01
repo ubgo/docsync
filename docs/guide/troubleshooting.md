@@ -609,8 +609,7 @@ perl -pi -e 's|^prefix = "ds"$|prefix = "ds"\nworkspace = "file:///nonexistent/d
 
 ```console
 $ ds --dir ../fresh scan
-ds: workspace index unreachable and no cached copy: git: not a repository or git not installed
-fatal: '/nonexistent/ds-index.git' does not appear to be a git repository
+ds: workspace index unreachable and no cached copy: '/nonexistent/ds-index.git' does not appear to be a git repository
 fatal: Could not read from remote repository.
 
 Please make sure you have the correct access rights

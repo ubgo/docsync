@@ -706,7 +706,7 @@ $ ds review --ai
 ds: usage: --ai needs [review] command in .ds/config.toml
 $ ds review --out ../review.txt
 $ head -1 ../review.txt
-- [ ] docs/auth.md:3  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
+- [ ] docs/auth.md:3  unacked  sessionttl-af9apb7y changed (value) since this sentence was acked
 ```
 
 `[review] command` (see [Configuration](configuration.md#review)) receives a JSON document on stdin with `instructions` and an `items` list (one per finding) and must print a unified diff. It runs under `[run] shell` (default `sh`). Here a stand-in script, kept outside the repository so its text is not scanned, prints a fixed patch:
@@ -1476,7 +1476,7 @@ $ ds undo --list
 4  def     internal/auth/logout.go:4           logout-d3dzzyqr          just now  committed 285bed3
 5  def     internal/auth/errors.go:6           empty-password-rsh5d7az  just now  committed 285bed3 · cited by docs/auth.md:5
 6  def     internal/auth/session.go:10         login-j3nq87mh           just now  committed 285bed3 · cited by docs/api.md:3, docs/api.md:5, docs/auth.md:5
-7  def     internal/auth/session.go:6          sessionttl-r7xkm5bw      just now  committed 285bed3 · cited by docs/auth.md:3
+7  def     internal/auth/session.go:6          sessionttl-af9apb7y      just now  committed 285bed3 · cited by docs/auth.md:3
 $ ds undo --dry-run
 would undo rename docs/auth.md:3 +1 more (--dry-run)
   docs/auth.md:3
