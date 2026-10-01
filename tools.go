@@ -435,11 +435,13 @@ func (s *System) FixDuplicates(res scan.Result) (RenameResult, error) {
 			prefix = oldID
 		}
 		for _, b := range bs[1:] {
-			newID, err := id.New(s.idcfg, prefix)
+			raw, err := s.readSource(b.DirectivePos.File)
 			if err != nil {
 				return RenameResult{}, err
 			}
-			raw, err := s.readSource(b.DirectivePos.File)
+			// Derived, not drawn, so `def --fix --dry-run` shows the ids the
+			// real run writes (bug 33).
+			newID, err := s.mintFor(prefix, b.DirectivePos.File, b.DirectivePos.Start, raw, oldID)
 			if err != nil {
 				return RenameResult{}, err
 			}

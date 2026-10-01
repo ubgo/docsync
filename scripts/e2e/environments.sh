@@ -24,7 +24,7 @@ printf 'port: 8080 # ds:def id=port-k7m2p4xq env=dev\n' > config/dev.yaml
 printf 'port: 443 # ds:def id=port-k7m2p4xq env=prod\n' > config/prod.yaml
 printf '# D\n\nProd listens on [443](ds:cfg?id=port-k7m2p4xq&env=prod).\n\nDev listens on [8080](ds:cfg?id=port-k7m2p4xq&env=dev).\n' > docs/d.md
 ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm b
-ck "a fresh repo with per-env defs checks clean" "2 none" "$(ds check 2>&1 | tail -1)"
+ck "a fresh repo with per-env defs checks clean" "2 ok" "$(ds check 2>&1 | tail -1)"
 ck "render shows prod its value" "Prod listens on 443" "$(ds render docs/d.md 2>/dev/null)"
 ck "render shows dev its value" "Dev listens on 8080" "$(ds render docs/d.md 2>/dev/null)"
 sedi 's/443/8443/' config/prod.yaml
@@ -33,7 +33,7 @@ out=$(ds check 2>&1)
 ck "changing prod flags the prod citation" "3	error" "$(echo "$out" | tr -s ' ')"
 case "$out" in *"  5	error"*) echo "  FAIL  the dev citation flagged for a prod change"; fail=$((fail+1));; *) echo "  PASS  the dev citation is untouched"; pass=$((pass+1));; esac
 ds ack port-k7m2p4xq --doc docs/d.md --line 3 --note ok >/dev/null 2>&1
-ck "acking the prod citation, as its remedy says, clears it" "2 none" "$(ds check 2>&1 | tail -1)"
+ck "acking the prod citation, as its remedy says, clears it" "2 ok" "$(ds check 2>&1 | tail -1)"
 # Renaming one environment's file changes the order the defs are listed in.
 # Changes were matched by id alone, so prod was compared with dev's row: a
 # stable def read as changed, and the claim about it expired with nothing
@@ -45,7 +45,7 @@ printf 'port: 443 # ds:def id=port-k7m2p4xq env=prod stability=stable\n' > confi
 printf '# D\n\nProd listens on [443](ds:cfg?id=port-k7m2p4xq&env=prod).\n\nWe run two ports. <!-- ds:claim owner=@p reviewed=2026-09-01 expires=900d about=port-k7m2p4xq -->\n' > docs/d.md
 ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm b
 git mv config/c-prod.yaml config/a-prod.yaml
-ck "renaming one environment's file reports no change" "2 none" "$(ds check 2>&1 | tail -1)"
+ck "renaming one environment's file reports no change" "2 ok" "$(ds check 2>&1 | tail -1)"
 printf 'port: 8443 # ds:def id=port-k7m2p4xq env=prod stability=stable\n' > config/a-prod.yaml
 out=$(ds check 2>&1)
 ck "a real change to prod still expires the claim about it" "which changed" "$out"

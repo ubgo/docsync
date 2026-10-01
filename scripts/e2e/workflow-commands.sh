@@ -39,7 +39,7 @@ ck "and the citation" "id=session-store-k7m2p4xq" "$(cat docs/d.md)"
 ck "a longer label that starts the same is untouched" "id=sess-savex-h3v8n2wd" "$(cat a.go docs/d.md)"
 ck "prose that mentions the label is untouched" "The sess-save flow" "$(cat docs/d.md)"
 ds scan >/dev/null
-ck "identity is the suffix: the acks still hold" "2 none" "$(ds check 2>&1 | tail -1)"
+ck "identity is the suffix: the acks still hold" "2 ok" "$(ds check 2>&1 | tail -1)"
 after=$(cat a.go docs/d.md); ds rename sess-save session-store >/dev/null 2>&1
 same "a second rename changes nothing" "$after" "$(cat a.go docs/d.md)"
 
@@ -53,7 +53,7 @@ ds adopt >/dev/null
 ck "adopt writes a def into the code" "ds:def id=" "$(cat a.go)"
 ck "and turns the link into a citation" "ds:block?id=" "$(cat docs/d.md)"
 ds scan >/dev/null
-ck "the adopted citation checks clean" "none" "$(ds check 2>&1 | tail -1)"
+ck "the adopted citation checks clean" " ok" "$(ds check 2>&1 | tail -1)"
 adopted=$(cat a.go docs/d.md); ds adopt >/dev/null 2>&1
 same "a second adopt changes nothing" "$adopted" "$(cat a.go docs/d.md)"
 ds undo >/dev/null 2>&1

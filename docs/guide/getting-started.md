@@ -222,10 +222,10 @@ $ ds check
 docs/runbook.txt
   3	info     uncovered          defined but never cited or covered
       fix: runbook-bw796cm3 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 info, 2 none
+1 info, 2 ok
 ```
 
-The last line counts findings by severity: two citations are up to date (`none`), and the runbook def is `uncovered` because nothing cites it yet. `info` does not fail the check; the exit code is 0. `ds check` exits 1 only on an error-severity finding.
+The last line counts findings by severity: two citations are up to date (`ok`), and the runbook def is `uncovered` because nothing cites it yet. `info` does not fail the check; the exit code is 0. `ds check` exits 1 only on an error-severity finding.
 
 `ds render` shows what a reader of the built site would see:
 
@@ -259,12 +259,14 @@ printf 'package billing\n\nimport "time"\n\n// GraceDays is how long an unpaid i
 $ ds check
 docs/billing.md
   3	error    unacked            duedate-ctdp6ew3 changed (body) since this sentence was first cited
+      | -	return t.AddDate(0, 0, 30)
+      | +	return t.AddDate(0, 0, 45)
       still true: ds ack duedate-ctdp6ew3 --doc docs/billing.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/billing.md:3, then ack
 docs/runbook.txt
   3	info     uncovered          defined but never cited or covered
       fix: runbook-bw796cm3 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 error, 1 info, 1 none
+1 error, 1 info, 1 ok
 ```
 
 Each finding reads left to right: the doc and line of the sentence, the severity, the state, the id, and what happened to the block (`changed (body)`: its body changed and its signature did not). Below it are both ways out: the exact command if the sentence is still true, and where to edit if it is not. It exits 1.
@@ -286,7 +288,7 @@ $ ds check
 docs/runbook.txt
   3	info     uncovered          defined but never cited or covered
       fix: runbook-bw796cm3 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 info, 2 none
+1 info, 2 ok
 ```
 
 `ds ack` needs `--doc` and `--line`, or `--all` to ack every citation of the id on purpose. The ack stores the block's hash, the sentence's hash and text, who acked (git `user.name` by default) and the note, so the next change to either the code or the sentence asks again. If the sentence had still been true, you would run the same `ds ack` without editing anything.
@@ -370,19 +372,19 @@ git commit -qm adopt
 printf '# Grace\n\nSee [`GraceDays`](../billing/invoice.go#GraceDays) and [`DueDate`](../billing/invoice.go#DueDate).\n' > docs/grace.md
 -->
 
-Ids are minted when the edit is written, so the ids `ds adopt` writes differ from the ones the dry run printed:
+The real run writes the ids the dry run printed, because a new id's suffix is derived from the repository, the file, the line and the file's content rather than drawn at random, so a dry run and the run after it over the same tree agree:
 
 ```go
-// ds:def id=errtoolate-7xegk9ca
+// ds:def id=errtoolate-2gahx6gg
 var ErrTooLate = errors.New("refund window closed")
 
-// ds:def id=refund-ga52ufm8
+// ds:def id=refund-z59d26qe
 func Refund(days int) error {
 ```
 
 ```markdown
-A refund after the window fails with [`ErrTooLate`](ds:block?id=errtoolate-7xegk9ca).
-The check lives in [`Refund`](ds:block?id=refund-ga52ufm8).
+A refund after the window fails with [`ErrTooLate`](ds:block?id=errtoolate-2gahx6gg).
+The check lives in [`Refund`](ds:block?id=refund-z59d26qe).
 ```
 
 Links by symbol, such as `[GraceDays](../billing/invoice.go#GraceDays)`, are adopted the same way, and a block that already has a def keeps its id:
@@ -400,7 +402,7 @@ $ ds adopt
 2 link(s) adopted, 1 edit(s); run ds scan
 $ ds undo
 undid docs/grace.md:3
-next: nothing uncommitted left to undo; the next entry is committed (f7e78d5): adopt billing/refund.go:5 +3 more errtoolate-7xegk9ca
+next: nothing uncommitted left to undo; the next entry is committed (f7e78d5): adopt billing/refund.go:5 +3 more errtoolate-2gahx6gg
 ```
 
 ## Next

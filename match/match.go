@@ -13,6 +13,7 @@ package match
 import (
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/internal/difflib"
@@ -110,9 +111,10 @@ type Options struct {
 	// alone cannot say which of several defs is meant — one per
 	// environment, one per published branch — and a by-id lookup served
 	// another environment's body. The row also carries its repo, so the
-	// same hook can answer for a foreign block. Nil means diffs and
-	// comment-only detection are unavailable and a hash difference is
-	// classified as body (or value for fact kinds).
+	// same hook can answer for a foreign block. Nil, or a miss, means no
+	// diff and a hash difference classified as unknown (value for fact
+	// kinds), never body: `api` does not flag body, so guessing body for a
+	// change nobody could read let a signature change pass (bug 28).
 	OldContent func(row ledger.Row) (string, bool)
 	// Classify overrides the generic classifier.
 	Classify Classifier
@@ -164,7 +166,16 @@ func Compare(prev []ledger.Row, cur []block.Block, opts Options) []Change {
 		default:
 			body, haveOld := oldContent(old)
 			oldBlock := old.ToBlock()
-			classes := opts.Classify(oldBlock, nw, body)
+			// Without the old body no classifier can say what changed, and a
+			// custom one handed "" would describe an empty block; the generic
+			// rules then say what the rows alone support — renamed, moved, a
+			// fact's value — and unknown for the rest (§20).
+			var classes []block.Class
+			if haveOld {
+				classes = opts.Classify(oldBlock, nw, body)
+			} else {
+				classes = Classify(oldBlock, nw, "", nil)
+			}
 			c := Change{ID: id, State: StateChanged, Old: old, New: nw, Classes: classes, Flags: block.Flags(nw.Stability(), classes)}
 			// The new side is checked as well as the old: a def that became
 			// secret since the last scan has a clean previous row, and its
@@ -265,6 +276,12 @@ var valueKinds = map[block.Kind]bool{block.KindKey: true, block.KindLine: true, 
 //   - moved when the file or line range changed (in addition to other classes)
 //   - value for fact-shaped kinds
 //   - comment when old content is known and every differing line is a comment
+//   - signature or type when a declaration's head changed
+//   - value (and type, when what is declared changed) for a one-line
+//     constant: `MaxRetries = 5` to `= 3` is a value change exactly as a
+//     YAML key's is, and `api` must flag it (bug 27)
+//   - unknown when oldContent is empty: the old body was not available, and
+//     the difference is real but undescribed (§20); never body
 //   - body otherwise
 func Classify(old, nw block.Block, oldContent string, commentPrefixes []string) []block.Class {
 	var classes []block.Class
@@ -281,9 +298,13 @@ func Classify(old, nw block.Block, oldContent string, commentPrefixes []string) 
 	switch {
 	case valueKinds[nw.Kind]:
 		classes = append(classes, block.ClassValue)
-	case oldContent != "" && len(commentPrefixes) > 0 && commentOnly(oldContent, nw.Content, commentPrefixes):
+	case oldContent == "":
+		classes = append(classes, block.ClassUnknown)
+	case len(commentPrefixes) > 0 && commentOnly(oldContent, nw.Content, commentPrefixes):
 		classes = append(classes, block.ClassComment)
-	case oldContent != "" && len(commentPrefixes) > 0 && declKinds[nw.Kind] && !renamed && declLine(oldContent, commentPrefixes) != declLine(nw.Content, commentPrefixes):
+	case nw.Kind == block.KindConst && constClasses(&classes, old, nw, oldContent, commentPrefixes, renamed):
+		// constClasses appended the classes.
+	case len(commentPrefixes) > 0 && declKinds[nw.Kind] && !renamed && declLine(oldContent, commentPrefixes) != declLine(nw.Content, commentPrefixes):
 		// The declaration line changed: a signature for functions, a shape
 		// for types (§20). A rename already says the head changed, so it is
 		// not doubled as a signature. The rest of the block is checked
@@ -300,6 +321,101 @@ func Classify(old, nw block.Block, oldContent string, commentPrefixes []string) 
 		classes = append(classes, block.ClassBody)
 	}
 	return classes
+}
+
+// constClasses classifies a change to a constant or variable declaration
+// that is one line of code on both sides, appending to classes, and reports
+// whether it applied. The part before the first `=` is what is declared —
+// name and type — and the part after it is the value, so `MaxRetries = 5`
+// to `MaxRetries = 3` is value and `X int = 3` to `X int64 = 3` is type. A
+// rename already says the head changed, so it is not doubled as type.
+// Comment lines, under the file's prefixes, are not code; a multi-line
+// initializer is not one value and is left to the other rules.
+//
+// The syntax tier binds a constant whose value is a single literal to the
+// literal alone (§10), so a content of `5` is a value with no head, and a
+// head is compared only when both sides have one.
+//
+// Why: §20 says a fact's change is a value change, and a one-value constant
+// is a fact written in code. Classified as body, `stability=api` let a
+// changed constant through, though its value is the whole of its API.
+func constClasses(classes *[]block.Class, old, nw block.Block, oldContent string, prefixes []string, renamed bool) bool {
+	oldHead, oldValue, ok := oneAssignment(oldContent, old.Symbol, prefixes)
+	if !ok {
+		return false
+	}
+	newHead, newValue, ok := oneAssignment(nw.Content, nw.Symbol, prefixes)
+	if !ok {
+		return false
+	}
+	headChanged := oldHead != "" && newHead != "" && oldHead != newHead
+	if headChanged && !renamed {
+		*classes = append(*classes, block.ClassType)
+	}
+	if oldValue != newValue {
+		*classes = append(*classes, block.ClassValue)
+	}
+	if !headChanged && oldValue == newValue {
+		// Nothing explains the difference: head and value compare equal
+		// once whitespace is collapsed (a rename explains a differing
+		// head), so what differs is something else on the line, and it is
+		// still a change.
+		*classes = append(*classes, block.ClassBody)
+	}
+	return true
+}
+
+// assignOp splits a declaration's head from its value.
+const assignOp = "="
+
+// quotes open a string literal; a line starting with one is a value even
+// when the string spells the symbol's name.
+const quotes = "\"'`"
+
+// oneAssignment splits the single code line of content into the declared
+// head and the value, whitespace collapsed, or reports that content is not
+// one line of code. A line with no `=` is a declaration with no value
+// (`var X int`) when it names the symbol, and otherwise the bare literal
+// the syntax tier bound (`5`).
+func oneAssignment(content, symbol string, prefixes []string) (string, string, bool) {
+	code := ""
+	for _, l := range strings.Split(textnorm.NormalizeString(content), "\n") {
+		t := strings.TrimSpace(l)
+		if t == "" || isCommentLine(t, prefixes) {
+			continue
+		}
+		if code != "" {
+			return "", "", false
+		}
+		code = t
+	}
+	if code == "" {
+		return "", "", false
+	}
+	collapse := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	if head, value, found := strings.Cut(code, assignOp); found {
+		return collapse(head), collapse(value), true
+	}
+	if strings.ContainsAny(code[:1], quotes) || !namesSymbol(code, symbol) {
+		return "", collapse(code), true
+	}
+	return collapse(code), "", true
+}
+
+// namesSymbol reports whether code contains the last segment of symbol as a
+// whole identifier.
+func namesSymbol(code, symbol string) bool {
+	name := symbol[strings.LastIndex(symbol, ".")+1:]
+	if name == "" {
+		return false
+	}
+	isIdent := func(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
+	for _, w := range strings.FieldsFunc(code, func(r rune) bool { return !isIdent(r) }) {
+		if w == name {
+			return true
+		}
+	}
+	return false
 }
 
 // declKinds are the kinds with a declaration line worth classifying on its

@@ -48,11 +48,12 @@ const (
 	StateStale            State = "stale"
 	StateTampered         State = "tampered"
 	StateUnscanned        State = "unscanned"
+	StateRunFailed        State = "run failed"
 )
 
 // StateValues is the canonical order, used by the summary.
 // dsself:def id=statevalues-vwvk2kq3 owner=@docsync stability=stable
-var StateValues = []State{StateOK, StateMoved, StateUnacked, StateBroken, StatePickFailed, StateTooLarge, StateRange, StateExpired, StateSunset, StateDeprecated, StateAssertFailed, StateTranslationStale, StateUnsourced, StateChainBroken, StateUnverifiable, StateSkipped, StateOrphan, StateUncovered, StateUnknown, StateProblem, StateDead, StateRetitled, StateURLMoved, StateUndocumented, StateResolveFailed, StateOutOfSync, StateStaleCopy, StateRotated, StateStale, StateTampered, StateUnscanned}
+var StateValues = []State{StateOK, StateMoved, StateUnacked, StateBroken, StatePickFailed, StateTooLarge, StateRange, StateExpired, StateSunset, StateDeprecated, StateAssertFailed, StateTranslationStale, StateUnsourced, StateChainBroken, StateUnverifiable, StateSkipped, StateOrphan, StateUncovered, StateUnknown, StateProblem, StateDead, StateRetitled, StateURLMoved, StateUndocumented, StateResolveFailed, StateOutOfSync, StateStaleCopy, StateRotated, StateStale, StateTampered, StateUnscanned, StateRunFailed}
 
 // Baseline names what a drifted finding was measured against (§26.2).
 type Baseline string
@@ -146,6 +147,7 @@ var severityOf = map[State]Severity{
 	StateStale:            SeverityError,
 	StateTampered:         SeverityError,
 	StateUnscanned:        SeverityError,
+	StateRunFailed:        SeverityError,
 }
 
 // SeverityOf returns the table severity for a state; unknown states are
@@ -202,13 +204,16 @@ const (
 	remedyLocal          = "%s is local=true and cannot be read on this machine; this is expected in CI"
 	remedyURL            = "external link checks need --resolve with network access"
 	remedyRun            = "pass --run to execute %s:run directives where they are enabled"
-	remedyTable          = "register a record source in [records] to render %s:table"
-	remedyQuery          = "%s:cfg query= is not built yet (SPEC section 38); cite a def with id= instead"
-	remedyOrphan         = "the page %s covers %s, which is not defined; remove it from covers or restore the def"
-	remedyUncovered      = "%s is defined but nothing cites or covers it; cite it from a page or remove the def"
-	remedyUnknownVerb    = "%s is not a registered verb; register a handler or fix the directive at %s:%d"
-	remedyUnknownKey     = "unknown key(s) %s on %s at %s:%d; check the spelling against the verb's key table"
-	remedyProblem        = "fix the directive at %s:%d: %v"
+	// remedyRunFailed names the command, so it can be run by hand to see
+	// why, and the sentence whose claim it was checking.
+	remedyRunFailed   = "run `%s` by hand to see why; fix the command, or the sentence at %s:%d if it no longer holds"
+	remedyTable       = "register a record source in [records] to render %s:table"
+	remedyQuery       = "%s:cfg query= is not built yet (SPEC section 38); cite a def with id= instead"
+	remedyOrphan      = "the page %s covers %s, which is not defined; remove it from covers or restore the def"
+	remedyUncovered   = "%s is defined but nothing cites or covers it; cite it from a page or remove the def"
+	remedyUnknownVerb = "%s is not a registered verb; register a handler or fix the directive at %s:%d"
+	remedyUnknownKey  = "unknown key(s) %s on %s at %s:%d; check the spelling against the verb's key table"
+	remedyProblem     = "fix the directive at %s:%d: %v"
 	// remedyDuplicate names the command Part VII gives for a duplicated id. The
 	// tool never guesses which copy is the original, so the remedy says how
 	// to keep the right one rather than choosing it.

@@ -197,37 +197,53 @@ func (g Git) Message(commit string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// oldContent answers the library's OldContent hook at the previous ledger's
-// commit: it reads the row's file as it was then and runs it through the scan
-// pipeline (extractFile), so the previous body comes back in exactly the form
-// the current one has. It pairs by id, environment and branch -- the key the
-// match step pairs by -- so one environment is never answered with another's
-// body. Failures mean "unknown", which the library reports as a body change
-// without a diff.
+// oldContent answers the library's OldContent hook: the body a block had
+// in row, a previous ledger row, which is the body whose hash is row.Hash.
 //
-// It used to cut the row's raw lines out of the old file. That compared two
-// different things: a config value changed from 443 to 8443 was diffed as the
-// whole line, directive comment included, against the bare value, and a
-// secret's old value was returned unredacted and printed in the diff.
-func oldContent(v VCS, prev ledger.Ledger, extractFile func(path string, src []byte) ([]block.Block, error)) func(row ledger.Row) (string, bool) {
-	cache := map[string]map[string]string{}
+// The body store (.ds/blocks, bodyAt) is the source: it is keyed by exactly
+// that hash, written by every scan and every ack, so it answers whatever
+// commit the ledger was written at. Only when the store does not hold it is
+// git asked, at the ledger header's commit, and that answer is used only if
+// its hash is row.Hash. The header records HEAD when the scan ran, and a
+// scan usually runs before the commit that carries it, so the file at that
+// commit is often the version before the scanned one -- or there is no
+// commit at all on a repository's first scan. Trusting it diffed against
+// the wrong body (a value changed 30 to 45, acked, then to 60 showed -30
+// +60) or gave none, and with no body the change could not be classified
+// (bugs 23, 24 and 28).
+//
+// The git read runs the old file through the scan pipeline (extractFile), so
+// a body comes back in exactly the form the current one has, and pairs by
+// id, environment and branch -- the key the match step pairs by -- so one
+// environment is never answered with another's body. It used to cut the
+// row's raw lines out of the old file, which diffed a config value as its
+// whole line, directive comment included, and returned a secret unredacted.
+// Every failure means "unknown", which the library reports as such.
+func oldContent(bodyAt func(hash string) (string, bool), v VCS, prev ledger.Ledger, extractFile func(path string, src []byte) ([]block.Block, error)) func(row ledger.Row) (string, bool) {
+	cache := map[string]map[string]block.Block{}
 	return func(row ledger.Row) (string, bool) {
+		if body, ok := bodyAt(row.Hash); ok {
+			return body, true
+		}
 		if prev.Header.Commit == "" {
 			return "", false
 		}
-		bodies, cached := cache[row.File]
+		defs, cached := cache[row.File]
 		if !cached {
-			bodies = map[string]string{}
+			defs = map[string]block.Block{}
 			if src, err := v.Show(prev.Header.Commit, row.File); err == nil {
-				if defs, err := extractFile(row.File, src); err == nil {
-					for _, b := range defs {
-						bodies[match.BlockKey(b)] = b.Content
+				if found, err := extractFile(row.File, src); err == nil {
+					for _, b := range found {
+						defs[match.BlockKey(b)] = b
 					}
 				}
 			}
-			cache[row.File] = bodies
+			cache[row.File] = defs
 		}
-		body, ok := bodies[match.RowKey(row)]
-		return body, ok
+		b, ok := defs[match.RowKey(row)]
+		if !ok || b.Hash != row.Hash {
+			return "", false
+		}
+		return b.Content, true
 	}
 }

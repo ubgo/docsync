@@ -111,7 +111,9 @@ docs/readme.md:3  run skipped: cmd= is allowed only in docs matching run.allow
 runbooks/deploy.md:3  run ok: go version
 runbooks/deploy.md:5  run ok: sh 'scripts/smoke.sh'
 runbooks/deploy.md:7  run ok: echo "users: 42 in $DS_ENV ($DATABASE_URL)"
-4 none
+docs/readme.md
+  3	info     skipped            run not executed: cmd= is allowed only in docs matching run.allow
+1 info, 3 ok
 ```
 
 Two more lines in the runbook, one with a timeout shorter than the command and one that fails:
@@ -134,7 +136,12 @@ $ STAGING_DATABASE_URL=postgres://staging-db/app ds check --run; echo "exit=$?"
 …
 runbooks/deploy.md:9  run FAILED: sleep 2
 runbooks/deploy.md:11  run FAILED: exit 3
-6 none
+docs/readme.md
+  3	info     skipped            run not executed: cmd= is allowed only in docs matching run.allow
+runbooks/deploy.md
+  11	error    run failed         run failed: exit 3
+      fix: run `exit 3` by hand to see why; fix the command, or the sentence at runbooks/deploy.md:11 if it no longer holds
+1 error, 1 info, 4 ok
 exit=1
 ```
 
@@ -486,7 +493,7 @@ A `from=` naming an undefined id, or a `from=` cycle, is also `chain broken`. Th
 ```console
 $ perl -pi -e 's/secrets.STRIPE_KEY/secrets.STRIPE_SECRET/' .github/workflows/deploy.yml
 $ ds check
-2 none
+2 ok
 ```
 
 <!-- doctest
@@ -900,9 +907,11 @@ Each environment's def is tracked separately, so a change to prod is never compa
 $ ds check --env staging
 docs/hosts.md
   3	error    unacked            api-host-d4k8w2mn changed (value) since this sentence was first cited
+      | -api.example.com
+      | +api.staging.example.com
       still true: ds ack api-host-d4k8w2mn --doc docs/hosts.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/hosts.md:3, then ack
-1 error, 1 none
+1 error, 1 ok
 ```
 
 And a citation of an environment with no def is `broken`. Here `dev` is also missing from `env.known`, so the citation is reported `unknown` as well; an environment `env.known` lists but that has no def is `broken` alone:

@@ -25,8 +25,8 @@ printf 'ds:def id=line-port-a2b6f8jk file=config/plain.txt pick=line:2\nds:def i
 printf '# D\n\nAuth on [8081](ds:cfg?id=auth-port-h3v8n2wd), plain on [9090](ds:cfg?id=re-port-r4t6x2mb) and [port: 9090](ds:cfg?id=line-port-a2b6f8jk).\n\n<!-- ds:block id=save-k7m2p4xq lines=2 -->\n' > docs/d.md
 ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm lf
 lf=$(ds check 2>&1 | tail -1)
-ck "the LF repository checks clean" " none" "$lf"
-ck "every citation resolved on LF" "4 none" "$lf"
+ck "the LF repository checks clean" " ok" "$lf"
+ck "every citation resolved on LF" "4 ok" "$lf"
 crlf
 ck "the conversion really wrote CRLF, one per line" "2 CR" "$(tr -cd '\r' < config/plain.txt | wc -c | tr -d ' ') CR"
 ck "a CRLF checkout of the same commit checks as clean" "$lf" "$(ds check 2>&1 | tail -1)"

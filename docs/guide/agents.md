@@ -191,8 +191,10 @@ rm -f store/session.go.bak
 
 ```console
 $ ds review
-- [ ] docs/sessions.md:3  unacked  sess-ttl changed (unknown) since this sentence was acked
+- [ ] docs/sessions.md:3  unacked  sess-ttl changed (value) since this sentence was acked
       sentence: Sessions expire after [30](ds:cfg?id=sess-ttl) minutes.
+      | -45
+      | +60
       still true: ds ack sess-ttl --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 ```

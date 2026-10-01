@@ -563,3 +563,16 @@ func TestNewFlags(t *testing.T) {
 		t.Errorf("group ack uninitialised = %+v", r)
 	}
 }
+
+// TestFindListsByPlace pins bug 32 at the command: `ds find` sorted its rows
+// by id, so two defs sharing a label were listed in the order of their
+// random suffixes. They are listed by file and line.
+func TestFindListsByPlace(t *testing.T) {
+	t.Parallel()
+	dir, v := initialised(t)
+	write(t, dir, "internal/limits.go", "package store\n\n// ds:def id=limit-zzzzzzzz\nvar A = 1\n\n// ds:def id=limit-aaaaaaaa\nvar B = 2\n")
+	r := run(t, dir, v, "find", "limit")
+	if r.code != 0 || strings.Index(r.out, "limit-zzzzzzzz") > strings.Index(r.out, "limit-aaaaaaaa") || !strings.Contains(r.out, "limit-aaaaaaaa") {
+		t.Errorf("find = %+v", r)
+	}
+}

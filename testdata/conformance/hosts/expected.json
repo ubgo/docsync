@@ -4,6 +4,13 @@
     {
       "doc": "docs/all.md",
       "line": 1,
+      "id": "sql-c4d8h2lm",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 1,
       "id": "go-a2b6f8jk",
       "state": "ok",
       "severity": "none"
@@ -17,8 +24,15 @@
     },
     {
       "doc": "docs/all.md",
-      "line": 1,
-      "id": "sql-c4d8h2lm",
+      "line": 2,
+      "id": "yaml-d5e9j3mn",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/all.md",
+      "line": 2,
+      "id": "toml-e6f2k4np",
       "state": "ok",
       "severity": "none"
     },
@@ -33,20 +47,6 @@
       "doc": "docs/all.md",
       "line": 2,
       "id": "ini-g8h4m6qr",
-      "state": "ok",
-      "severity": "none"
-    },
-    {
-      "doc": "docs/all.md",
-      "line": 2,
-      "id": "toml-e6f2k4np",
-      "state": "ok",
-      "severity": "none"
-    },
-    {
-      "doc": "docs/all.md",
-      "line": 2,
-      "id": "yaml-d5e9j3mn",
       "state": "ok",
       "severity": "none"
     },

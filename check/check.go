@@ -318,6 +318,72 @@ type Report struct {
 	TruthHashes map[string]string
 }
 
+// RunResult is what executing one `ds:run` directive came to. The checker
+// never executes anything, so the caller that did reports back through
+// ApplyRuns, and the outcome becomes the directive's finding.
+type RunResult struct {
+	// Doc and Line locate the directive.
+	Doc  string
+	Line int
+	// Command is what ran, as the directive gave it.
+	Command string
+	// Failed says the command exited non-zero, timed out, or did not
+	// print what expect= asked for.
+	Failed bool
+	// Skipped, when not empty, says why the command was not run: an id
+	// that is not runnable=true, a cmd= outside run.allow.
+	Skipped string
+}
+
+// ApplyRuns turns the outcomes of executed `ds:run` directives into their
+// findings and recounts the report. Before it, check said "run directive
+// will execute where enabled" for every run and the caller only printed what
+// happened, so a failed command made `check --run` exit 1 with no finding
+// naming it and a summary of only passing findings (bug 29). A run that was
+// not executed becomes `skipped` with the reason. Findings with no result
+// are left alone.
+func ApplyRuns(rep Report, runs []RunResult) Report {
+	byPlace := map[string]RunResult{}
+	for _, r := range runs {
+		byPlace[fmt.Sprintf("%s:%d", r.Doc, r.Line)] = r
+	}
+	out := make([]Finding, len(rep.Findings))
+	for i, f := range rep.Findings {
+		r, ok := byPlace[fmt.Sprintf("%s:%d", f.Doc, f.Line)]
+		if ok && f.Verb == extract.VerbRun && f.State == StateOK {
+			switch {
+			case r.Skipped != "":
+				f.State, f.Message = StateSkipped, "run not executed: "+r.Skipped
+			case r.Failed:
+				f.State, f.Message = StateRunFailed, "run failed: "+r.Command
+				f.Remedy.Fix = fmt.Sprintf(remedyRunFailed, r.Command, f.Doc, f.Line)
+			default:
+				f.Message = "run passed: " + r.Command
+			}
+			f.Severity = severityOf[f.State]
+		}
+		out[i] = f
+	}
+	rep.Findings = out
+	rep.Summary, rep.BySeverity, rep.ExitCode = Tally(out)
+	return rep
+}
+
+// Tally counts findings by state and by severity, and gives the exit code:
+// 1 when any finding is an error. It is the one place a report is counted,
+// so a report changed after Run counts exactly as Run would have.
+func Tally(findings []Finding) (map[State]int, map[Severity]int, int) {
+	states, sevs, exit := map[State]int{}, map[Severity]int{}, 0
+	for _, f := range findings {
+		states[f.State]++
+		sevs[f.Severity]++
+		if f.Severity == SeverityError {
+			exit = 1
+		}
+	}
+	return states, sevs, exit
+}
+
 // defsByID groups current and merged blocks by id; several per id are legal
 // when they differ by env.
 type defIndex map[string][]block.Block
@@ -490,16 +556,20 @@ func Run(in Input) Report {
 		if a.Line != b.Line {
 			return a.Line < b.Line
 		}
+		// Two citations on one line are ordered by where their blocks are,
+		// and only then by id: by id, the order followed the random
+		// suffixes, so the same tree reported the same line differently in
+		// every checkout that minted its own ids (bug 32).
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		if a.Lines[0] != b.Lines[0] {
+			return a.Lines[0] < b.Lines[0]
+		}
 		return a.ID < b.ID
 	})
-	rep := Report{Findings: r.out, Changes: r.changes, Summary: map[State]int{}, BySeverity: map[Severity]int{}, TruthHashes: r.truthHashes}
-	for _, f := range rep.Findings {
-		rep.Summary[f.State]++
-		rep.BySeverity[f.Severity]++
-		if f.Severity == SeverityError {
-			rep.ExitCode = 1
-		}
-	}
+	rep := Report{Findings: r.out, Changes: r.changes, TruthHashes: r.truthHashes}
+	rep.Summary, rep.BySeverity, rep.ExitCode = Tally(rep.Findings)
 	return rep
 }
 

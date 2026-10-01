@@ -4,16 +4,16 @@
     {
       "doc": "docs/guide.md",
       "line": 1,
-      "id": "para-p2c4y7mk",
-      "state": "ok",
-      "severity": "none"
+      "id": "sess-policy-h2n8wq4t",
+      "state": "unacked",
+      "severity": "error"
     },
     {
       "doc": "docs/guide.md",
       "line": 1,
-      "id": "sess-policy-h2n8wq4t",
-      "state": "unacked",
-      "severity": "error"
+      "id": "para-p2c4y7mk",
+      "state": "ok",
+      "severity": "none"
     }
   ]
 }

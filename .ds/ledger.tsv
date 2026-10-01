@@ -1,7 +1,7 @@
-# docsync ledger format=2 extract=1 repo=docsync commit=8aaf3c3 scanned_at=2026-10-01T07:55:58Z
+# docsync ledger format=2 extract=1 repo=docsync commit=ae4508f scanned_at=2026-10-01T06:39:49Z
 id	repo	kind	file	symbol	lines	hash	owner	stability	env	args
 cacheinputs-vyhx6vbz	docsync	func	cli/cache.go	cacheInputs	122-124	77f6b17de12458cad5ca52e09ca30da17ad7df0923c1121e788d3051af71f915	@docsync	stable		id=cacheinputs-vyhx6vbz owner=@docsync stability=stable
 flags-zfrzu4vz	docsync	func	block/constants.go	Flags	108-137	4ac21d7b990947aec4faa6533935f75e7edf26f6f3623532c3660023576bb623	@docsync	stable		id=flags-zfrzu4vz owner=@docsync stability=stable
 gitignorebody-jgek8ecm	docsync	const	cli/store.go	gitignoreBody	67-78	651f34d3d4b1225c324b617cc64a81fc0ac0c5884b5cb066f55b0c782b0e9bef	@docsync	stable		id=gitignorebody-jgek8ecm owner=@docsync stability=stable
 rule-7y7umdv9	docsync	const	extract/extract.go	Rule	344	6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b	@docsync	stable		id=rule-7y7umdv9 owner=@docsync stability=stable
-statevalues-vwvk2kq3	docsync	const	check/constants.go	StateValues	55	c32d4a6a5bf43f3e84cce1a1333876142e6cd986fa1f7744c57f7756f771d33c	@docsync	stable		id=statevalues-vwvk2kq3 owner=@docsync stability=stable
+statevalues-vwvk2kq3	docsync	const	check/constants.go	StateValues	51	868ac4d5875f8eb1592f0d27f887b067d42c0cffeb565514d77b937a350850a2	@docsync	stable		id=statevalues-vwvk2kq3 owner=@docsync stability=stable

@@ -636,6 +636,16 @@ type Report struct {
 	TruthHashes map[string]string `json:"-"`
 }
 
+// ApplyRuns records the outcomes of `ds:run` directives the caller executed
+// as their findings, and recounts the summary and exit code: a failed run is
+// a `run failed` error, a run not executed is `skipped` with the reason. The
+// library runs nothing itself; see check.ApplyRuns.
+func (r Report) ApplyRuns(runs []check.RunResult) Report {
+	cr := check.ApplyRuns(check.Report{Findings: r.Findings}, runs)
+	r.Findings, r.States, r.Summary, r.ExitCode = cr.Findings, cr.Summary, cr.BySeverity, cr.ExitCode
+	return r
+}
+
 // Check scans and evaluates.
 func (s *System) Check(ctx context.Context, opts CheckOptions) (Report, error) {
 	res, err := s.scanWith(ctx, opts.Full)

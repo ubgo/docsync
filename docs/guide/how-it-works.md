@@ -91,7 +91,7 @@ git commit -qm webhooks
 $ ds scan
 2 files, 1 defs, 1 refs, 0 problems, 0 skipped
 $ ds check
-1 none
+1 ok
 ```
 
 <!-- doctest
@@ -100,7 +100,7 @@ git commit -qm scan
 printf 'package webhook\n\n// MaxAttempts is how many times a failed delivery is tried before it is dropped.\n// ds:def id=maxattempts-ck543sgy owner=@platform\nfunc MaxAttempts() int {\n\treturn 3\n}\n' > webhook/retry.go
 -->
 
-The summary counts findings by severity; `none` means up to date. `.ds/` is committed like any other file.
+The summary counts findings by severity; `ok` counts the ones that passed, whose JSON severity is `none`. `.ds/` is committed like any other file.
 
 Now someone changes the limit to 3 and does not open the doc:
 
@@ -108,6 +108,8 @@ Now someone changes the limit to 3 and does not open the doc:
 $ ds check
 docs/webhooks.md
   3	error    unacked            maxattempts-ck543sgy changed (body) since this sentence was first cited
+      | -	return 5
+      | +	return 3
       still true: ds ack maxattempts-ck543sgy --doc docs/webhooks.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/webhooks.md:3, then ack
 1 error
@@ -137,7 +139,7 @@ A failed delivery is retried until [`MaxAttempts`](ds:block?id=maxattempts-ck543
 $ ds ack maxattempts-ck543sgy --doc docs/webhooks.md --line 3 --note 'retries cut to 3'
 acked maxattempts-ck543sgy at docs/webhooks.md:3 (human)
 $ ds check
-1 none
+1 ok
 ```
 
 <!-- doctest
@@ -183,7 +185,7 @@ Moving it to another file, with the directive travelling with it, needs nothing:
 $ ds check
 docs/webhooks.md
   3	none     moved              moved from webhook/retry.go:5-7
-1 none
+1 ok
 ```
 
 ## What a def looks like in each language

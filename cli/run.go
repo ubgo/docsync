@@ -93,17 +93,19 @@ func runsFor(runs map[string]RunRecord, doc string) map[int]render.RunResult {
 	return out
 }
 
-// executeRuns runs every ds:run reference in the report's scan and records
-// the outcomes. It returns how many failed their expectation.
-func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, env string, out io.Writer) (int, error) {
+// executeRuns runs every ds:run reference in the report's scan, records the
+// outcomes in .ds/runs.json, and returns one result per directive for the
+// report (check.ApplyRuns), so a failed run is a finding and not only a
+// line of progress output.
+func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, env string, out io.Writer) ([]check.RunResult, error) {
 	cfg := ld.sys.Config()
 	if !cfg.Run.Enabled {
 		fmt.Fprintln(out, "run.enabled is false; nothing executed")
-		return 0, nil
+		return nil, nil
 	}
 	runs, err := ld.st.LoadRuns()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	// run.timeout is validated when the config is loaded; empty means the default.
 	timeout, _ := time.ParseDuration(orDefault(cfg.Run.Timeout, config.DefaultRunTimeout))
@@ -111,7 +113,7 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 		env = cfg.Env.Default
 	}
 	shell := orDefault(cfg.Run.Shell, config.DefaultRunShell)
-	failed := 0
+	var results []check.RunResult
 	for _, ref := range rep.Scan.Refs {
 		if ref.Verb != extract.VerbRun {
 			continue
@@ -119,12 +121,13 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 		command, argv, why := a.runCommand(ld, rep.Scan, ref, cfg.Run.Allow, shell)
 		if command == "" {
 			fmt.Fprintf(out, "%s:%d  run skipped: %s\n", ref.Pos.File, ref.Pos.Start, why)
+			results = append(results, check.RunResult{Doc: ref.Pos.File, Line: ref.Pos.Start, Skipped: why})
 			continue
 		}
 		// Asked once something is about to run: a repository with nothing
 		// runnable does not need a shell.
 		if err := requireShell(shell); err != nil {
-			return failed, err
+			return results, err
 		}
 		refEnv := ref.Args[block.KeyEnv]
 		if refEnv == "" {
@@ -137,8 +140,10 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 			// that does not parse as a problem, and it is not run here.
 			d, err := check.ParseRunTimeout(t)
 			if err != nil {
-				fmt.Fprintf(out, "%s:%d  run FAILED: %v\n", ref.Pos.File, ref.Pos.Start, err)
-				failed++
+				// Not run, so not a failed run: the check reports the
+				// value as a problem on its own.
+				fmt.Fprintf(out, "%s:%d  run skipped: %v\n", ref.Pos.File, ref.Pos.Start, err)
+				results = append(results, check.RunResult{Doc: ref.Pos.File, Line: ref.Pos.Start, Skipped: err.Error()})
 				continue
 			}
 			limit = d
@@ -148,14 +153,14 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 		status := "ok"
 		if !rec.OK {
 			status = "FAILED"
-			failed++
 		}
+		results = append(results, check.RunResult{Doc: ref.Pos.File, Line: ref.Pos.Start, Command: command, Failed: !rec.OK})
 		fmt.Fprintf(out, "%s:%d  run %s: %s\n", ref.Pos.File, ref.Pos.Start, status, command)
 	}
 	if err := ld.st.SaveRuns(runs); err != nil {
-		return failed, err
+		return results, err
 	}
-	return failed, nil
+	return results, nil
 }
 
 // ErrNoShell is returned when a ds:run or the [review] command is about to

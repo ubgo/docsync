@@ -32,10 +32,10 @@ sedi 's/return 1/return 2/' a.go; ds scan >/dev/null
 ck "ten unreviewed changes" "10 error" "$(ds check 2>&1 | tail -1)"
 i=0; while [ $i -lt 10 ]; do ds ack f$i-k7m2p4xq --doc docs/d.md --line $((3 + i*2)) --note c >/dev/null 2>&1 & i=$((i+1)); done; wait
 ck "ten parallel acks all land" "10" "$(awk 'NR>2' .ds/acks.tsv | grep -c .)"
-ck "and the check agrees" "10 none" "$(ds check 2>&1 | tail -1)"
+ck "and the check agrees" "10 ok" "$(ds check 2>&1 | tail -1)"
 
 i=0; while [ $i -lt 8 ]; do ds scan >/dev/null 2>&1 & i=$((i+1)); done; wait
-ck "eight parallel scans leave a ledger that reads" "10 none" "$(ds check 2>&1 | tail -1)"
+ck "eight parallel scans leave a ledger that reads" "10 ok" "$(ds check 2>&1 | tail -1)"
 
 printf 'package q\n\nfunc G() int { return 1 }\n' > b.go
 printf 'package q\n\nfunc H() int { return 1 }\n' > c.go
@@ -53,9 +53,9 @@ i=0; while [ $i -lt 10 ]; do
   [ $((i % 2)) -eq 0 ] && { ds scan >/dev/null 2>&1 & }
   i=$((i+1)); done; wait
 ck "acks racing scans all land" "10" "$(notes c2)"
-ck "and none is written away by a racing scan" "10 none" "$(ds check 2>&1 | tail -1)"
+ck "and none is written away by a racing scan" "10 ok" "$(ds check 2>&1 | tail -1)"
 ds scan >/dev/null
-ck "nor by the scan after" "10 none" "$(ds check 2>&1 | tail -1)"
+ck "nor by the scan after" "10 ok" "$(ds check 2>&1 | tail -1)"
 
 # Readers while writers run: a check never sees a half-written file. Every
 # write is a temp file renamed into place, so each check reads one whole

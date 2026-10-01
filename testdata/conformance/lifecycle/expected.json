@@ -4,16 +4,16 @@
     {
       "doc": "docs/l.md",
       "line": 1,
-      "id": "gone-b3c7g9kl",
-      "state": "sunset",
-      "severity": "error"
+      "id": "old-a2b6f8jk",
+      "state": "deprecated",
+      "severity": "info"
     },
     {
       "doc": "docs/l.md",
       "line": 1,
-      "id": "old-a2b6f8jk",
-      "state": "deprecated",
-      "severity": "info"
+      "id": "gone-b3c7g9kl",
+      "state": "sunset",
+      "severity": "error"
     },
     {
       "doc": "docs/l.md",

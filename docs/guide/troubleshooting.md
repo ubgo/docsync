@@ -105,10 +105,12 @@ When `MaxRetries` changes and the page does not:
 $ perl -pi -e 's/MaxRetries = 5/MaxRetries = 3/' internal/limits.go
 $ ds check
 docs/limits.md
-  3	error    unacked            maxretries-ybq9jjbb changed (body) since this sentence was first cited
+  3	error    unacked            maxretries-ybq9jjbb changed (value) since this sentence was first cited
+      | -5
+      | +3
       still true: ds ack maxretries-ybq9jjbb --doc docs/limits.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/limits.md:3, then ack
-1 error, 2 none
+1 error, 2 ok
 ```
 
 Findings are grouped by the file holding the citation, then by line. Each has a severity, a state, a message, and the exact command or edit that clears it: `unacked` offers two (`still true:` and `otherwise:`), every other state one (`fix:`). The last line counts findings by severity. `ds check` exits 1 when any finding is an `error`; `--strict` makes warnings fail too, except `ok`, `moved`, `deprecated`, `skipped`, and `uncovered`, which never affect the exit code. `ds check --json` carries the same data in the stable machine format, and `ds check --explain` first lists every directive the scan matched with its tier and carrier, which is the quickest way to see whether a directive was read at all.
@@ -119,10 +121,12 @@ Findings are grouped by the file holding the citation, then by line. Each has a 
 $ perl -pi -e 's/^unacked = "error"/unacked = "warn"/' .ds/config.toml
 $ ds check; echo "exit=$?"
 docs/limits.md
-  3	warning  unacked            maxretries-ybq9jjbb changed (body) since this sentence was first cited
+  3	warning  unacked            maxretries-ybq9jjbb changed (value) since this sentence was first cited
+      | -5
+      | +3
       still true: ds ack maxretries-ybq9jjbb --doc docs/limits.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/limits.md:3, then ack
-1 warning, 2 none
+1 warning, 2 ok
 exit=0
 ```
 
@@ -213,7 +217,7 @@ docs/states.md
       fix: frobnicate is not a registered verb; register a handler or fix the directive at docs/states.md:16
   18	warning  unknown            unknown key(s) colour on ds:block
       fix: unknown key(s) colour on ds:block at docs/states.md:18; check the spelling against the verb's key table
-2 error, 4 warning, 5 none
+2 error, 4 warning, 5 ok
 ```
 
 <!-- doctest
@@ -249,7 +253,7 @@ docs/limits.md
   7	error    broken             api-port-h3v8n2wd was deleted (last seen config.json:1)
       fix: the id api-port-h3v8n2wd is not defined; fix the id in docs/limits.md:7 or re-add the ds:def on the block it meant
   9	none     moved              moved from internal/limits.go:8-10
-2 error, 2 none
+2 error, 2 ok
 ```
 
 <!-- doctest
@@ -316,7 +320,7 @@ docs/b.md
 internal/old.go
   20	error    undocumented export Jitter is exported under a require_doc path and has no def
       fix: policy.require_doc covers internal/old.go; run `ds def internal/old.go#Jitter` and cite it from a page
-3 error, 1 warning, 1 info, 3 none
+3 error, 1 warning, 1 info, 3 ok
 ```
 
 <!-- doctest
@@ -352,8 +356,10 @@ $ perl -pi -e 's/thirty days/fourteen days/' docs/policy.md
 $ ds check
 docs/policy.de.md
   3	error    translation stale  source policy-en-k4m5n6p7 changed (body)
+      | -Sessions last thirty days.
+      | +Sessions last fourteen days.
       fix: the source paragraph policy-en-k4m5n6p7 changed; update the translation at docs/policy.de.md:3 and ack
-…
+1 error, 3 ok
 ```
 
 <!-- doctest
@@ -373,7 +379,7 @@ internal/limits.go
       fix: maxretries-ybq9jjbb is defined but nothing cites or covers it; cite it from a page or remove the def
   7	info     uncovered          defined but never cited or covered
       fix: backoff-k9gez332 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 error, 2 info, 1 none
+1 error, 2 info, 1 ok
 ```
 
 While the page cannot be read, the blocks it cited look uncited too; both clear once the file is readable again.
@@ -532,12 +538,12 @@ internal/limits.go
       fix: internal/limits.go:4: scan: id defined more than once: maxretries-ybq9jjbb (2 places); run `ds def --fix` to re-mint every copy after the first (it prints old -> new), or delete the directive from the copy sentences do not mean
   12	error    problem            scan: id defined more than once: maxretries-ybq9jjbb (2 places)
       fix: internal/limits.go:12: scan: id defined more than once: maxretries-ybq9jjbb (2 places); run `ds def --fix` to re-mint every copy after the first (it prints old -> new), or delete the directive from the copy sentences do not mean
-2 error, 4 none
+2 error, 4 ok
 $ ds def --fix --dry-run
 maxretries-ybq9jjbb@internal/limits.go:12 -> maxretries-ydsm7jm6
 1 def(s) would be re-minted (--dry-run)
 $ ds def --fix
-maxretries-ybq9jjbb@internal/limits.go:12 -> maxretries-w4u7h2qa
+maxretries-ybq9jjbb@internal/limits.go:12 -> maxretries-ydsm7jm6
 1 def(s) re-minted; run ds scan
 ```
 
@@ -634,7 +640,7 @@ $ ds def internal/limits.go#Jitter
 jitter-82vfr8j8
 $ ds undo
 undid internal/limits.go:15
-next: def internal/limits.go:12 maxretries-w4u7h2qa
+next: def internal/limits.go:12 maxretries-ydsm7jm6
 ```
 
 Every run says what the next entry is, so you can stop before going too far. `ds undo --list` shows the stack and writes nothing; `--dry-run` shows the edit it would make.
@@ -649,7 +655,7 @@ ds scan
 ```console
 $ ds undo --list
 #  KIND    WHERE                  ID                   AGE       STATE
-1  def     internal/limits.go:12  maxretries-w4u7h2qa  just now  uncommitted · cited by docs/limits.md:9
+1  def     internal/limits.go:12  maxretries-ydsm7jm6  just now  uncommitted · cited by docs/limits.md:9
 2  repair  config.json:1 +1 more  -                    just now  uncommitted
 ```
 
@@ -660,7 +666,7 @@ Two guards stop it:
   ```console
   $ ds undo
   ds: undo would orphan a cited def:
-      maxretries-w4u7h2qa is cited by 1 sentence:
+      maxretries-ydsm7jm6 is cited by 1 sentence:
         docs/limits.md:9
       removing the def will make it `broken`. Re-run with ds undo --orphan to proceed.
   ```

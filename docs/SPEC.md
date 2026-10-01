@@ -148,7 +148,7 @@ Rules that apply to every carrier:
 | Part | Rule | Why |
 |---|---|---|
 | prefix | human slug, lowercase, dashes, two to four words | so `grep sess-save` finds it |
-| suffix | eight characters from `23456789abcdefghjkmnpqrstuvwxyz`, generated | about 10^12 values; four was too few, collisions appear in the low thousands |
+| suffix | eight characters from `23456789abcdefghjkmnpqrstuvwxyz`, generated; a writer (`def`, `adopt`, `def --fix`) derives it from the repository, the file, the line and the file's content, so a dry run prints the id the real run writes | about 10^12 values; four was too few, collisions appear in the low thousands |
 | identity | **the suffix is the identity, the prefix is a label** | `sess-save-k7m2p4xq` and `session-persist-k7m2p4xq` are one block; `ds rename` changes labels, never identity |
 | uniqueness | across the whole workspace; minting consults the merged index and re-rolls on collision | |
 | characters | lowercase ASCII only | |
@@ -547,13 +547,14 @@ sess-policy-h2n8wq4t   api    internal/store/write.go  3     block  comment  -  
 Bodies are therefore kept content-addressed, one file per hash:
 
 ```
-.ds/blocks/<hash>                  written by `scan`, committed
+.ds/blocks/<hash>                  written by `scan` and `ack`, committed
 repos/<name>/blocks/<hash>         written by `publish`, in the workspace index
 ```
 
 - Content-addressed, so a block that did not change writes nothing and history accumulates without duplication.
 - **Secret and local blocks are never stored.** A block under `[secret] paths`, one carrying `secret=true`, and one carrying `local=true` contribute no body to either store. The index may be readable by people who cannot read the source repo, and a body written there cannot be recalled. This is enforced where the bodies are computed, not at each call site.
 - A missing body is not an error. It degrades classification to `unknown` (section 20), which still flags. That is also what bounds the cost of an over-eager prune: the worst case is a finding with no diff, never a wrong `ok`.
+- **The store is where a finding's diff comes from.** A citation is measured against a hash, its ack's or its first-seen one, and the earlier side of the diff is the body stored under exactly that hash. An `ack` stores the body it approves, so an ack made with no scan since the change still has its body. The VCS is consulted only when the store lacks a body, at the commit the ledger header records, and its answer is used only if it hashes to the hash asked for: a scan usually runs before the commit that carries it, so the file at the recorded commit is often the version before the scanned one, and trusting it diffed a value acked at 45 and changed to 60 as `-30 +60`.
 
 **Liveness.** A body `h` is live when `h` appears in the current `ledger.tsv`, in any `acked_hash` or `seen_hash` in `refs.tsv`, in the latest ack per key in `acks.tsv`, or in `foreign.tsv`. For the index store it is the union of those across every published repo, because one repo's ack can name a body only the defining repo's directory holds. Everything else is dead, and `ds prune` removes the complement of the live set — never a list of candidates it assembled some other way.
 
@@ -592,6 +593,7 @@ Incremental by default: a file whose bytes did not change is not re-extracted, a
 | `sunset` | a cite of a def past its `sunset` date | error | remove the cite |
 | `deprecated` | a cite of a def past its `deprecated` date | info, badge | |
 | `assert failed` | cited test failed, was skipped, or was removed in the last published run | error | fix the test or the sentence |
+| `run failed` | under `check --run`, a `ds:run` command exited non-zero, timed out, or did not print what `expect=` asked for; a run that was not executed (not `runnable=true`, outside `run.allow`) is `skipped` with the reason | error | fix the command, or the sentence |
 | `translation stale` | source paragraph changed since the translation was acked | error | update and ack |
 | `unsourced` | a secret copy with no `from=` | warning | declare the chain |
 | `chain broken` | zero or many truths, a `from=` naming an undefined id, or a `from=` cycle | error | fix the chain |
@@ -607,7 +609,7 @@ Incremental by default: a file whose bytes did not change is not re-extracted, a
 | `problem` | a directive that cannot be evaluated: a required key missing (`id=`, `href=`), an id defined more than once, a claim or `review_every` whose date or duration does not parse, a plugin's malformed reply | error | fix the directive; `ds def --fix` re-mints duplicated ids |
 | `unscanned` | a file that held citations or blocks at the last scan could not be read this time — too large, a line past the limit in a tier that is not prose, binary, or unreadable. Its last recorded state is kept, so an unreviewed change it carried is still reported once it is readable | error | make the file readable, or raise the `[scan.limits]` value the finding names |
 
-The first column lists every state `check` can report, exactly as it is spelled in output and JSON; a test holds it to `check.StateValues`. Exit code 1 on any error-severity finding. `--strict` promotes warnings to errors, except `moved` and `deprecated`, which never affect the exit code.
+The first column lists every state `check` can report, exactly as it is spelled in output and JSON; a test holds it to `check.StateValues`. Exit code 1 on any error-severity finding. `--strict` promotes warnings to errors, except `moved` and `deprecated`, which never affect the exit code. The text output lists every finding but `ok`, each with its class and, under it, the diff of its block; it ends with a count by severity, in which findings of severity `none` are counted as `ok`.
 
 ### 18. What a reference binds to
 
@@ -639,7 +641,7 @@ Where a grammar exists, a changed block is classified so a finding reads like a 
 | `body` | statements changed, signature unchanged |
 | `comment` | comment lines only |
 | `whitespace` | formatting only; never reported: trailing whitespace and line endings in every tier, and re-indentation where the syntax tier hashes the token stream (section 33 **What changed**); in a file with no grammar, indentation is content, because in YAML or Python it is meaning |
-| `value` | for facts: `8081 → 8443` |
+| `value` | for facts: `8081 → 8443`; for a constant whose code is one line, `MaxRetries = 5 → 3` (a change to what it declares, `X int → X int64`, is `type`) |
 | `unknown` | the versions differ but the older body was not available to classify |
 
 `unknown` is not a guess. It is reported when a citation drifted from a hash whose body the body store cannot supply — pruned, never stored, or withheld because the block is secret — and it must never be recorded as `body`, because `api` does not flag on `body` and a silently dropped signature change is a wrong `ok`.
@@ -706,12 +708,12 @@ Every command finds the repository root the way git finds `.git`: the nearest di
 | `ds init [--agents]` | writes `.ds/config.toml`, empty ledger, CI snippet. The config's `scan.code` is `["**"]`, and its `scan.docs` depends on the layout it finds: `["docs/**", "README.md"]` when a `docs/` directory exists at the root, `["**/*.md"]` when it does not, so a repository that keeps its pages beside the code is not started with nothing to check; `--agents` also writes the agent rules fragment, registers `ds mcp`, and installs the session-start hook |
 | `ds mcp` | serves the agent surface over MCP, section 26.1 |
 | `ds map [--budget N] [--json]` | token-bounded table of contents of a repo or workspace |
-| `ds find <query> \| --file path \| --tag t` | ids by symbol, text, file, or tag |
+| `ds find <query> \| --file path \| --tag t` | ids by symbol, text, file, or tag, listed by file and line rather than by id, whose suffix is random |
 | `ds read <id> [--lines a-b]` | the body of a block |
 | `ds locate <id>` | file and line range at the current commit |
 | `ds doctor` | checks the config (every load-time rule), globs that match nothing, the extractor tiers, the workspace (a `workspace` row on every run; with one configured, an `index` row: a local index that loads, or a remote that answers `git ls-remote` without prompting — `WARN` when it does not but a cached copy exists, `FAIL` when there is none), one `resolve <provider>` row per `resolve.providers` entry saying whether its `ds-resolve-<provider>` plugin is on PATH (a provider login cannot be tested without asking about a real address, so it is not), and whether this tool can read the ledger and which extraction rule it records; exits non-zero when any row is `FAIL`, so a setup step that runs it stops on a broken repo, while a `WARN` does not change the exit code |
 | `ds def <file>#<symbol>` \| `<file>:<line>` | returns the existing id for that block or mints one and inserts the directive; prints the id |
-| `ds adopt [--dry-run]` | converts existing `path#L10-L20` and `path#symbol` links in docs into defs and cites (a reversed `#L20-L10` is the same range, as on GitHub, and becomes a forward `lines=`); resolves a relative link against the directory of the page holding it, as the page renders, falling back to the repository root and treating a leading `/` as root-relative; leaves a named anchor into another page (`README.md#target`) alone and unreported, since that is navigation between pages rather than a reference to code; lists what it could not resolve; proposes chains from matching secret names for confirmation |
+| `ds adopt [--dry-run]` | converts existing `path#L10-L20` and `path#symbol` links in docs into defs and cites (a reversed `#L20-L10` is the same range, as on GitHub, and becomes a forward `lines=`); resolves a relative link against the directory of the page holding it, as the page renders, falling back to the repository root and treating a leading `/` as root-relative; leaves a named anchor into another page (`README.md#target`) alone and unreported, since that is navigation between pages rather than a reference to code; lists what it could not resolve; proposes chains from matching secret names for confirmation; the ids `--dry-run` prints are the ones the real run over the same tree writes |
 | `ds repair [--apply] [--json]` | finds directives an older build wrote as bare lines into files that cannot hold one and mends them: in a format with comments the line is commented in the file's own syntax, keeping its id so citations still resolve; in one without (JSON, CSV, `go.sum`) it is deleted. Prints by default and writes only with `--apply`. Every edit is journaled, a deletion together with the line that followed it, so `ds undo` restores the file byte for byte and refuses once the file has moved around the change |
 | `ds version [--json]` | the build that is running: version, the commit it was built from, and whether that checkout had uncommitted changes, read from what the Go toolchain stamped into the binary; a field it did not record reads `unknown` |
 | `ds scan` | rebuilds ledger and refs |
@@ -727,7 +729,7 @@ Every command finds the repository root the way git finds `.git`: the nearest di
 | `ds blame <doc> <line>` | the block behind a reference and its last three changes |
 | `ds context <doc>` \| `<id>` `[--budget N] [--since ack\|sha] [--mode auto]` | the doc plus every block it cites, current, ranked and budgeted, diffs since ack; or every paragraph about a block |
 | `ds graph [--dot] [--json]` | defs, refs, chains, translations, asserts as a graph |
-| `ds report [--unmarked] [--uncovered] [--stalest] [--literals] [--orphaned-owners] [--gaps] [--metrics]` | hygiene; `--literals` hand-typed copies of fact values; `--gaps` what to document next; `--metrics` freshness per page and team, mean time to ack, and context bytes served versus file bytes |
+| `ds report [--unmarked] [--uncovered] [--stalest] [--literals] [--orphaned-owners] [--gaps] [--metrics]` | hygiene; `--unmarked` changed code and config files with no defs, and exported declarations with none (pages are left out: they cite blocks, they do not hold them); `--stalest` pages by the day of their oldest ack, then by path; `--literals` hand-typed copies of fact values; `--gaps` what to document next; `--metrics` freshness per page and team, mean time to ack, and context bytes served versus file bytes |
 | `ds review --ai` | proposes prose edits for current findings as a patch; never acks |
 | `ds notify [--dry-run]` | routes open findings to owners with dedupe and escalation |
 | `ds audit [--since] [--actor-kind human\|agent] [--export]` | the append-only event log |
@@ -926,7 +928,7 @@ Every command with `--json`, and every MCP tool, returns `{ "json_format": 1, "g
 
 ```json
 // ds check --json
-{ "json_format": 1, "commit": "7c1e2a", "summary": {"error": 2, "warning": 1, "ok": 5},
+{ "json_format": 1, "commit": "7c1e2a", "summary": {"error": 2, "warning": 1, "none": 5},
   "findings": [
     { "state": "unacked", "severity": "error",
       "doc": "docs/sessions.md", "line": 13, "sentence": "Every session write goes through SaveSession. It writes the legacy row first, then the sessions table.",
@@ -1102,23 +1104,48 @@ Expired rows are deleted every [hour](ds:block?id=sess-interval-q9x1z6ch) by [th
 ```
 $ ds check
 docs/sessions.md
-  L9   auth-port-h3v8n2wd     BROKEN    def not found; no hash match; last seen config/auth.yaml:3
-  L9   sess-ttl-p2c4y7mk      ok
-  L13  sess-save-k7m2p4xq     UNACKED   renamed Store.SaveSession → Store.Persist; moved session.go:5 → write.go:12
-                                        class: body    hash 9f3a1c → 71be04
-                                        -  if err := s.legacy.Save(ctx, sess); err != nil {
-                                        +  if err := s.sessions.Insert(ctx, sess); err != nil {
-  L15  sess-save-k7m2p4xq     ok        fragment renders from the new location
-  L19  sess-interval-q9x1z6ch UNACKED   class: value   time.Hour → 30 * time.Minute
-  L19  sess-sweep-t4k2b9rf    ok
-  L21  run                    skipped   pass --run to execute
-summary: 1 broken, 2 unacked, 3 ok, 1 skipped
-exit 1
+  1	warning  orphan             covers auth-port-h3v8n2wd, which is not defined
+      fix: the page docs/sessions.md covers auth-port-h3v8n2wd, which is not defined; remove it from covers or restore the def
+  9	error    broken             auth-port-h3v8n2wd was deleted (last seen config/auth.yaml:2)
+      fix: the id auth-port-h3v8n2wd is not defined; fix the id in docs/sessions.md:9 or re-add the ds:def on the block it meant
+  9	none     moved              moved from config/auth.yaml:3-3
+  13	error    unacked            sess-save-k7m2p4xq changed (renamed, moved, body) since this sentence was first cited
+      | -func (s *Store) SaveSession(ctx context.Context, sess Session) error {
+      | -	if err := s.legacy.Save(ctx, sess); err != nil {
+      | -		return fmt.Errorf("legacy save: %w", err)
+      | +func (s *Store) Persist(ctx context.Context, sess Session) error {
+      | +	if err := s.sessions.Insert(ctx, sess); err != nil {
+      | +		return err
+      | -	return s.sessions.Insert(ctx, sess)
+      | +	return s.legacy.Save(ctx, sess)
+      still true: ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 13 --note '…'
+      otherwise:  edit the sentence at docs/sessions.md:13, then ack
+  15	error    unacked            sess-save-k7m2p4xq changed (renamed, moved, body) since this sentence was first cited
+      | -func (s *Store) SaveSession(ctx context.Context, sess Session) error {
+      | -	if err := s.legacy.Save(ctx, sess); err != nil {
+      | -		return fmt.Errorf("legacy save: %w", err)
+      | +func (s *Store) Persist(ctx context.Context, sess Session) error {
+      | +	if err := s.sessions.Insert(ctx, sess); err != nil {
+      | +		return err
+      | -	return s.sessions.Insert(ctx, sess)
+      | +	return s.legacy.Save(ctx, sess)
+      still true: ds ack sess-save-k7m2p4xq --doc docs/sessions.md --line 15 --note '…'
+      otherwise:  edit the sentence at docs/sessions.md:15, then ack
+  19	error    unacked            sess-interval-q9x1z6ch changed (moved, value) since this sentence was first cited
+      | -const sweepInterval = time.Hour
+      | +const sweepInterval = 30 * time.Minute
+      still true: ds ack sess-interval-q9x1z6ch --doc docs/sessions.md --line 19 --note '…'
+      otherwise:  edit the sentence at docs/sessions.md:19, then ack
+  21	info     skipped            run not executed
+      fix: pass --run to execute ds:run directives where they are enabled
+4 error, 1 warning, 1 info, 2 ok
+$ echo $?
+1
 ```
 
-Note the `api` stability on the guard: had only the body changed with the same signature, L13 would not have flagged. Here the rename is a class that `api` flags.
+Each finding carries its class and, under it, the diff of the block from the body its citation was measured against, read from the body store (section 15.1). Passing findings are not listed, only counted: the last line counts findings by severity, and `ok` counts those that passed. Note the `api` stability on the guard: had only the body changed with the same signature, line 13 would not have flagged. Here the rename is a class that `api` flags. The fragment on line 15 cites the same block and is measured against the whole of it, so it flags with the sentence above it.
 
-**Fixing it.** The reviewer edits three sentences:
+**Fixing it.** The reviewer edits three sentences and drops `auth-port-h3v8n2wd` from the page's `covers`:
 
 ```markdown
 Auth listens on the port given by `AUTH_PORT` and sessions live for [30](ds:cfg?id=sess-ttl-p2c4y7mk) days.
@@ -1129,7 +1156,11 @@ Expired rows are deleted every [thirty minutes](ds:block?id=sess-interval-q9x1z6
 ```
 $ ds ack sess-save-k7m2p4xq sess-interval-q9x1z6ch --note "order and interval changed, prose updated"
 $ ds check
-summary: 5 ok, 1 skipped
+docs/sessions.md
+  9	none     moved              moved from config/auth.yaml:3-3
+  21	info     skipped            run not executed
+      fix: pass --run to execute ds:run directives where they are enabled
+1 info, 5 ok
 ```
 
 The port sentence lost its cite because the value moved to an environment variable the tool cannot see. Correct: the doc must not claim verification it does not have. The fix is a facts-page def for `AUTH_PORT`'s home.

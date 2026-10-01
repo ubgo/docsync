@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/ubgo/docsync/block"
 
 	"github.com/ubgo/docsync"
+	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/config"
 	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/ledger"
@@ -707,7 +709,8 @@ func TestOldContentHook(t *testing.T) {
 		return []block.Block{mk("port-k7m2p4xq", "dev", "8080"), mk("port-k7m2p4xq", "prod", "443"), mk("plain-h3v8n2wd", "", "value")}, nil
 	}
 	prev := ledger.Ledger{Header: ledger.Header{Commit: "c1"}}
-	f := oldContent(v, prev, extractFile)
+	noStore := func(string) (string, bool) { return "", false }
+	f := oldContent(noStore, v, prev, extractFile)
 	row := func(id, env, file string) ledger.Row { return ledger.Row{ID: id, Env: env, File: file} }
 	// Each environment gets its own body, never another's.
 	if got, ok := f(row("port-k7m2p4xq", "prod", "config/app.yaml")); !ok || got != "443" {
@@ -736,8 +739,23 @@ func TestOldContentHook(t *testing.T) {
 			t.Errorf("%s = %q, want unknown", name, got)
 		}
 	}
-	if _, ok := oldContent(v, ledger.Ledger{}, extractFile)(row("port-k7m2p4xq", "prod", "config/app.yaml")); ok {
+	if _, ok := oldContent(noStore, v, ledger.Ledger{}, extractFile)(row("port-k7m2p4xq", "prod", "config/app.yaml")); ok {
 		t.Error("no commit recorded means no old content")
+	}
+	// The body store answers first, by the row's hash, whatever the ledger's
+	// commit (bug 23): a scan runs before the commit that carries it, so the
+	// file at the header's commit is often the version before the scanned
+	// one, and on a first scan there is no commit at all.
+	store := func(h string) (string, bool) { return "stored " + h, h == "h45" }
+	hashed := ledger.Row{ID: "port-k7m2p4xq", Env: "prod", File: "config/app.yaml", Hash: "h45"}
+	if got, ok := oldContent(store, v, ledger.Ledger{}, extractFile)(hashed); !ok || got != "stored h45" {
+		t.Errorf("store = %q %v", got, ok)
+	}
+	// A body read at the header's commit is used only when its hash is the
+	// row's: that commit held another version (bugs 23 and 24).
+	hashed.Hash = "h60"
+	if got, ok := oldContent(store, v, prev, extractFile)(hashed); ok {
+		t.Errorf("old body with another hash = %q, want unknown", got)
 	}
 }
 
@@ -966,5 +984,108 @@ func TestGitReadsValuesAsValues(t *testing.T) {
 	}
 	if msg, err := g.Message(head); err != nil || msg != "one" || !g.Exists(head) {
 		t.Errorf("Message/Exists(head) = %q %v", msg, err)
+	}
+}
+
+// TestCheckTextShowsTheDiff pins bug 26: the text output of `ds check`
+// printed a finding's message and remedy but never its diff, which SPEC §28
+// shows under the finding. A long diff is cut and the rest counted.
+func TestCheckTextShowsTheDiff(t *testing.T) {
+	t.Parallel()
+	var b bytes.Buffer
+	printFindings(&b, []check.Finding{{Doc: "d.md", Line: 3, State: check.StateUnacked, Severity: check.SeverityError, Message: "x changed (value)", Diff: "-30\n+45\n"}}, false)
+	if !strings.Contains(b.String(), "x changed (value)\n      | -30\n      | +45\n") {
+		t.Errorf("text = %q", b.String())
+	}
+	b.Reset()
+	var long strings.Builder
+	for i := 0; i < diffPreviewLines+3; i++ {
+		long.WriteString("+line\n")
+	}
+	printDiff(&b, long.String())
+	if strings.Count(b.String(), "| +line") != diffPreviewLines || !strings.Contains(b.String(), "(3 more diff lines; --json has them all)") {
+		t.Errorf("long diff = %q", b.String())
+	}
+	b.Reset()
+	printDiff(&b, "")
+	if b.Len() != 0 {
+		t.Errorf("no diff printed %q", b.String())
+	}
+}
+
+// TestSummaryWordsPassingAsOK pins bug 30: findings of severity none passed,
+// and the summary called them "none" -- "2 none" read as nothing checked.
+func TestSummaryWordsPassingAsOK(t *testing.T) {
+	t.Parallel()
+	rep := docsync.Report{Summary: map[check.Severity]int{check.SeverityError: 1, check.SeverityNone: 2}}
+	if got := summaryLine(rep); got != "1 error, 2 ok" {
+		t.Errorf("summary = %q", got)
+	}
+}
+
+// TestAckedBodies pins the selection behind bug 25: the bodies an ack run
+// stores are exactly those whose hash an ack row approves.
+func TestAckedBodies(t *testing.T) {
+	t.Parallel()
+	got := ackedBodies(map[string]string{"h1": "one", "h2": "two"}, []ledger.Ack{{BlockHash: "h1"}, {BlockHash: ""}, {BlockHash: "h9"}})
+	if len(got) != 1 || got["h1"] != "one" {
+		t.Errorf("acked bodies = %v", got)
+	}
+}
+
+// TestOldBodyFallsBackToHashCheckedGit pins the CLI half of bugs 23 and 25:
+// with the body store missing a body, the old body is read at the ledger's
+// commit and used because its hash is the row's; an ack whose body cannot
+// be stored fails rather than recording an approval of a body nothing holds.
+func TestOldBodyFallsBackToHashCheckedGit(t *testing.T) {
+	t.Parallel()
+	dir, v := initialised(t)
+	v.files["abc1234:internal/store/write.go"] = []byte(goV1)
+	if r := run(t, dir, v, "scan"); r.code != 0 {
+		t.Fatal(r)
+	}
+	blocks := filepath.Join(dir, DirName, BlocksDir)
+	if err := os.RemoveAll(blocks); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "internal/store/write.go", goV2)
+	if r := run(t, dir, v, "check"); !strings.Contains(r.out, "| -\treturn s.legacy.Save()") || !strings.Contains(r.out, "changed (body)") {
+		t.Errorf("check with the body read at the ledger's commit = %+v", r)
+	}
+	// The store cannot be written: the ack fails and records nothing.
+	write(t, dir, filepath.Join(DirName, BlocksDir), "not a directory")
+	if r := run(t, dir, v, "ack", "sess-save-k7m2p4xq", "--all", "--note", "x"); r.code != ExitError {
+		t.Errorf("ack with no body store = %+v", r)
+	}
+	acks, err := os.ReadFile(filepath.Join(dir, DirName, AcksFile))
+	if err != nil || strings.Contains(string(acks), "sess-save-k7m2p4xq") {
+		t.Errorf("an ack was recorded without its body: %v %s", err, acks)
+	}
+}
+
+// TestCheckRunJSONStaysOneDocument pins that under --json the run progress
+// goes to stderr and the failed run is a finding in the document (bug 29).
+func TestCheckRunJSONStaysOneDocument(t *testing.T) {
+	t.Parallel()
+	dir, v := initialised(t)
+	write(t, dir, "runbooks/r.md", "<!-- ds:run cmd=\"exit 3\" -->\n")
+	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"runbooks/**\"]\n[run]\nenabled = true\nallow = [\"runbooks/**\"]\n")
+	r := run(t, dir, v, "check", "--run", "--json")
+	var rep struct {
+		Findings []struct {
+			State string `json:"state"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(r.out), &rep); err != nil || r.code != ExitFindings || !strings.Contains(r.err, "run FAILED: exit 3") {
+		t.Fatalf("check --run --json = %+v %v", r, err)
+	}
+	failed := 0
+	for _, f := range rep.Findings {
+		if f.State == string(check.StateRunFailed) {
+			failed++
+		}
+	}
+	if failed != 1 {
+		t.Errorf("findings = %+v", rep.Findings)
 	}
 }

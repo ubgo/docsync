@@ -24,10 +24,12 @@ rm -f store/session.go.bak
 ```console
 $ ds check; echo $?
 docs/sessions.md
-  3	error    unacked            sess-ttl changed (body) since this sentence was first cited
+  3	error    unacked            sess-ttl changed (value) since this sentence was first cited
+      | -30
+      | +45
       still true: ds ack sess-ttl --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
-1 error, 1 none
+1 error, 1 ok
 1
 ```
 
@@ -131,17 +133,25 @@ Two things to know:
 
 `ds github comment` reads a saved report and needs `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, and a pull request number (`--pr`, or the event file at `GITHUB_EVENT_PATH`). `--dry-run` prints the comment bodies instead of posting them. Save the report outside the repository, as the action does: a JSON file inside it is scanned like any other file, and the sentences quoted in it read as citations.
 
-```console
+~~~console
 $ ds check --json > ../report.json
 $ GITHUB_TOKEN=x GITHUB_REPOSITORY=acme/api ds github comment --report ../report.json --pr 7 --dry-run
 <!-- docsync:doc=docs/sessions.md -->
 ### docsync: `docs/sessions.md`
 
-- [line 3](https://github.com/acme/api/blob/8fcbb8a/docs/sessions.md#L3) **unacked** `sess-ttl`: sess-ttl changed (body) since this sentence was first cited
+- [line 3](https://github.com/acme/api/blob/8fcbb8a/docs/sessions.md#L3) **unacked** `sess-ttl`: sess-ttl changed (value) since this sentence was first cited
   - still true: `ds ack sess-ttl --doc docs/sessions.md --line 3 --note '…'`; otherwise: edit the sentence at docs/sessions.md:3, then ack
 
-1 error, 1 none
-```
+  <details><summary>block diff</summary>
+
+  ```diff
+  -30
+  +45
+  ```
+  </details>
+
+1 error, 1 ok
+~~~
 
 The token is required even for `--dry-run`, though nothing is sent.
 
@@ -263,7 +273,7 @@ $ ds notify --dry-run
 docsync: no previous notifier state; 1 item open (this is the full list, not new problems)
 
 docsync: @auth
-  docs/sessions.md:3  unacked  sess-ttl changed (body) since this sentence was first cited
+  docs/sessions.md:3  unacked  sess-ttl changed (value) since this sentence was first cited
 ```
 
 The built-in channel is a Slack incoming webhook. In `.ds/config.toml`:

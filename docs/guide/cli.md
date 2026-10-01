@@ -2,7 +2,7 @@
 
 This page lists every `ds` command: what it is for, its flags, its exit codes and a real run of it. It is for people who already know the basic loop from [Getting started](getting-started.md) and want the exact behaviour of a command, or a flag they have not used yet.
 
-The examples run in order in one small Go repository, shown in [The example repository](#the-example-repository): `ds def` marks three blocks in `internal/auth/` (`SessionTTL`, `Login` and `ErrEmpty`), a `docs/auth.md` page cites them, and a later `docs/api.md` cites `Login` twice. Ids such as `sessionttl-r7xkm5bw` have a random suffix, so yours will differ; use the ones your own `ds def` prints.
+The examples run in order in one small Go repository, shown in [The example repository](#the-example-repository): `ds def` marks three blocks in `internal/auth/` (`SessionTTL`, `Login` and `ErrEmpty`), a `docs/auth.md` page cites them, and a later `docs/api.md` cites `Login` twice. Ids such as `sessionttl-af9apb7y` have a random suffix, so yours will differ; use the ones your own `ds def` prints.
 
 ## Contents
 
@@ -228,7 +228,7 @@ ds def <file>#<symbol> | <file>:<line> | --fix [flags]
 | `--tags string` | Write `tags=`, a comma list. |
 | `--env string` | Write `env=`. |
 | `--label string` | The id's label; by default it is derived from the symbol. |
-| `--dry-run` | Print the edit instead of applying it. The id it prints is not reserved; a real run mints a new one. |
+| `--dry-run` | Print the edit instead of applying it. The id it prints is the one a real run on the same tree writes: the suffix is derived from the repository, the file and line, and the file's content. |
 | `--fix` | Re-mint every def after the first for each id that appears more than once. |
 
 Running it on a block that already has a def prints the existing id and changes nothing.
@@ -239,7 +239,7 @@ sessionttl-af9apb7y
 would insert at internal/auth/session.go:6:
 // ds:def id=sessionttl-af9apb7y owner=@auth
 $ ds def internal/auth/session.go#SessionTTL --owner @auth
-sessionttl-r7xkm5bw
+sessionttl-af9apb7y
 $ ds def internal/auth/session.go#Login --owner @auth --stability api
 login-j3nq87mh
 $ ds def internal/auth/errors.go:6 --label empty-password --tags errors
@@ -259,7 +259,7 @@ package auth
 import "time"
 
 // SessionTTL is how long a login lasts.
-// ds:def id=sessionttl-r7xkm5bw owner=@auth
+// ds:def id=sessionttl-af9apb7y owner=@auth
 const SessionTTL = 30 * time.Minute
 
 // Login checks a password and returns a session token.
@@ -277,7 +277,7 @@ A page cites the three blocks by those ids:
 ```markdown file=docs/auth.md
 # Auth
 
-A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).
+A session lasts [30 minutes](ds:block?id=sessionttl-af9apb7y).
 
 [Login](ds:block?id=login-j3nq87mh) returns a token for the user, and refuses an empty password with [ErrEmpty](ds:block?id=empty-password-rsh5d7az).
 ```
@@ -296,7 +296,7 @@ $ ds def --fix --dry-run
 empty-password-rsh5d7az@internal/auth/errors.go:10 -> empty-password-taw2whnr
 1 def(s) would be re-minted (--dry-run)
 $ ds def --fix
-empty-password-rsh5d7az@internal/auth/errors.go:10 -> empty-password-m4k8q2xz
+empty-password-rsh5d7az@internal/auth/errors.go:10 -> empty-password-taw2whnr
 1 def(s) re-minted; run ds scan
 ```
 
@@ -390,16 +390,18 @@ Exit `1` on any error-severity finding, `0` otherwise. Change the session length
 $ perl -pi -e 's/30 \* time/60 * time/' internal/auth/session.go
 $ ds check; echo "exit $?"
 docs/auth.md
-  3	error    unacked            sessionttl-r7xkm5bw changed (body) since this sentence was first cited
-      still true: ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'
+  3	error    unacked            sessionttl-af9apb7y changed (value) since this sentence was first cited
+      | -const SessionTTL = 30 * time.Minute
+      | +const SessionTTL = 60 * time.Minute
+      still true: ds ack sessionttl-af9apb7y --doc docs/auth.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/auth.md:3, then ack
 internal/auth/errors.go
   10	info     uncovered          defined but never cited or covered
-      fix: empty-password-m4k8q2xz is defined but nothing cites or covers it; cite it from a page or remove the def
+      fix: empty-password-taw2whnr is defined but nothing cites or covers it; cite it from a page or remove the def
 internal/auth/logout.go
   4	info     uncovered          defined but never cited or covered
       fix: logout-d3dzzyqr is defined but nothing cites or covers it; cite it from a page or remove the def
-1 error, 2 info, 4 none
+1 error, 2 info, 4 ok
 exit 1
 ```
 
@@ -413,9 +415,9 @@ Every finding carries its remedy. The full list of finding states and their seve
 $ ds check --explain
 WHERE                        TIER      WHAT       CARRIER  ID
 …
-internal/auth/session.go:6   go        def const  comment  sessionttl-r7xkm5bw
+internal/auth/session.go:6   go        def const  comment  sessionttl-af9apb7y
 internal/auth/session.go:10  go        def func   comment  login-j3nq87mh
-docs/auth.md:3               markdown  ds:block   link     sessionttl-r7xkm5bw
+docs/auth.md:3               markdown  ds:block   link     sessionttl-af9apb7y
 …
 ```
 
@@ -434,14 +436,14 @@ $ ds check --json
     {
       "state": "unacked",
       "severity": "error",
-      "message": "sessionttl-r7xkm5bw changed (body) since this sentence was first cited",
+      "message": "sessionttl-af9apb7y changed (value) since this sentence was first cited",
       "doc": "docs/auth.md",
       "line": 3,
-      "sentence": "A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).",
-      "id": "sessionttl-r7xkm5bw",
+      "sentence": "A session lasts [30 minutes](ds:block?id=sessionttl-af9apb7y).",
+      "id": "sessionttl-af9apb7y",
 …
       "remedy": {
-        "if_still_true": "ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'",
+        "if_still_true": "ds ack sessionttl-af9apb7y --doc docs/auth.md --line 3 --note '…'",
         "if_not": "edit the sentence at docs/auth.md:3, then ack"
       }
     },
@@ -487,7 +489,10 @@ allow = ["docs/runbooks/**"]
 ```console
 $ ds check --run; echo "exit $?"
 docs/runbooks/smoke.md:3  run FAILED: exit 3
-1 none
+docs/runbooks/smoke.md
+  3	error    run failed         run failed: exit 3
+      fix: run `exit 3` by hand to see why; fix the command, or the sentence at docs/runbooks/smoke.md:3 if it no longer holds
+1 error
 exit 1
 ```
 
@@ -515,7 +520,7 @@ Always exits `0`; it informs, `check` gates.
 ```console
 $ ds impact
 docs/auth.md (1)
-  3  unacked  sessionttl-r7xkm5bw
+  3  unacked  sessionttl-af9apb7y
 owner @auth: 1
 ```
 
@@ -544,18 +549,18 @@ An ack is for one sentence. If you rewrite the sentence later, it needs a new ac
 
 ```console
 $ perl -pi -e 's/30 minutes/60 minutes/' docs/auth.md
-$ ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --dry-run
-would ack sessionttl-r7xkm5bw at docs/auth.md:3 (7446a2c) — "A session lasts [60 minutes](ds:block?id=sessionttl-r7xkm5bw)."
-$ ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --actor alice --note "raised to an hour"
-acked sessionttl-r7xkm5bw at docs/auth.md:3 (human)
+$ ds ack sessionttl-af9apb7y --doc docs/auth.md --line 3 --dry-run
+would ack sessionttl-af9apb7y at docs/auth.md:3 (7446a2c) — "A session lasts [60 minutes](ds:block?id=sessionttl-af9apb7y)."
+$ ds ack sessionttl-af9apb7y --doc docs/auth.md --line 3 --actor alice --note "raised to an hour"
+acked sessionttl-af9apb7y at docs/auth.md:3 (human)
 $ ds check
 internal/auth/errors.go
   10	info     uncovered          defined but never cited or covered
-      fix: empty-password-m4k8q2xz is defined but nothing cites or covers it; cite it from a page or remove the def
+      fix: empty-password-taw2whnr is defined but nothing cites or covers it; cite it from a page or remove the def
 internal/auth/logout.go
   4	info     uncovered          defined but never cited or covered
       fix: logout-d3dzzyqr is defined but nothing cites or covers it; cite it from a page or remove the def
-2 info, 5 none
+2 info, 5 ok
 ```
 
 `--from-commit` lets the person who made a change approve it in the commit message. It acks every citation of each id named in a `ds:ack id=…` line, with the commit's subject as the note. After a commit that sets the session to 90 minutes and updates the sentence:
@@ -568,21 +573,21 @@ perl -pi -e 's/60 \* time/90 * time/' internal/auth/session.go
 perl -pi -e 's/60 minutes/90 minutes/' docs/auth.md
 ds scan
 git add -A
-git commit -qm "Session lasts 90 minutes" -m "ds:ack id=sessionttl-r7xkm5bw"
+git commit -qm "Session lasts 90 minutes" -m "ds:ack id=sessionttl-af9apb7y"
 -->
 
 ```console
 $ git log -1 --format=%B
 Session lasts 90 minutes
 
-ds:ack id=sessionttl-r7xkm5bw
+ds:ack id=sessionttl-af9apb7y
 
 $ ds check
 docs/auth.md
-  3	error    unacked            sessionttl-r7xkm5bw changed (body) since this sentence was acked
+  3	error    unacked            sessionttl-af9apb7y changed (value) since this sentence was acked
 …
 $ ds ack --from-commit HEAD --actor alice
-acked sessionttl-r7xkm5bw at docs/auth.md:3 (human)
+acked sessionttl-af9apb7y at docs/auth.md:3 (human)
 ```
 
 A second page cites `Login`, and then `Login` gains a parameter:
@@ -678,11 +683,11 @@ After the session is raised to two hours in the code only:
 ```console
 $ perl -pi -e 's/90 \* time/120 * time/' internal/auth/session.go
 $ ds review
-- [ ] docs/auth.md:3  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
-      sentence: A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+- [ ] docs/auth.md:3  unacked  sessionttl-af9apb7y changed (value) since this sentence was acked
+      sentence: A session lasts [90 minutes](ds:block?id=sessionttl-af9apb7y).
       | -const SessionTTL = 90 * time.Minute
       | +const SessionTTL = 120 * time.Minute
-      still true: ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'
+      still true: ds ack sessionttl-af9apb7y --doc docs/auth.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/auth.md:3, then ack
 $ ds review --ai
 ds: usage: --ai needs [review] command in .ds/config.toml
@@ -700,8 +705,8 @@ cat <<'EOF'
 @@ -1,3 +1,3 @@
  # Auth
  
--A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
-+A session lasts [two hours](ds:block?id=sessionttl-r7xkm5bw).
+-A session lasts [90 minutes](ds:block?id=sessionttl-af9apb7y).
++A session lasts [two hours](ds:block?id=sessionttl-af9apb7y).
 EOF
 ```
 
@@ -718,8 +723,8 @@ $ ds review --ai
 @@ -1,3 +1,3 @@
  # Auth
  
--A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
-+A session lasts [two hours](ds:block?id=sessionttl-r7xkm5bw).
+-A session lasts [90 minutes](ds:block?id=sessionttl-af9apb7y).
++A session lasts [two hours](ds:block?id=sessionttl-af9apb7y).
 ```
 
 Apply the patch yourself (`git apply`), read it, then ack. The examples below leave the finding open.
@@ -741,9 +746,9 @@ ds why <id> [--chain] [--history] [--json]
 | `--json` | Defs, refs, coverage, chain and history as JSON. |
 
 ```console
-$ ds why sessionttl-r7xkm5bw --history
-sessionttl-r7xkm5bw  const  internal/auth/session.go:10-10
-  docs/auth.md:3  ds:block  A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+$ ds why sessionttl-af9apb7y --history
+sessionttl-af9apb7y  const  internal/auth/session.go:10-10
+  docs/auth.md:3  ds:block  A session lasts [90 minutes](ds:block?id=sessionttl-af9apb7y).
   2026-10-01  alice (human)  docs/auth.md:3  raised to an hour
   2026-10-01  alice (human)  docs/auth.md:3  Session lasts 90 minutes
 ```
@@ -758,10 +763,10 @@ ds blame <doc> <line> [--json]
 
 ```console
 $ ds blame docs/auth.md 3
-docs/auth.md:3  ds:block sessionttl-r7xkm5bw
-block  internal/auth/session.go:10-10  7446a2c40dfd
-state  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
-change changed [body]
+docs/auth.md:3  ds:block sessionttl-af9apb7y
+block  internal/auth/session.go:10-10  a267a4e31894
+state  unacked  sessionttl-af9apb7y changed (value) since this sentence was acked
+change changed [value]
   | -const SessionTTL = 90 * time.Minute
   | +const SessionTTL = 120 * time.Minute
 ack    2026-10-01 alice raised to an hour
@@ -788,8 +793,8 @@ login-j3nq87mh  func  internal/auth/session.go:14-19    cited by 3
 $ ds find --tag errors
 empty-password-rsh5d7az  const  internal/auth/errors.go:7-7    cited by 1
 $ ds find --file internal/auth/session.go
+sessionttl-af9apb7y  const  internal/auth/session.go:10-10    cited by 1
 login-j3nq87mh       func   internal/auth/session.go:14-19    cited by 3
-sessionttl-r7xkm5bw  const  internal/auth/session.go:10-10    cited by 1
 ```
 
 ### ds read
@@ -807,7 +812,7 @@ ds read <id> [--lines a-b]
 An unknown id exits `2` with `not found`.
 
 ```console
-$ ds read sessionttl-r7xkm5bw
+$ ds read sessionttl-af9apb7y
 const SessionTTL = 120 * time.Minute
 $ ds read login-j3nq87mh --lines 2-3
 	if password == "" {
@@ -846,7 +851,7 @@ ds context <doc>|<id> [--budget N] [--mode auto|full|diff|value] [--since ack] [
 
 ```console
 $ ds context docs/auth.md --budget 20
-## 1. sessionttl-r7xkm5bw unacked (value, 9 tokens)
+## 1. sessionttl-af9apb7y unacked (value, 9 tokens)
 const SessionTTL = 120 * time.Minute
 
 ## 2. empty-password-rsh5d7az cited, unchanged (value, 11 tokens)
@@ -854,12 +859,12 @@ var ErrEmpty = errors.New("empty password")
 
 omitted login-j3nq87mh: unchanged since ack; over budget
 20 tokens used of 20
-$ ds context sessionttl-r7xkm5bw
-## 1. sessionttl-r7xkm5bw unacked (value, 9 tokens)
+$ ds context sessionttl-af9apb7y
+## 1. sessionttl-af9apb7y unacked (value, 9 tokens)
 const SessionTTL = 120 * time.Minute
 
-## 2.  cites sessionttl-r7xkm5bw (full, 16 tokens)
-A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+## 2.  cites sessionttl-af9apb7y (full, 16 tokens)
+A session lasts [90 minutes](ds:block?id=sessionttl-af9apb7y).
 
 25 tokens used of 0
 ```
@@ -882,8 +887,8 @@ docs/api.md      0       2      ok 2
 docs/refresh.md  0       2      ok 2
 
 DEF                      FILE                            CITED BY  STATE
-sessionttl-r7xkm5bw      internal/auth/session.go:10-10  1         unacked
-empty-password-m4k8q2xz  internal/auth/errors.go:11-11   0         uncovered
+sessionttl-af9apb7y      internal/auth/session.go:10-10  1         unacked
+empty-password-taw2whnr  internal/auth/errors.go:11-11   0         uncovered
 logout-d3dzzyqr          internal/auth/logout.go:5-7     0         uncovered
 login-j3nq87mh           internal/auth/session.go:14-19  3         ok
 refresh-p7c2n5tw         internal/auth/refresh.go:5-7    2         ok
@@ -921,7 +926,7 @@ ds facts [--cited-by doc] [--json]
 $ ds facts --cited-by docs/auth.md
 ID                       VALUE                                        WHERE                        CITED BY
 empty-password-rsh5d7az  var ErrEmpty = errors.New("empty password")  internal/auth/errors.go:7    1
-sessionttl-r7xkm5bw      const SessionTTL = 120 * time.Minute         internal/auth/session.go:10  1
+sessionttl-af9apb7y      const SessionTTL = 120 * time.Minute         internal/auth/session.go:10  1
 ```
 
 ### ds graph
@@ -935,7 +940,7 @@ ds graph [--dot] [--json]
 ```console
 $ ds graph
 …
-docs/auth.md -cites-> sessionttl-r7xkm5bw
+docs/auth.md -cites-> sessionttl-af9apb7y
 docs/auth.md -cites-> login-j3nq87mh
 docs/auth.md -cites-> empty-password-rsh5d7az
 …
@@ -961,7 +966,7 @@ ds status [--json]
 ```console
 $ ds status
 …
-docs/auth.md:3	unacked	sessionttl-r7xkm5bw
+docs/auth.md:3	unacked	sessionttl-af9apb7y
 docs/auth.md:5	ok	empty-password-rsh5d7az
 docs/auth.md:5	ok	login-j3nq87mh
 …
@@ -1007,8 +1012,8 @@ ds report [flags]
 | Flag | Does |
 |---|---|
 | `--uncovered` | Defs that nothing cites or covers. |
-| `--unmarked` | Files that changed in git history and hold no defs. |
-| `--stalest` | Pages ordered by their oldest ack. |
+| `--unmarked` | Code and config files that changed in git history and hold no defs, and exported declarations with no def. Pages (markdown, HTML, AsciiDoc, rst) are left out: they cite blocks rather than hold them. |
+| `--stalest` | Pages ordered by the day of their oldest ack, never-acked pages first; pages acked the same day are in path order. |
 | `--literals` | Fact values typed by hand into docs instead of cited. |
 | `--orphaned-owners` | Owners used in defs that are missing from `[owners]`. |
 | `--gaps` | A ranked worklist of what to document next. |
@@ -1021,27 +1026,20 @@ With no flag it prints every section. Always exits `0`.
 ```console
 $ ds report
 uncovered (2)
-  empty-password-m4k8q2xz  internal/auth/errors.go:11
+  empty-password-taw2whnr  internal/auth/errors.go:11
   logout-d3dzzyqr  internal/auth/logout.go:5
-unmarked (5)
-  docs/auth.md  changed 3 times, no defs
-  docs/api.md  changed 1 times, no defs
-  docs/index.md  changed 1 times, no defs
-  docs/refresh.md  changed 1 times, no defs
+unmarked (1)
   go.mod  changed 1 times, no defs
 stalest (3)
   docs/refresh.md  never acked  2 cites
-…
+  docs/api.md  2026-10-01  2 cites
+  docs/auth.md  2026-10-01  3 cites
 literals (0)
 orphaned owners (0):
-gaps (8)
-  define blocks in docs/auth.md (changed 3 times, nothing documented)
-  define blocks in docs/api.md (changed 1 times, nothing documented)
-  define blocks in docs/index.md (changed 1 times, nothing documented)
-  define blocks in docs/refresh.md (changed 1 times, nothing documented)
+gaps (4)
   define blocks in go.mod (changed 1 times, nothing documented)
   review docs/refresh.md (cites never acked)
-  document or drop empty-password-m4k8q2xz (internal/auth/errors.go)
+  document or drop empty-password-taw2whnr (internal/auth/errors.go)
   document or drop logout-d3dzzyqr (internal/auth/logout.go)
 freshness per page
   docs/api.md  ok 2
@@ -1053,7 +1051,7 @@ freshness per owner
 mean time to ack 0s
 $ ds report --uncovered
 uncovered (2)
-  empty-password-m4k8q2xz  internal/auth/errors.go:11
+  empty-password-taw2whnr  internal/auth/errors.go:11
   logout-d3dzzyqr  internal/auth/logout.go:5
 ```
 
@@ -1146,7 +1144,7 @@ $ ds notify
 docsync: no previous notifier state; 1 item open (this is the full list, not new problems)
 
 docsync: @auth
-  docs/auth.md:3  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
+  docs/auth.md:3  unacked  sessionttl-af9apb7y changed (value) since this sentence was acked
 $ ds notify
 nothing new to notify
 ```
@@ -1177,8 +1175,8 @@ $ GITHUB_TOKEN=x GITHUB_REPOSITORY=org/demo ds github comment --dry-run --pr 7
 <!-- docsync:doc=docs/auth.md -->
 ### docsync: `docs/auth.md`
 
-- [line 3](https://github.com/org/demo/blob/fe90cb5/docs/auth.md#L3) **unacked** `sessionttl-r7xkm5bw`: sessionttl-r7xkm5bw changed (body) since this sentence was acked
-  - still true: `ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'`; otherwise: edit the sentence at docs/auth.md:3, then ack
+- [line 3](https://github.com/org/demo/blob/fe90cb5/docs/auth.md#L3) **unacked** `sessionttl-af9apb7y`: sessionttl-af9apb7y changed (value) since this sentence was acked
+  - still true: `ds ack sessionttl-af9apb7y --doc docs/auth.md --line 3 --note '…'`; otherwise: edit the sentence at docs/auth.md:3, then ack
 
   <details><summary>block diff</summary>
 
@@ -1188,7 +1186,7 @@ $ GITHUB_TOKEN=x GITHUB_REPOSITORY=org/demo ds github comment --dry-run --pr 7
   ```
   </details>
 
-1 error, 2 info, 6 none
+1 error, 2 info, 6 ok
 ~~~
 
 Only the act of applying the label acks. A label still present on a later push has to be removed and applied again.
@@ -1296,7 +1294,7 @@ Lines under the table use `+` for a newly cited block, `~` for changed content, 
 
 ```console
 $ CI=true ds check
-1 none
+1 ok
 $ rm .ds/foreign.tsv && CI=true ds check
 ds: .ds/foreign.tsv not found; run `ds sync` to record the foreign blocks this repo cites
 $ ds check --frozen --sync
@@ -1426,10 +1424,10 @@ ds rename <old-label> <new-label> [--dry-run]
 
 ```console
 $ ds rename sessionttl session-ttl --dry-run
-sessionttl-r7xkm5bw -> session-ttl-r7xkm5bw
+sessionttl-af9apb7y -> session-ttl-af9apb7y
 2 line(s) would change (--dry-run)
 $ ds rename sessionttl session-ttl
-sessionttl-r7xkm5bw -> session-ttl-r7xkm5bw
+sessionttl-af9apb7y -> session-ttl-af9apb7y
 2 line(s) changed; run ds scan
 ```
 
@@ -1455,19 +1453,19 @@ $ ds undo --list
 #  KIND    WHERE                               ID                       AGE       STATE
 1  rename  docs/auth.md:3 +1 more              -                        just now  uncommitted
 2  adopt   internal/auth/refresh.go:4 +1 more  refresh-p7c2n5tw         just now  committed 285bed3
-3  def     internal/auth/errors.go:10          empty-password-m4k8q2xz  just now  committed 285bed3
+3  def     internal/auth/errors.go:10          empty-password-taw2whnr  just now  committed 285bed3
 4  def     internal/auth/logout.go:4           logout-d3dzzyqr          just now  committed 285bed3
 5  def     internal/auth/errors.go:6           empty-password-rsh5d7az  just now  committed 285bed3 · cited by docs/auth.md:5
 6  def     internal/auth/session.go:10         login-j3nq87mh           just now  uncommitted · cited by docs/api.md:3, docs/api.md:5, docs/auth.md:5
-7  def     internal/auth/session.go:6          sessionttl-r7xkm5bw      just now  uncommitted · cited by docs/auth.md:3
+7  def     internal/auth/session.go:6          sessionttl-af9apb7y      just now  uncommitted · cited by docs/auth.md:3
 $ ds undo --dry-run
 would undo rename docs/auth.md:3 +1 more (--dry-run)
   docs/auth.md:3
-    - A session lasts [90 minutes](ds:block?id=session-ttl-r7xkm5bw).
-    + A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+    - A session lasts [90 minutes](ds:block?id=session-ttl-af9apb7y).
+    + A session lasts [90 minutes](ds:block?id=sessionttl-af9apb7y).
   internal/auth/session.go:9
-    - // ds:def id=session-ttl-r7xkm5bw owner=@auth
-    + // ds:def id=sessionttl-r7xkm5bw owner=@auth
+    - // ds:def id=session-ttl-af9apb7y owner=@auth
+    + // ds:def id=sessionttl-af9apb7y owner=@auth
 $ ds undo
 undid internal/auth/session.go:9
 undid docs/auth.md:3

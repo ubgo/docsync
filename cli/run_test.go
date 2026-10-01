@@ -68,7 +68,7 @@ func TestRunExecution(t *testing.T) {
 		"runbooks/r.md:12  run ok: echo 200",
 		"runbooks/r.md:13  run FAILED: echo 404",
 		"runbooks/r.md:14  run ok: echo HTTP/1.1 301",
-		"runbooks/r.md:15  run FAILED: timeout=soon must be a positive duration",
+		"runbooks/r.md:15  run skipped: timeout=soon must be a positive duration",
 		"docs/notallowed.md:1  run skipped: cmd= is allowed only",
 	} {
 		if !strings.Contains(r.out, want) {

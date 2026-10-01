@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -478,12 +477,18 @@ func (a *App) checkCmd() *cobra.Command {
 				}
 			}
 			out := cmd.OutOrStdout()
-			failedRuns := 0
 			if opts.Run {
-				failedRuns, err = a.executeRuns(cmd.Context(), ld, rep, opts.Env, out)
+				// Progress goes to stderr under --json, which must stay one
+				// JSON document.
+				progress := out
+				if asJSON {
+					progress = cmd.ErrOrStderr()
+				}
+				runs, err := a.executeRuns(cmd.Context(), ld, rep, opts.Env, progress)
 				if err != nil {
 					return err
 				}
+				rep = rep.ApplyRuns(runs)
 			}
 			if err := ld.flush(); err != nil {
 				return err
@@ -499,7 +504,7 @@ func (a *App) checkCmd() *cobra.Command {
 				printFindings(out, rep.Findings, expand)
 				fmt.Fprintf(out, "%s\n", summaryLine(rep))
 			}
-			if rep.ExitCode != 0 || failedRuns > 0 {
+			if rep.ExitCode != 0 {
 				return exitCode(ExitFindings)
 			}
 			return nil
@@ -622,6 +627,7 @@ func printFindings(w io.Writer, findings []check.Finding, expand bool) {
 			fmt.Fprintf(w, "%s\n", cur)
 		}
 		fmt.Fprintf(w, "  %d\t%-8s %-18s %s\n", f.Line, f.Severity, f.State, f.Message)
+		printDiff(w, f.Diff)
 		if f.Remedy.IfStillTrue != "" {
 			fmt.Fprintf(w, "      still true: %s\n      otherwise:  %s\n", f.Remedy.IfStillTrue, f.Remedy.IfNot)
 		} else if f.Remedy.Fix != "" {
@@ -630,11 +636,50 @@ func printFindings(w io.Writer, findings []check.Finding, expand bool) {
 	}
 }
 
+// diffPreviewLines bounds the diff printed under one finding, so a rewritten
+// function does not push every other finding off the screen; the rest is
+// counted, and `check --json` carries it whole.
+const diffPreviewLines = 12
+
+// printDiff writes a finding's diff under it, each line behind a bar so it
+// cannot be read as another finding. SPEC §28 shows the diff under the
+// finding; the text output used to print only the message, so the one thing
+// a reviewer needs to decide between "still true" and "edit the sentence"
+// was in the JSON alone (bug 26). A secret's diff never reaches here: the
+// library withholds it where bodies are compared.
+func printDiff(w io.Writer, diff string) {
+	if diff == "" {
+		return
+	}
+	lines := strings.Split(strings.TrimRight(diff, "\n"), "\n")
+	shown := lines
+	if len(shown) > diffPreviewLines {
+		shown = shown[:diffPreviewLines]
+	}
+	for _, l := range shown {
+		fmt.Fprintf(w, "      | %s\n", l)
+	}
+	if more := len(lines) - len(shown); more > 0 {
+		fmt.Fprintf(w, "      | (%d more diff lines; --json has them all)\n", more)
+	}
+}
+
+// summaryWord names a severity in the text summary. Every severity names
+// itself except none, whose findings passed: "2 none" read as "nothing",
+// the opposite of two citations checked and found current (bug 30). The
+// JSON keeps the severity name, which is the contract.
+func summaryWord(sev check.Severity) string {
+	if sev == check.SeverityNone {
+		return string(check.StateOK)
+	}
+	return string(sev)
+}
+
 func summaryLine(rep docsync.Report) string {
 	parts := []string{}
 	for _, sev := range check.SeverityValues {
 		if n := rep.Summary[sev]; n > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", n, sev))
+			parts = append(parts, fmt.Sprintf("%d %s", n, summaryWord(sev)))
 		}
 	}
 	if len(parts) == 0 {
@@ -873,11 +918,31 @@ func (a *App) recordAcks(ld loaded, res scan.Result, reqs []docsync.AckRequest, 
 	if dry {
 		return rows, nil
 	}
+	// An ack approves a body, so the body goes into the store before the
+	// row that names it, as a scan's do (§15.1). Without it an ack made with
+	// no scan since the change named a hash nothing held, and the next
+	// change to the block reported `changed (unknown)` with no diff (bug 25).
+	if err := ld.st.WriteBodies(ackedBodies(ld.sys.Bodies(res), rows)); err != nil {
+		return nil, err
+	}
 	ld.acks.Rows = append(ld.acks.Rows, rows...)
 	if err := ld.st.AppendAcks(rows); err != nil {
 		return nil, err
 	}
 	return rows, nil
+}
+
+// ackedBodies keeps, of a scan's bodies (already free of secret and local
+// blocks), those whose hash an ack row approves. A claim renewal and a page
+// review name no hash and contribute nothing.
+func ackedBodies(bodies map[string]string, rows []ledger.Ack) map[string]string {
+	out := map[string]string{}
+	for _, r := range rows {
+		if body, ok := bodies[r.BlockHash]; ok {
+			out[r.BlockHash] = body
+		}
+	}
+	return out
 }
 
 func (a *App) refreshCmd() *cobra.Command {
@@ -1277,7 +1342,8 @@ func (a *App) findCmd() *cobra.Command {
 			for _, b := range found {
 				rows = append(rows, []string{b.ID, string(b.Kind), fmt.Sprintf("%s:%d-%d", b.Pos.File, b.Pos.Start, b.Pos.End), b.Args[block.KeyDesc], fmt.Sprintf("cited by %d", citers[b.ID])})
 			}
-			sort.Slice(rows, func(i, j int) bool { return rows[i][0] < rows[j][0] })
+			// In the order Find gives, by place: sorting by id put two defs with
+			// one label in the order of their random suffixes (bug 32).
 			table(out, rows)
 			return nil
 		},
