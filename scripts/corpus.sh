@@ -246,8 +246,17 @@ invariants() {
     ok "$name: a second scan of the same tree gives the same ledger"
   else no "$name: the ledger changed on a second scan of unchanged source"; fi
 
-  # 6. check must be clean on a tree nothing has edited, and must not crash.
-  if "$DS" check --full >/dev/null 2>&1; then ok "$name: check is clean on an unedited tree"
+  # 6. check must be clean on a tree nothing but this gate has edited, and
+  #    must not crash. The anchors above are edits: one inserted inside a
+  #    block a repo-mode page copies moves that block's lines, so the copy
+  #    is rightly `stale` (refresh would rewrite it). That is the one error
+  #    the anchoring can cause, so exactly that finding -- stale, with only
+  #    its lines or directives out of date -- is set aside, and any other
+  #    error, a stale copy whose code changed included, still fails.
+  errs=$("$DS" check --full --json 2>/dev/null | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+print(sum(1 for f in d.get("findings",[]) if f.get("severity")=="error" and not (f.get("state")=="stale" and f.get("message","").startswith("copy shows the block"))))' 2>/dev/null || echo crash)
+  if [ "$errs" = "0" ]; then ok "$name: check is clean on an unedited tree (apart from copies the anchors made stale)"
   else
     # A finding is only acceptable if it is not an error-severity surprise.
     st=$("$DS" check --full 2>&1 | tail -1)

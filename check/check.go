@@ -900,11 +900,22 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 		}
 		if ok && textnorm.NormalizeString(expected) != textnorm.NormalizeString(ref.Region.Text) && legacyCopy(filled, ref, r.in.Prefix, r.in.Opts.MaxLines) {
 			// Written by a build whose links were relative to the
-			// repository root (bug 64): nobody edited it, so it is not
-			// tampered; refresh rewrites it with links that resolve.
+			// repository root (bug 64). Nobody edited it and its content
+			// is current, so it is neither tampered nor an error: every
+			// repo-mode page in a repository would otherwise fail check
+			// at once on upgrade, over links that were always written
+			// that way. The next `ds refresh` rewrites them relative to
+			// the page.
+			ok = false
+		}
+		if ok && textnorm.NormalizeString(expected) != textnorm.NormalizeString(ref.Region.Text) && codeStillInBlock(ref.Region.Text, filled.Content, r.in.Prefix) {
+			// Only the caption's line range or a directive inside the
+			// block differs: a def added to a member moves the block's
+			// lines without changing its code or its hash. That is a copy
+			// refresh would rewrite, not one a hand edited.
 			f := base
 			f.State = StateStale
-			f.Message = "copy has links relative to the repository root, which do not resolve from the page"
+			f.Message = "copy shows the block's old lines or directives; its code is current"
 			f.Remedy = Remedy{Fix: fmt.Sprintf(remedyStale, ref.Pos.File, ref.Pos.Start, def.ID)}
 			r.emit(f)
 			return
@@ -1846,4 +1857,61 @@ func (r *runner) claimRenewal(ref block.Reference) (ledger.Ack, bool) {
 		}
 	}
 	return best, found
+}
+
+// codeStillInBlock reports whether every code line a repo-mode copy shows
+// is still in the block, in the same order: what moved is only the lines
+// around them -- the caption's range, a directive added inside the block, a
+// `lines=` window that now starts or ends elsewhere -- and a refresh would
+// rewrite it. A copy with a line the block does not have was edited by hand.
+// Directive lines are left out on both sides, as the hash leaves them out.
+func codeStillInBlock(copyText, content, prefix string) bool {
+	shown := fencedLines(copyText, prefix)
+	if len(shown) == 0 || content == "" {
+		return false
+	}
+	body := codeLines(strings.Split(content, "\n"), prefix)
+	j := 0
+	for _, l := range body {
+		if j < len(shown) && l == shown[j] {
+			j++
+		}
+	}
+	return j == len(shown)
+}
+
+// fencedLines returns the code lines inside a copy's first fence.
+func fencedLines(text, prefix string) []string {
+	var in []string
+	open := false
+	for _, l := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "```") {
+			if open {
+				break
+			}
+			open = true
+			continue
+		}
+		if open {
+			in = append(in, l)
+		}
+	}
+	return codeLines(in, prefix)
+}
+
+// codeLines drops directive lines and trailing blanks, keeping the rest as
+// written (leading indentation is code).
+func codeLines(ls []string, prefix string) []string {
+	var out []string
+	for _, l := range ls {
+		t := strings.TrimSpace(l)
+		if strings.Contains(t, prefix+":def") || strings.Contains(t, prefix+":block") {
+			continue
+		}
+		out = append(out, strings.TrimRight(l, " \t\r"))
+	}
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return out
 }
