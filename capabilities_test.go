@@ -114,6 +114,8 @@ func TestCapabilities(t *testing.T) {
 	s := newSys(t, fsys, WithConfig(c),
 		WithVerbHandler(ticketVerb{name: "ticket"}), WithPicker(hclPicker{}),
 		WithClassifier(func(o, n block.Block, oc string) []block.Class { classified++; return []block.Class{block.ClassBody} }),
+		// A classifier is asked only when the old body is known (bug 28).
+		WithOldContent(func(ledger.Row) (string, bool) { return "old", true }),
 		WithStore(store), WithObserver(rec), WithNotifier(rec))
 	ctx := context.Background()
 	rep, err := s.Check(ctx, CheckOptions{})

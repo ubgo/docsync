@@ -399,10 +399,12 @@ perl -pi -e 's/unacked = "error"/unacked = "warn"/' .ds/config.toml
 $ perl -pi -e 's/30 \* time/60 * time/' internal/auth/session.go
 $ ds check; echo "exit $?"
 docs/auth.md
-  3	warning  unacked            sessionttl-r7xkm5bw changed (body) since this sentence was first cited
+  3	warning  unacked            sessionttl-r7xkm5bw changed (value) since this sentence was first cited
+      | -const SessionTTL = 30 * time.Minute
+      | +const SessionTTL = 60 * time.Minute
       still true: ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/auth.md:3, then ack
-1 warning, 1 none
+1 warning, 1 ok
 exit 0
 $ ds check --strict; echo "exit $?"
 …
@@ -940,7 +942,7 @@ glob docs/**/*.md  ok    1 files
 glob README.md     WARN  matches no files
 …
 $ ds check
-2 none
+2 ok
 ```
 
 The workspace file, `ds-workspace.toml`, is a separate file in the index repository with its own keys (`name`, `repos`, `index`, `default_branch`, `stale_after_commits`, and `[workspace.id]` and `[workspace.env]`); it is described in [Cross-repo](cross-repo.md).

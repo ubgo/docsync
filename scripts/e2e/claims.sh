@@ -24,9 +24,9 @@ out=$(ds check 2>&1)
 ck "an old claim is expired" "expired" "$out"
 ck "and the remedy says how to renew it" "ds ack --doc docs/d.md --line 3" "$out"
 ck "that exact command renews it" "renewed the claim at docs/d.md:3" "$(ds ack --doc docs/d.md --line 3 --note 'still true' 2>&1)"
-ck "the claim is now current" "1 none" "$(ds check 2>&1 | tail -1)"
+ck "the claim is now current" "1 ok" "$(ds check 2>&1 | tail -1)"
 printf '# D\n\nAn intro.\n\nWe chose Postgres. <!-- ds:claim owner=@p reviewed=2020-01-01 expires=90d -->\n\nNo claim here.\n' > docs/d.md
-ck "the renewal survives a line added above the claim" "1 none" "$(ds check 2>&1 | tail -1)"
+ck "the renewal survives a line added above the claim" "1 ok" "$(ds check 2>&1 | tail -1)"
 printf '# D\n\nAn intro.\n\nWe moved to MySQL. <!-- ds:claim owner=@p reviewed=2020-01-01 expires=90d -->\n\nNo claim here.\n' > docs/d.md
 ck "a rewritten sentence does not inherit it" "expired" "$(ds check 2>&1)"
 ck "an id-less ack where there is no claim is refused" "no reference" "$(ds ack --doc docs/d.md --line 7 2>&1 | tr 'A-Z' 'a-z')"

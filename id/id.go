@@ -20,6 +20,7 @@ package id
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -101,15 +102,62 @@ func Mint(c Config) (string, error) {
 	if err := c.Validate(); err != nil {
 		return "", err
 	}
+	buf := make([]byte, c.SuffixLength*2)
+	return draw(c, func() ([]byte, error) {
+		if _, err := reader.Read(buf); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrEntropySource, err)
+		}
+		return buf, nil
+	})
+}
+
+// Derive returns the suffix seed determines: the same seed always gives the
+// same suffix, and different seeds give suffixes as uniform as Mint's, by
+// the same rejection sampling over a sha256 chain.
+//
+// Why it exists: a writer with a dry run has to show the ids the real run
+// will write. Minting at random gave `ds adopt --dry-run` one set of ids and
+// `ds adopt` another, so the preview could not be checked against the result
+// (bug 33). A writer seeds from what it is about to bind -- repository, file,
+// line, the file's bytes -- so a preview and its run over the same tree
+// agree, and two different blocks never share a seed.
+func Derive(c Config, seed []byte) (string, error) {
+	if err := c.Validate(); err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(seed)
+	return draw(c, func() ([]byte, error) {
+		buf := h
+		h = sha256.Sum256(h[:])
+		return buf[:], nil
+	})
+}
+
+// NewDerived is New with a suffix from Derive.
+func NewDerived(c Config, prefix string, seed []byte) (string, error) {
+	p := Slug(prefix)
+	if p == "" {
+		return "", ErrBadPrefix
+	}
+	s, err := Derive(c, seed)
+	if err != nil {
+		return "", err
+	}
+	return p + "-" + s, nil
+}
+
+// draw fills a suffix from the bytes next returns, by rejection sampling.
+// The caller has validated c.
+func draw(c Config, next func() ([]byte, error)) (string, error) {
 	n := len(c.Alphabet)
 	// Largest multiple of n that fits in a byte; bytes at or above it are
 	// rejected to keep the distribution uniform.
 	limit := 256 - 256%n
 	out := make([]byte, 0, c.SuffixLength)
-	buf := make([]byte, c.SuffixLength*2)
 	for len(out) < c.SuffixLength {
-		if _, err := reader.Read(buf); err != nil {
-			return "", fmt.Errorf("%w: %v", ErrEntropySource, err)
+		buf, err := next()
+		if err != nil {
+			return "", err
 		}
 		for _, b := range buf {
 			if int(b) >= limit {

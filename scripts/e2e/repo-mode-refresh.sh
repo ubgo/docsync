@@ -37,7 +37,7 @@ ck "one copy, although its code mentions a citation" "1" "$(grep -c '/ds:block h
 # platform's grep reads text mode, which is not what is under test.
 crlf=$(tr -cd '\r' < docs/d.md | wc -c | tr -d ' '); lines=$(wc -l < docs/d.md | tr -d ' ')
 ck "the CRLF doc keeps its line endings" "$lines" "$crlf"
-ck "a fresh copy checks clean" "none" "$(ds check 2>&1 | tail -1)"
+ck "a fresh copy checks clean" " ok" "$(ds check 2>&1 | tail -1)"
 
 sedi 's/return 1/return 2/' a.go; ds scan >/dev/null
 ck "a changed block makes the copy stale" "stale" "$(ds check 2>&1)"

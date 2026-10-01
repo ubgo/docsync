@@ -55,6 +55,19 @@ type Stale struct {
 	NeverAck  bool      `json:"never_acked"`
 }
 
+// pageTiers are the tiers that read pages: prose written to be read, which
+// cites blocks rather than holding them.
+var pageTiers = map[string]bool{extract.Markdown{}.Name(): true, extract.Document{}.Name(): true}
+
+// staleDay is the precision pages are ranked at by their oldest ack: the
+// day, as the report prints it, then the page path. Ranked to the second,
+// pages acked in one session came out in the order the clock happened to
+// split them -- alphabetical when two acks shared a second, not when they
+// straddled one -- so rows printing the same date changed order between
+// otherwise identical runs, and nothing a reader could see explained it
+// (bug 31). Staleness is measured in days; seconds are noise.
+const staleDay = "2006-01-02"
+
 // Literal is a fact value typed by hand in prose instead of cited.
 type Literal struct {
 	Doc   string `json:"doc"`
@@ -126,9 +139,15 @@ func (s *System) Report(rep Report, opts ReportOptions) ReportResult {
 	}
 	// Unmarked: churned files in scope without defs, then exported
 	// declarations without defs in scanned code files. Churn for a file the
-	// scan did not read (excluded, generated, state) says nothing.
+	// scan did not read (excluded, generated, state) says nothing, and nor
+	// does churn on a page: pages are what cite blocks, not what defines
+	// them, so listing docs/*.md as "changed, no defs" and --gaps telling
+	// the reader to define blocks in it pointed at the wrong side (bug 34).
+	// A page is a file the markdown or document tier read; the text tier
+	// also reads files like go.mod, where a def is at home.
 	for f, n := range opts.Churn {
-		if _, scanned := res.Tier[f]; scanned && !filesWithDefs[f] {
+		tier, scanned := res.Tier[f]
+		if scanned && !filesWithDefs[f] && !pageTiers[tier] {
 			out.Unmarked = append(out.Unmarked, Unmarked{File: f, Churn: n})
 		}
 	}
@@ -198,8 +217,8 @@ func (s *System) Report(rep Report, opts ReportOptions) ReportResult {
 		if a.NeverAck != b.NeverAck {
 			return a.NeverAck
 		}
-		if !a.OldestAck.Equal(b.OldestAck) {
-			return a.OldestAck.Before(b.OldestAck)
+		if da, db := a.OldestAck.UTC().Format(staleDay), b.OldestAck.UTC().Format(staleDay); da != db {
+			return da < db
 		}
 		return a.Doc < b.Doc
 	})

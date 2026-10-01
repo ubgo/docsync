@@ -278,7 +278,7 @@ func (s *System) mapReport(rep Report, opts MapOptions) MapResult {
 		d.Tokens = Tokens(fmt.Sprintf("%s %s %s %d %d %s", d.ID, d.Desc, d.File, d.CitedBy, d.Lines, d.State))
 		defs = append(defs, d)
 	}
-	sort.Slice(defs, func(i, j int) bool {
+	sort.SliceStable(defs, func(i, j int) bool {
 		a, b := defs[i], defs[j]
 		if ra, rb := rank(a.State), rank(b.State); ra != rb {
 			return ra > rb
@@ -286,7 +286,14 @@ func (s *System) mapReport(rep Report, opts MapOptions) MapResult {
 		if a.CitedBy != b.CitedBy {
 			return a.CitedBy > b.CitedBy
 		}
-		return a.ID < b.ID
+		// By place before id: ids that tie here otherwise listed in the
+		// order of their random suffixes (bug 32).
+		// Two defs never share a file and first line, and the sort is
+		// stable besides, so the scan's order settles anything left.
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		return a.Lines[0] < b.Lines[0]
 	})
 	// Chains: roots are defs with no from= that something points at.
 	pointed := map[string]bool{}
@@ -637,7 +644,26 @@ func (s *System) Find(res scan.Result, query string) []block.Block {
 			out = append(out, b)
 		}
 	}
-	return out
+	return byPlace(out)
+}
+
+// byPlace orders found defs by where they are -- file, then line, then id
+// for defs that share a place -- and returns them. Ordering by id put two
+// defs with one label in the order of their random suffixes, so the same
+// tree listed them differently in every checkout that minted its own (bug
+// 32); a place is chosen by the author and is the same everywhere.
+func byPlace(bs []block.Block) []block.Block {
+	sort.SliceStable(bs, func(i, j int) bool {
+		a, b := bs[i].Pos, bs[j].Pos
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		if a.Start != b.Start {
+			return a.Start < b.Start
+		}
+		return bs[i].ID < bs[j].ID
+	})
+	return bs
 }
 
 // FindBy applies each set option as a filter.
@@ -656,7 +682,7 @@ func (s *System) FindBy(res scan.Result, opts FindOptions) []block.Block {
 		}
 		out = append(out, b)
 	}
-	return out
+	return byPlace(out)
 }
 
 // Read returns a block's body, or a `lines=a-b` fragment of it.

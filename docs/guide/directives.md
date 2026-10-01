@@ -87,7 +87,7 @@ docs/verbs.md
       fix: frob is not a registered verb; register a handler or fix the directive at docs/verbs.md:3
   5	warning  unknown            unknown key(s) bogus on ds:block
       fix: unknown key(s) bogus on ds:block at docs/verbs.md:5; check the spelling against the verb's key table
-2 warning, 1 none
+2 warning, 1 ok
 ```
 
 ## Where a directive can sit
@@ -123,7 +123,7 @@ docs/verbs.md
       fix: frob is not a registered verb; register a handler or fix the directive at docs/verbs.md:3
   5	warning  unknown            unknown key(s) bogus on ds:block
       fix: unknown key(s) bogus on ds:block at docs/verbs.md:5; check the spelling against the verb's key table
-2 warning, 2 none
+2 warning, 2 ok
 ```
 
 Directives inside code fences, indented code blocks, inline code spans and string literals are not directives, which is why this page can show them.
@@ -274,8 +274,8 @@ $ ds map
 PAGE  COVERS  CITES  STATE
 
 DEF                   FILE                 CITED BY  STATE
-delete-u3e84e69       db/sweep.sql:2-2     0         uncovered
 server-port-6btxuz6q  config/app.yaml:2-2  0         uncovered
+delete-u3e84e69       db/sweep.sql:2-2     0         uncovered
 sess-policy-h2n8wq4t  docs/policy.md:4-6   0         uncovered
 span-two-c2d3e4f5     docs/rota.txt:2-3    0         uncovered
 store-save-k7m2p4xq   store/save.go:4-6    0         uncovered
@@ -320,7 +320,7 @@ git init -q -b main .
 ds init
 -->
 
-Each change to a cited block is classified (`body`, `signature`, `type`, `renamed`, `value`, `comment`, …), and the def's `stability` decides which classes flag the sentences citing it:
+Each change to a cited block is classified (`body`, `signature`, `type`, `renamed`, `moved`, `value`, `comment`, `unknown`; whitespace is never reported). A one-line constant changes by `value` when its value changes and by `type` when what it declares changes. The def's `stability` decides which classes flag the sentences citing it:
 
 | `stability` | Flags on |
 |---|---|
@@ -369,9 +369,11 @@ $ sed -i.bak 's/return a + 1/return a + 2/' store/stab.go && rm store/stab.go.ba
 $ ds check
 docs/stab.md
   3	error    unacked            stab-frozen-v3w4x5y6 changed (body) since this sentence was first cited
+      | -	return a + 1
+      | +	return a + 2
       still true: ds ack stab-frozen-v3w4x5y6 --doc docs/stab.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/stab.md:3, then ack
-1 error, 2 none
+1 error, 2 ok
 ```
 
 Changing the parameter type of the `api` function is a `signature` change and is flagged, but only after `ds scan` has recorded the new block; run `ds scan` before `ds check` when relying on `stability=api`:
@@ -689,9 +691,13 @@ $ sed -i.bak 's/return nil/return save(sess)/' store/store.go && rm store/store.
 $ ds check
 docs/sessions.md
   3	error    unacked            store-savesession-m6twuucd changed (body) since this sentence was first cited
+      | -	return nil
+      | +	return save(sess)
       still true: ds ack store-savesession-m6twuucd --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
   5	error    unacked            store-savesession-m6twuucd changed (body) since this sentence was first cited
+      | -	return nil
+      | +	return save(sess)
       still true: ds ack store-savesession-m6twuucd --doc docs/sessions.md --line 5 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:5, then ack
 2 error
@@ -699,7 +705,7 @@ $ ds ack store-savesession-m6twuucd --all --note 'still returns early'
 acked store-savesession-m6twuucd at docs/sessions.md:3 (human)
 acked store-savesession-m6twuucd at docs/sessions.md:5 (human)
 $ ds check
-2 none
+2 ok
 ```
 
 - `broken` when the id is not defined, `range` when `lines=` falls outside the block, and `too-large` when a block-position cite would render more than `[include] max_lines` lines (default 40):
@@ -719,7 +725,7 @@ docs/more.md
       fix: the id nothing-here-abcdefgh is not defined; fix the id in docs/more.md:3 or re-add the ds:def on the block it meant
   5	warning  range              lines=4-30 outside the block's 6 lines
       fix: adjust lines= at docs/more.md:5 to fit the block's 6 lines
-1 error, 1 warning, 2 none
+1 error, 1 warning, 2 ok
 ```
 
 Deleting a def breaks its citations and says where it was last seen:
@@ -838,12 +844,14 @@ git commit -q -m cfg
 $ sed -i.bak 's/MaxSessions = 5/MaxSessions = 8/' store/limits.go && rm store/limits.go.bak
 $ ds check
 docs/limits.md
-  3	error    unacked            maxsessions-k8p2w4rd changed (body) since this sentence was first cited
+  3	error    unacked            maxsessions-k8p2w4rd changed (value) since this sentence was first cited
+      | -5
+      | +8
       still true: ds ack maxsessions-k8p2w4rd --doc docs/limits.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/limits.md:3, then ack
   5	warning  range              ds:cfg on a 3-line block
       fix: the def yields 3 lines; ds:cfg needs one line, use ds:block or a narrower pick=
-1 error, 1 warning, 6 none
+1 error, 1 warning, 6 ok
 ```
 
 ## ds:claim — a sentence that must be re-reviewed
@@ -896,7 +904,7 @@ $ ds check
 docs/claims.md
   5	error    expired            claim reviewed 2026-01-01 expired after 30d
       fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
-1 error, 2 none
+1 error, 2 ok
 ```
 
 With `about=`, a change to a listed block expires the claim at once:
@@ -907,9 +915,9 @@ $ ds check
 docs/claims.md
   5	error    expired            claim reviewed 2026-01-01 expired after 30d
       fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
-  7	error    expired            claim is about maxsessions-k8p2w4rd, which changed (body)
+  7	error    expired            claim is about maxsessions-k8p2w4rd, which changed (value)
       fix: review the claim at docs/claims.md:7 and run ds ack --doc docs/claims.md --line 7 to renew it
-2 error, 1 none
+2 error, 1 ok
 ```
 
 Renew a claim with `ds ack --doc <doc> --line <n> --note '…'`. For an `about=` claim, run `ds scan` after the ack so the finding clears:
@@ -923,7 +931,7 @@ $ ds check
 docs/claims.md
   5	error    expired            claim reviewed 2026-01-01 expired after 30d
       fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
-1 error, 2 none
+1 error, 2 ok
 ```
 
 ## ds:url — an outside link that is watched
@@ -1032,7 +1040,9 @@ $ ds check --run
 docs/run.md:3  run ok: echo hello from task
 docs/run.md:5  run skipped: not-runnable-r3s4t5u6 is not runnable=true
 docs/run.md:7  run ok: echo hi
-3 none
+docs/run.md
+  5	info     skipped            run not executed: not-runnable-r3s4t5u6 is not runnable=true
+1 info, 2 ok
 ```
 
 [Secrets and runs](secrets-and-runs.md) covers the run configuration and its safety rules.
@@ -1150,7 +1160,7 @@ $ ds check
 docs/dev.md
   3	error    broken             api-host-r2s3t4u5 is not defined for env=dev
       fix: api-host-r2s3t4u5 has no definition for env=dev; add one or cite a defined environment
-1 error, 2 none
+1 error, 2 ok
 ```
 
 ## Deprecation and sunset
@@ -1228,6 +1238,8 @@ $ sed -i.bak 's/ninety days/sixty days/' docs/policy.md && rm docs/policy.md.bak
 $ ds check
 docs/es/policy.md
   3	error    translation stale  source retention-para-w4x5y6z7 changed (body)
+      | -Logs are kept for ninety days.
+      | +Logs are kept for sixty days.
       fix: the source paragraph retention-para-w4x5y6z7 changed; update the translation at docs/es/policy.md:3 and ack
 1 error
 ```

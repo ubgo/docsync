@@ -255,7 +255,7 @@ func TestReport(t *testing.T) {
 		{At: clock.Add(-48 * time.Hour), ID: "auth-port-h3v8n2wd", Doc: "docs/acked2.md", Line: 1},
 	}}
 	s, rep := changedSystem(t, fsys, WithConfig(c), WithAcks(acks))
-	r := s.Report(rep, ReportOptions{Churn: map[string]int{"internal/store/write.go": 9, "internal/busy.go": 20, "internal/also.go": 20, "internal/cold.go": 2, "internal/exported.go": 1, ".ds/ledger.tsv": 50, "internal/unscanned.go": 99}})
+	r := s.Report(rep, ReportOptions{Churn: map[string]int{"internal/store/write.go": 9, "internal/busy.go": 20, "internal/also.go": 20, "internal/cold.go": 2, "internal/exported.go": 1, ".ds/ledger.tsv": 50, "internal/unscanned.go": 99, "docs/sessions.md": 40}})
 	ids := func(bs []block.Block) []string {
 		var out []string
 		for _, b := range bs {
@@ -280,6 +280,18 @@ func TestReport(t *testing.T) {
 	}
 	if !exported || marked {
 		t.Errorf("unmarked symbols = %+v", r.Unmarked)
+	}
+	// A page that changed often is not a place to define blocks: prose cites
+	// them (bug 34).
+	for _, u := range r.Unmarked {
+		if u.File == "docs/sessions.md" {
+			t.Errorf("a doc page listed as unmarked: %+v", u)
+		}
+	}
+	for _, g := range r.Gaps {
+		if strings.Contains(g, "define blocks in docs/") {
+			t.Errorf("gaps suggest defining blocks in a page: %q", g)
+		}
 	}
 	// The same view when a syntax tier, not the code tier, reads the .go files.
 	ss, srep := changedSystem(t, fsys, WithConfig(c), WithAcks(acks), WithExtractor(syntaxTier{}))
@@ -1039,3 +1051,30 @@ func (r readFails) Open(name string) (fs.File, error) {
 }
 
 func (r readFails) Stat(name string) (fs.FileInfo, error) { return r.MapFS.Stat(name) }
+
+// TestStalestRanksByDay pins bug 31: pages acked seconds apart on one day
+// were ranked by the second, so two rows printing the same date came out in
+// the order the clock split them -- alphabetical when the acks shared a
+// second, reversed when they straddled one. Within a day they rank by path.
+func TestStalestRanksByDay(t *testing.T) {
+	t.Parallel()
+	fsys := repo(true)
+	fsys["docs/acked.md"] = &fstest.MapFile{Data: []byte("Port [8081](ds:cfg?id=auth-port-h3v8n2wd).\n")}
+	fsys["docs/acked2.md"] = &fstest.MapFile{Data: []byte("Port [8081](ds:cfg?id=auth-port-h3v8n2wd).\n")}
+	day := clock.UTC().Truncate(24 * time.Hour).Add(-24 * time.Hour).Add(time.Hour)
+	acks := ledger.Acks{Rows: []ledger.Ack{
+		{At: day.Add(time.Second), ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
+		{At: day, ID: "auth-port-h3v8n2wd", Doc: "docs/acked2.md", Line: 1},
+		{At: day.Add(-48 * time.Hour), ID: "sess-save-k7m2p4xq", Doc: "docs/sessions.md", Line: 7},
+	}}
+	s, rep := changedSystem(t, fsys, WithConfig(cfg()), WithAcks(acks))
+	var docs []string
+	for _, st := range s.Report(rep, ReportOptions{}).Stalest {
+		if !st.NeverAck {
+			docs = append(docs, st.Doc)
+		}
+	}
+	if strings.Join(docs, " ") != "docs/acked.md docs/acked2.md" {
+		t.Errorf("stalest acked pages = %v", docs)
+	}
+}

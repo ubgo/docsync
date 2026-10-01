@@ -34,7 +34,7 @@ git checkout -qb one; ds ack alpha-k7m2p4xq --doc docs/d.md --line 3 --note one 
 git checkout -q main; git checkout -qb two; ds ack beta-h3v8n2wd --doc docs/d.md --line 5 --note two >/dev/null; git add -A; git commit -qm two
 git checkout -q one
 ck "acks on two branches merge cleanly" "clean" "$(merged two)"
-ck "both acks count after the merge" "2 none" "$(ds check 2>&1 | tail -1)"
+ck "both acks count after the merge" "2 ok" "$(ds check 2>&1 | tail -1)"
 
 # The same citation acked on two branches, the newer one against a newer block.
 # Whichever order the branches merge in, the newer ack must be the one used.
@@ -49,7 +49,7 @@ for order in newer-last newer-first; do
   if [ "$order" = newer-last ]; then git checkout -q old; m=$(merged new); else git checkout -q new; m=$(merged old); fi
   ck "same citation acked on both branches ($order): merge" "clean" "$m"
   ds scan >/dev/null
-  ck "same citation acked on both branches ($order): the newer ack wins" "2 none" "$(ds check 2>&1 | tail -1)"
+  ck "same citation acked on both branches ($order): the newer ack wins" "2 ok" "$(ds check 2>&1 | tail -1)"
 done
 
 # A repo initialised before the attribute existed.

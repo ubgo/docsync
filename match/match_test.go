@@ -87,7 +87,9 @@ func TestCompareWithoutOldContent(t *testing.T) {
 	if changes[0].State != StateDeleted {
 		t.Errorf("without old content a vanished id with no hash match is deleted: %+v", changes[0])
 	}
-	if c := changes[1]; c.State != StateChanged || c.Diff != "" || !reflect.DeepEqual(c.Classes, []block.Class{block.ClassBody}) {
+	// Unknown, never body: a body nobody could read may hide a signature
+	// change, and `api` does not flag body (bug 28).
+	if c := changes[1]; c.State != StateChanged || c.Diff != "" || !reflect.DeepEqual(c.Classes, []block.Class{block.ClassUnknown}) || !c.Flags {
 		t.Errorf("changed without old content = %+v", c)
 	}
 	// OldContent present but returns false for the id.
@@ -102,14 +104,21 @@ func TestCompareCustomClassifierAndThreshold(t *testing.T) {
 	old := mk("x-aaaaaaaa", "a.go", 1, 2, "X", "v1", map[string]string{"stability": "api"})
 	nw := mk("x-aaaaaaaa", "a.go", 1, 2, "X", "v2", map[string]string{"stability": "api"})
 	custom := func(o, n block.Block, oc string) []block.Class { return []block.Class{block.ClassSignature} }
-	c := Compare([]ledger.Row{row(old)}, []block.Block{nw}, Options{Classify: custom})[0]
+	have := func(ledger.Row) (string, bool) { return old.Content, true }
+	c := Compare([]ledger.Row{row(old)}, []block.Block{nw}, Options{Classify: custom, OldContent: have})[0]
 	if !reflect.DeepEqual(c.Classes, []block.Class{block.ClassSignature}) || !c.Flags {
 		t.Errorf("custom classifier = %+v", c)
 	}
 	// Under `api`, a body-only change does not flag.
-	c = Compare([]ledger.Row{row(old)}, []block.Block{nw}, Options{})[0]
+	c = Compare([]ledger.Row{row(old)}, []block.Block{nw}, Options{OldContent: have})[0]
 	if c.Flags {
 		t.Error("api stability must not flag a body change")
+	}
+	// Without the old body a custom classifier is not asked to describe an
+	// empty block, and the change is unknown, which `api` flags (bug 28).
+	c = Compare([]ledger.Row{row(old)}, []block.Block{nw}, Options{Classify: custom})[0]
+	if !reflect.DeepEqual(c.Classes, []block.Class{block.ClassUnknown}) || !c.Flags {
+		t.Errorf("no old body under api = %+v", c)
 	}
 	// A high threshold turns a rewrite into a deletion.
 	rwOld := mk("rw-ffffffff", "a.go", 1, 5, "Rw", "a\nb\nc\nd\ne", nil)
@@ -141,7 +150,22 @@ func TestClassify(t *testing.T) {
 		{"moved only, same hash", base, mk("x-aaaaaaaa", "b.go", 9, 11, "F", base.Content, nil), base.Content, []block.Class{block.ClassMoved}},
 		{"comment only", base, mk("x-aaaaaaaa", "a.go", 1, 3, "F", "// better doc\nfunc F() {\n\treturn 1\n}", nil), base.Content, []block.Class{block.ClassComment}},
 		{"body", base, mk("x-aaaaaaaa", "a.go", 1, 3, "F", "// doc\nfunc F() {\n\treturn 2\n}", nil), base.Content, []block.Class{block.ClassBody}},
-		{"body without old content cannot be comment", base, mk("x-aaaaaaaa", "a.go", 1, 3, "F", "// better doc\nfunc F() {\n\treturn 1\n}", nil), "", []block.Class{block.ClassBody}},
+		{"without old content it is unknown, never body (bug 28)", base, mk("x-aaaaaaaa", "a.go", 1, 3, "F", "// better doc\nfunc F() {\n\treturn 1\n}", nil), "", []block.Class{block.ClassUnknown}},
+		{"const value (bug 27)", kind(mk("c", "a.go", 1, 1, "MaxRetries", "const MaxRetries = 5", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "MaxRetries", "const MaxRetries = 3", nil), block.KindConst), "const MaxRetries = 5", []block.Class{block.ClassValue}},
+		{"grouped const value with a doc comment (bug 27)", kind(mk("c", "a.go", 1, 2, "MaxRetries", "// retries\nMaxRetries = 5", nil), block.KindConst), kind(mk("c", "a.go", 1, 2, "MaxRetries", "// retries\nMaxRetries   =  3", nil), block.KindConst), "// retries\nMaxRetries = 5", []block.Class{block.ClassValue}},
+		{"const type and value", kind(mk("c", "a.go", 1, 1, "X", "var X int = 3", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "X", "var X int64 = 4", nil), block.KindConst), "var X int = 3", []block.Class{block.ClassType, block.ClassValue}},
+		{"a literal const is bound to its literal: value (bug 27)", kind(mk("c", "a.go", 4, 4, "MaxRetries", "5", nil), block.KindConst), kind(mk("c", "a.go", 4, 4, "MaxRetries", "3", nil), block.KindConst), "5", []block.Class{block.ClassValue}},
+		{"a literal becoming an expression is a value change", kind(mk("c", "a.go", 4, 4, "Every", "60", nil), block.KindConst), kind(mk("c", "a.go", 4, 4, "Every", "const Every = time.Hour", nil), block.KindConst), "60", []block.Class{block.ClassValue}},
+		{"a string literal spelling the symbol is a value", kind(mk("c", "a.go", 4, 4, "Name", `"Name"`, nil), block.KindConst), kind(mk("c", "a.go", 4, 4, "Name", `"Other"`, nil), block.KindConst), `"Name"`, []block.Class{block.ClassValue}},
+		{"a symbol-less literal is a value", kind(mk("c", "a.go", 4, 4, "", "1", nil), block.KindConst), kind(mk("c", "a.go", 4, 4, "", "2", nil), block.KindConst), "1", []block.Class{block.ClassValue}},
+		{"a held member's head is matched by its last segment", kind(mk("c", "a.go", 4, 4, "Limits.Max", "Max int", nil), block.KindConst), kind(mk("c", "a.go", 4, 4, "Limits.Max", "Max int64", nil), block.KindConst), "Max int", []block.Class{block.ClassType}},
+		{"const with no value changes type", kind(mk("c", "a.go", 1, 1, "X", "var X int", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "X", "var X int64", nil), block.KindConst), "var X int", []block.Class{block.ClassType}},
+		{"const renamed keeps its value", kind(mk("c", "a.go", 1, 1, "X", "const X = 3", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "Y", "const Y = 3", nil), block.KindConst), "const X = 3", []block.Class{block.ClassRenamed}},
+		{"const renamed and revalued", kind(mk("c", "a.go", 1, 1, "X", "const X = 3", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "Y", "const Y = 4", nil), block.KindConst), "const X = 3", []block.Class{block.ClassRenamed, block.ClassValue}},
+		{"const differing only in collapsed whitespace is body", kind(mk("c", "a.go", 1, 1, "X", "const X = a b", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "X", "const X = a  b", nil), block.KindConst), "const X = a b", []block.Class{block.ClassBody}},
+		{"multi-line const initializer is body", kind(mk("c", "a.go", 1, 3, "X", "var X = []int{\n1,\n}", nil), block.KindConst), kind(mk("c", "a.go", 1, 3, "X", "var X = []int{\n2,\n}", nil), block.KindConst), "var X = []int{\n1,\n}", []block.Class{block.ClassBody}},
+		{"multi-line new const initializer is body", kind(mk("c", "a.go", 1, 1, "X", "var X = 1", nil), block.KindConst), kind(mk("c", "a.go", 1, 3, "X", "var X = []int{\n2,\n}", nil), block.KindConst), "var X = 1", []block.Class{block.ClassMoved, block.ClassBody}},
+		{"comment-only const old side is body", kind(mk("c", "a.go", 1, 1, "X", "// x", nil), block.KindConst), kind(mk("c", "a.go", 1, 1, "X", "var X = 1", nil), block.KindConst), "// x", []block.Class{block.ClassBody}},
 		{"renamed and moved and body", base, mk("x-aaaaaaaa", "b.go", 1, 3, "G", "other", nil), base.Content, []block.Class{block.ClassRenamed, block.ClassMoved, block.ClassBody}},
 		{"signature only", base, mk("x-aaaaaaaa", "a.go", 1, 3, "F", "// doc\nfunc F(a int) {\n\treturn 1\n}", nil), base.Content, []block.Class{block.ClassSignature}},
 		{"signature re-indented is not a change", base, mk("x-aaaaaaaa", "a.go", 1, 3, "F", "// doc\n  func   F()  {\n\treturn 2\n}", nil), base.Content, []block.Class{block.ClassBody}},

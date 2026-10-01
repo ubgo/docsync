@@ -29,12 +29,12 @@ printf 'package p\n\n// ds:def id=alpha-k7m2p4xq\nfunc A() int { return 1 }\n' >
 printf '# D\n\nA returns [one](ds:block?id=alpha-k7m2p4xq).\n' > docs/d.md
 ds init >/dev/null; age a.go docs/d.md; ds scan >/dev/null; git add -A; git commit -qm base
 ck "the scan stamped the aged file" '"mod"' "$(cat .ds/cache/extract.json)"
-ck "a clean tree checks clean" "1 none" "$(ds check 2>&1 | tail -1)"
+ck "a clean tree checks clean" "1 ok" "$(ds check 2>&1 | tail -1)"
 
 sedi 's/return 1/return 2/' a.go
 ck "a same-size edit moves the time and is seen" "1 error" "$(ds check 2>&1 | tail -1)"
 sedi 's/return 2/return 1/' a.go
-ck "and the revert is seen too" "1 none" "$(ds check 2>&1 | tail -1)"
+ck "and the revert is seen too" "1 ok" "$(ds check 2>&1 | tail -1)"
 
 # A filesystem whose clock ticks in whole seconds gives two writes in one
 # second the same time. Simulated with touch -t: the file is checked with an
@@ -53,7 +53,7 @@ ck "and the revert is seen too" "1 none" "$(ds check 2>&1 | tail -1)"
 soon=$(date -v+1M +%Y%m%d%H%M.%S 2>/dev/null || date -d '+1 minute' +%Y%m%d%H%M.%S)
 [ -n "$soon" ] || { echo "  FAIL  cannot compute a future timestamp on this date(1)"; fail=$((fail+1)); soon=$(date +%Y%m%d%H%M.%S); }
 touch -t "$soon" a.go
-ck "checked clean at a time the scan cannot trust" "1 none" "$(ds check 2>&1 | tail -1)"
+ck "checked clean at a time the scan cannot trust" "1 ok" "$(ds check 2>&1 | tail -1)"
 sedi 's/return 1/return 5/' a.go; touch -t "$soon" a.go
 ck "a same-size edit under an untrusted time is seen" "1 error" "$(ds check 2>&1 | tail -1)"
 sedi 's/return 5/return 1/' a.go; age a.go; ds check >/dev/null 2>&1
@@ -61,7 +61,7 @@ sedi 's/return 5/return 1/' a.go; age a.go; ds check >/dev/null 2>&1
 # Content changed with its size and time put back, as cp -p does.
 cp -p a.go "$S/keep.go"
 printf 'package p\n\n// ds:def id=alpha-k7m2p4xq\nfunc A() int { return 7 }\n' > a.go; touch -r "$S/keep.go" a.go
-ck "a time put back hides the edit from a plain check" "1 none" "$(ds check 2>&1 | tail -1)"
+ck "a time put back hides the edit from a plain check" "1 ok" "$(ds check 2>&1 | tail -1)"
 ck "check --full reads every file and sees it" "1 error" "$(ds check --full 2>&1 | tail -1)"
 
 echo; echo "  ---- $pass passed, $fail failed ----"

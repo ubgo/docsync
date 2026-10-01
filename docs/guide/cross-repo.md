@@ -169,6 +169,8 @@ owner (none): 1
 $ ds check
 retry/retry.go
   3	error    unacked            backoff-zztatnzq changed (body) since this sentence was first cited
+      | -A failed call is retried at most 5 times, doubling the wait each time.
+      | +A failed call is retried at most 3 times, doubling the wait each time.
       still true: ds ack backoff-zztatnzq --doc retry/retry.go --line 3 --note '…'
       otherwise:  edit the sentence at retry/retry.go:3, then ack
 1 error
@@ -189,7 +191,7 @@ In the citing repository, three commands now give three different, deliberate an
 ```console
 $ cd ../api
 $ ds check --frozen          # what CI runs: the committed snapshot, unchanged
-1 none
+1 ok
 $ ds status                  # how far the snapshot is behind; never changes the exit code
 snapshot  .ds/foreign.tsv   synced just now
   docs     1 of 1 cited blocks behind upstream   (snapshot 61a2c79 -> index a9d5509)
@@ -198,6 +200,8 @@ retry/retry.go:3	unacked	backoff-zztatnzq
 $ ds check                   # interactive: reads the index first
 retry/retry.go
   3	error    unacked            backoff-zztatnzq changed (body) since this sentence was first cited
+      | -A failed call is retried at most 5 times, doubling the wait each time.
+      | +A failed call is retried at most 3 times, doubling the wait each time.
       still true: ds ack backoff-zztatnzq --doc retry/retry.go --line 3 --note '…'
       otherwise:  edit the sentence at retry/retry.go:3, then ack
 1 error
@@ -230,11 +234,11 @@ acked backoff-zztatnzq at retry/retry.go:3 (human)
 $ ds scan && git add -A && git commit -qm 'follow spec'
 1 files, 0 defs, 1 refs, 0 problems, 0 skipped
 $ CI=true ds check
-1 none
+1 ok
 $ ds publish
 published api: 0 defs, 1 refs, 0 test outcomes into ../index
 $ cd ../docs && ds check
-1 none
+1 ok
 ```
 
 A block that moved upstream with its content unchanged is reported as `moved` (severity none) by a syncing check, and a block the upstream deletes turns its citations `broken` after the next sync.
@@ -274,7 +278,7 @@ $ CI=true ds check           # a new cross-repo citation, committed before anyon
 retry/retry.go
   6	error    broken             timeout-peqncuha is cited but is not recorded in foreign.tsv
       fix: run `ds sync` and commit foreign.tsv to record it; if no repo in the workspace publishes timeout-peqncuha, fix the id in retry/retry.go:6
-1 error, 1 none
+1 error, 1 ok
 ```
 
 <!-- doctest

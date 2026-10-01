@@ -48,7 +48,7 @@ ck "linked cite shifted, check without scan" "1 error" "$(last)"
 setup; printf '# D\n\nA returns [one](ds:block?id=alpha-k7m2p4xq).\n' > docs/d.md; base
 drift; ds ack alpha-k7m2p4xq --doc docs/d.md --line 3 --note ok >/dev/null
 printf '# D\n\nIntro.\n\nA returns [one](ds:block?id=alpha-k7m2p4xq).\n' > docs/d.md; ds scan >/dev/null
-ck "an acked cite that moves stays acked" "none" "$(last)"
+ck "an acked cite that moves stays acked" " ok" "$(last)"
 
 # Two citations of one block; the first is acked after the change, the second
 # is not. Inserting lines puts the first on the second's old line, where
@@ -67,7 +67,7 @@ ck "swap: exactly one finding" "1 error" "$(echo "$out" | tail -1)"
 setup; printf '# D\n\nA returns [one](ds:block?id=alpha-k7m2p4xq).\n' > docs/d.md; base
 drift; ds ack alpha-k7m2p4xq --doc docs/d.md --line 3 --note ok >/dev/null
 printf '# D\n\nIntro.\n\nA returns [one](ds:block?id=alpha-k7m2p4xq).\n' > docs/d.md; ds scan >/dev/null
-ck "moved and re-scanned, same wording: still acked" "none" "$(last)"
+ck "moved and re-scanned, same wording: still acked" " ok" "$(last)"
 ds scan >/dev/null
 printf '# D\n\nIntro.\n\nA now returns [one](ds:block?id=alpha-k7m2p4xq).\n' > docs/d.md
 ck "moved, re-scanned, then rewritten: reported as a rewrite" "sentence rewritten" "$(ds check 2>&1)"

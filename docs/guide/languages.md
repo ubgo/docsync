@@ -198,13 +198,13 @@ func (l Limits) Check(s string) error {
 $ ds scan
 1 files, 7 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file go/
+strings-x4ewf8ea           const  go/limits.go:6-6      cited by 0
+minlength-epm9kzhs         const  go/limits.go:10-14    cited by 0
+maxlength-s5thyjpj         const  go/limits.go:13-13    cited by 0
+limits-type-ej8sdmj5       type   go/limits.go:19-23    cited by 0
+limits-minlength-3ufswfvp  const  go/limits.go:21-21    cited by 0
 checker-mvqbrh58           type   go/limits.go:26-28    cited by 0
 limits-check-xx2qcpxu      func   go/limits.go:31-37    cited by 0
-limits-minlength-3ufswfvp  const  go/limits.go:21-21    cited by 0
-limits-type-ej8sdmj5       type   go/limits.go:19-23    cited by 0
-maxlength-s5thyjpj         const  go/limits.go:13-13    cited by 0
-minlength-epm9kzhs         const  go/limits.go:10-14    cited by 0
-strings-x4ewf8ea           const  go/limits.go:6-6      cited by 0
 ```
 
 The extent rules:
@@ -332,13 +332,13 @@ type Handler = (req: Request) => Response;
 $ ds scan
 1 files, 7 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file ts/
-connect-9ksmnfc4       func   ts/config.ts:28-30    cited by 0
 default-port-tfz6jfe2  const  ts/config.ts:2-2      cited by 0
-handler-8zurw729       type   ts/config.ts:33-33    cited by 0
 port-6nxhmw97          const  ts/config.ts:6-6      cited by 0
 prod-cwx26tdb          const  ts/config.ts:13-13    cited by 0
 server-class-u7znm342  type   ts/config.ts:17-25    cited by 0
 start-r5axv9cy         func   ts/config.ts:22-24    cited by 0
+connect-9ksmnfc4       func   ts/config.ts:28-30    cited by 0
+handler-8zurw729       type   ts/config.ts:33-33    cited by 0
 ```
 
 - Functions, classes, interfaces, enums, type aliases and `const`/`let`/`var` declarations bind their whole declaration; `export` is part of it.
@@ -425,9 +425,9 @@ $ ds scan
 4 files, 13 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file web/
 button-y6hs3qkc   func   web/Button.tsx:4-6    cited by 0
+small-vxxznftm    const  web/Button.tsx:9-9    cited by 0
 retries-rfxv63bx  const  web/util.js:2-2       cited by 0
 retry-54asvg3d    func   web/util.js:5-7       cited by 0
-small-vxxznftm    const  web/Button.tsx:9-9    cited by 0
 util-nsbwtyqp     stmt   web/util.js:10-10     cited by 0
 ```
 
@@ -527,12 +527,12 @@ def connect(url):
 $ ds scan
 1 files, 6 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file py/
-connect-2fkvtcsc        func   py/app.py:25-26    cited by 0
 max-retries-2hgcy9ty    const  py/app.py:4-4      cited by 0
-name-twpzwnrp           func   py/app.py:14-15    cited by 0
-save-vbnk5kju           func   py/app.py:18-21    cited by 0
 store-class-88b3vcgd    type   py/app.py:7-21     cited by 0
 store-timeout-scjg3yuj  const  py/app.py:10-10    cited by 0
+name-twpzwnrp           func   py/app.py:14-15    cited by 0
+save-vbnk5kju           func   py/app.py:18-21    cited by 0
+connect-2fkvtcsc        func   py/app.py:25-26    cited by 0
 $ ds find Store.timeout
 store-timeout-scjg3yuj  const  py/app.py:10-10    cited by 0
 ```
@@ -587,9 +587,9 @@ DELETE FROM sessions WHERE expires_at < now() - interval '30 days';
 $ ds scan
 1 files, 3 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file sql/
-delete-9cm43m82            stmt  sql/schema.sql:11-11    cited by 0
-sessions-expires-tsdj4es3  stmt  sql/schema.sql:8-8      cited by 0
 sessions-table-mpvdh56u    stmt  sql/schema.sql:2-5      cited by 0
+sessions-expires-tsdj4es3  stmt  sql/schema.sql:8-8      cited by 0
+delete-9cm43m82            stmt  sql/schema.sql:11-11    cited by 0
 ```
 
 Each def binds one statement, through its semicolon. `ds def path#sessions` and `path#sessions_expires` find the statements that create those names; anything else is reached by line. The recorded symbol is the name the statement acts on, so the index is recorded as `sessions`.
@@ -652,9 +652,9 @@ tasks:
 $ ds scan
 2 files, 4 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file cfg/
-auth-g22bfxc2          key  cfg/app.yaml:6-7    cited by 0
-server-hosts-bt945cmt  key  cfg/app.yaml:3-5    cited by 0
 server-port-8852e4ng   key  cfg/app.yaml:2-2    cited by 0
+server-hosts-bt945cmt  key  cfg/app.yaml:3-5    cited by 0
+auth-g22bfxc2          key  cfg/app.yaml:6-7    cited by 0
 $ ds find 'tasks.wfsys:up'
 tasks-wfsys-up-etqjhk22  key  Taskfile.yml:3-6    cited by 0
 ```
@@ -722,9 +722,9 @@ max = 20   # ds:def id=database-pool-max-t2ncznbs
 $ ds scan
 1 files, 3 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file cfg/
-database-pool-max-t2ncznbs  key  cfg/app.toml:8-8    cited by 0
-server-port-x236d9ns        key  cfg/app.toml:4-4    cited by 0
 server-table-egp4erfz       key  cfg/app.toml:3-5    cited by 0
+server-port-x236d9ns        key  cfg/app.toml:4-4    cited by 0
+database-pool-max-t2ncznbs  key  cfg/app.toml:8-8    cited by 0
 $ ds facts
 ID                          VALUE  WHERE           CITED BY
 server-port-x236d9ns        8081   cfg/app.toml:4  0
@@ -793,10 +793,10 @@ resource "aws_instance" "web" {
 $ ds scan
 1 files, 4 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file cfg/
+region-var-e45mfvg9      key  cfg/main.tf:2-5      cited by 0
+region-default-anmttm88  key  cfg/main.tf:4-4      cited by 0
 aws-web-zr5s3s55         key  cfg/main.tf:8-14     cited by 0
 instance-type-7tay2hrx   key  cfg/main.tf:10-10    cited by 0
-region-default-anmttm88  key  cfg/main.tf:4-4      cited by 0
-region-var-e45mfvg9      key  cfg/main.tf:2-5      cited by 0
 $ ds find resource.aws_instance.web.instance_type
 instance-type-7tay2hrx  key  cfg/main.tf:10-10    cited by 0
 ```
@@ -950,10 +950,10 @@ max-conn-ncgt9z56
 $ ds scan
 1 files, 4 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file code/lib.rs
-connect-76suf4x5   func   code/lib.rs:17-19    cited by 0
 max-conn-ncgt9z56  const  code/lib.rs:2-2      cited by 0
-new-zv9qq7bm       func   code/lib.rs:11-13    cited by 0
 pool-7juqmkbh      type   code/lib.rs:5-7      cited by 0
+new-zv9qq7bm       func   code/lib.rs:11-13    cited by 0
+connect-76suf4x5   func   code/lib.rs:17-19    cited by 0
 ```
 
 Java, by line. Without `--label` the label would come from the file name (`app-…` for all three), because these defs have no symbol:
@@ -1065,16 +1065,16 @@ $ ds find --file code/
 app-class-wkk7f6t7      stmt   code/App.java:2-10      cited by 0
 app-port-9ysqns5j       stmt   code/App.java:4-4       cited by 0
 app-run-kqdx5h53        stmt   code/App.java:7-9       cited by 0
-connect-76suf4x5        func   code/lib.rs:17-19       cited by 0
-deploy-func-re47zmq6    stmt   code/deploy.sh:8-11     cited by 0
-deploy-region-kakh3yyr  stmt   code/deploy.sh:5-5      cited by 0
 docker-build-2c4hwumb   stmt   code/Dockerfile:2-5     cited by 0
 docker-expose-e6mwzcqk  stmt   code/Dockerfile:9-10    cited by 0
-make-build-cr6r4dg6     stmt   code/Makefile:5-6       cited by 0
 make-port-wmsgk88s      stmt   code/Makefile:2-2       cited by 0
+make-build-cr6r4dg6     stmt   code/Makefile:5-6       cited by 0
+deploy-region-kakh3yyr  stmt   code/deploy.sh:5-5      cited by 0
+deploy-func-re47zmq6    stmt   code/deploy.sh:8-11     cited by 0
 max-conn-ncgt9z56       const  code/lib.rs:2-2         cited by 0
-new-zv9qq7bm            func   code/lib.rs:11-13       cited by 0
 pool-7juqmkbh           type   code/lib.rs:5-7         cited by 0
+new-zv9qq7bm            func   code/lib.rs:11-13       cited by 0
+connect-76suf4x5        func   code/lib.rs:17-19       cited by 0
 ```
 
 The comment form per extension: `//` for `.rs`, `.c`, `.h`, `.cpp`, `.java`, `.kt`, `.swift`, `.cs`, `.scala`, `.dart`, `.zig`, `.pkl`; `//` or `#` for `.php`; `#` for `.rb`, `.sh`, `.bash`, `.zsh`, `.pl`, `.r`, `.ex`, `.exs`, `.nix`, `Dockerfile`, `Makefile`; `--` for `.lua`, `.hs`; `/* … */` for `.css` (and `//` for `.scss`).
@@ -1149,10 +1149,10 @@ Run the installer.
 $ ds scan
 2 files, 4 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file doc/
+session-policy-3h7xfkqz  section    doc/guide.md:4-11     cited by 0
+rotation-jv6jd3za        section    doc/guide.md:9-11     cited by 0
 guide-fuvccgeu           paragraph  doc/guide.md:16-16    cited by 0
 install-2pbv8932         section    doc/page.mdx:4-6      cited by 0
-rotation-jv6jd3za        section    doc/guide.md:9-11     cited by 0
-session-policy-3h7xfkqz  section    doc/guide.md:4-11     cited by 0
 ```
 
 - A def above a heading binds the section: the heading and everything up to the next heading of the same or a higher level. `Session policy` includes its `### Rotation` subsection; the directive anchoring the subsection is left out of the section's hash, so adding it does not flag citations of the section.
@@ -1217,8 +1217,8 @@ $ cat doc/index.html
 $ ds scan
 1 files, 2 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file doc/
-p-5bn2feab        element  doc/index.html:6-6    cited by 0
 section-89xgqp67  element  doc/index.html:4-7    cited by 0
+p-5bn2feab        element  doc/index.html:6-6    cited by 0
 ```
 
 `.vue` and `.svelte` files take `<!-- … -->` in markup (and `//` or `/* … */` in script), and are read by the `text` tier: a def binds the following lines up to the next blank line.
@@ -1415,7 +1415,7 @@ doc/bad.json
       fix: fix the directive at doc/bad.json:2: scan: directive is not inside a comment: doc/bad.json has no comment syntax, so this line breaks the file; ds repair --apply removes it (bind the value with a remote def instead)
   2	info     uncovered          defined but never cited or covered
       fix: bad-json-a3b4c5d6 is defined but nothing cites or covers it; cite it from a page or remove the def
-1 error, 1 info, 2 none
+1 error, 1 info, 2 ok
 $ ds repair
 doc/bad.json:2  delete (no comment syntax here)
   - ds:def id=bad-json-a3b4c5d6
@@ -1454,9 +1454,10 @@ $ echo '| cache |' >> assets/diagram.txt
 $ ds check
 doc/arch.md
   5	error    unacked            diagram-q2q2q2q2 changed (moved, body) since this sentence was first cited
+      | +| cache |
       still true: ds ack diagram-q2q2q2q2 --doc doc/arch.md --line 5 --note '…'
       otherwise:  edit the sentence at doc/arch.md:5, then ack
-1 error, 2 none
+1 error, 2 ok
 ```
 
 ## Checking what was bound
@@ -1476,9 +1477,10 @@ doc/remote.md:6  markdown  ds:cfg    link     json-port-p2q3r4s5
 doc/remote.md:6  markdown  ds:cfg    link     csv-port-t2u3v4w5
 doc/arch.md
   5	error    unacked            diagram-q2q2q2q2 changed (moved, body) since this sentence was first cited
+      | +| cache |
       still true: ds ack diagram-q2q2q2q2 --doc doc/arch.md --line 5 --note '…'
       otherwise:  edit the sentence at doc/arch.md:5, then ack
-1 error, 2 none
+1 error, 2 ok
 ```
 
 - `ds read <id>` prints the block's body, so you can see exactly where it starts and ends.

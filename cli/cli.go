@@ -464,6 +464,11 @@ func (a *App) system() (loaded, error) {
 	if a.registry != nil {
 		opts = append(opts, docsync.WithRegistry(a.registry))
 	}
+	// Placed after the workspaceOptions call above, which is what learns
+	// where the index is and sets the fields this lookup reads. The same
+	// lookup is the first source of a previous ledger row's body, so the
+	// change table and the per-citation drift read one store.
+	bodies := bodyLookup(st, a.indexFS, a.indexEntries)
 	opts = append(opts,
 		docsync.WithExtractor(a.extractors...), docsync.WithVerb(a.verbs...),
 		docsync.WithCommitLookup(a.vcs.Exists),
@@ -471,13 +476,11 @@ func (a *App) system() (loaded, error) {
 		// the System this call is building; it is only ever called during a
 		// check, after New has returned, so it reaches the System through a
 		// reference filled in below.
-		docsync.WithOldContent(oldContent(a.vcs, prev, func(path string, src []byte) ([]block.Block, error) {
+		docsync.WithOldContent(oldContent(bodies, a.vcs, prev, func(path string, src []byte) ([]block.Block, error) {
 			return sysRef.ExtractFile(context.Background(), path, src)
 		})),
+		docsync.WithBodyAt(bodies),
 	)
-	// Placed after the workspaceOptions call above, which is what learns
-	// where the index is and sets the fields this lookup reads.
-	opts = append(opts, docsync.WithBodyAt(bodyLookup(st, a.indexFS, a.indexEntries)))
 	opts = append(opts, wsOpts...)
 	for _, p := range a.pickers {
 		opts = append(opts, docsync.WithPicker(p))

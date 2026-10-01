@@ -225,3 +225,47 @@ func TestSlug(t *testing.T) {
 		}
 	}
 }
+
+// TestDerive pins what a dry run relies on (bug 33): one seed, one suffix,
+// every time, valid under the config; another seed, another suffix; and the
+// rejection sampling reaches past the first hash when a short alphabet
+// rejects many bytes.
+func TestDerive(t *testing.T) {
+	t.Parallel()
+	c := Default()
+	a1, err := Derive(c, []byte("repo\x00a.go\x003"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2, _ := Derive(c, []byte("repo\x00a.go\x003"))
+	b, _ := Derive(c, []byte("repo\x00a.go\x004"))
+	if a1 != a2 || a1 == b || len(a1) != c.SuffixLength || !allIn(a1, c.Alphabet) {
+		t.Errorf("Derive = %q %q %q", a1, a2, b)
+	}
+	long := Config{Alphabet: "abcdefghijklmnopq", SuffixLength: maxSuffixLength}
+	if s, err := Derive(long, []byte("x")); err != nil || len(s) != maxSuffixLength || !allIn(s, long.Alphabet) {
+		t.Errorf("long Derive = %q %v", s, err)
+	}
+	if _, err := Derive(Config{}, nil); !errors.Is(err, ErrBadLength) {
+		t.Errorf("invalid config = %v", err)
+	}
+	full, err := NewDerived(c, "Store.Save", []byte("s"))
+	if p, s, _ := Split(c, full); err != nil || p != "store-save" || s != mustDerive(t, c, "s") {
+		t.Errorf("NewDerived = %q %v", full, err)
+	}
+	if _, err := NewDerived(c, "!!", nil); !errors.Is(err, ErrBadPrefix) {
+		t.Errorf("empty prefix = %v", err)
+	}
+	if _, err := NewDerived(Config{}, "x", nil); !errors.Is(err, ErrBadLength) {
+		t.Errorf("invalid config = %v", err)
+	}
+}
+
+func mustDerive(t *testing.T, c Config, seed string) string {
+	t.Helper()
+	s, err := Derive(c, []byte(seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}

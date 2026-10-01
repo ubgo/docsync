@@ -59,7 +59,7 @@ printf '# Limits\n\nPasswords are at least [%s](ds:block?id=%s) characters.\n' 8
 ds scan >/dev/null; git add -A; git commit -qm b >/dev/null
 # A neighbour in the same group changing must not touch this citation.
 sedi 's/MaxLength = 256/MaxLength = 512/' a.go
-if [ "$(ds check 2>&1 | tail -1)" = "1 none" ]; then ok "a neighbour in the group changing leaves the citation alone"; else no "a neighbour changing disturbed the citation: $(ds check 2>&1 | tail -3)"; fi
+if [ "$(ds check 2>&1 | tail -1)" = "1 ok" ]; then ok "a neighbour in the group changing leaves the citation alone"; else no "a neighbour changing disturbed the citation: $(ds check 2>&1 | tail -3)"; fi
 # The cited entry changing must flag it.
 sedi 's/MinLength = 8/MinLength = 12/' a.go
 if ds check 2>&1 | grep -q unacked; then ok "the cited entry changing flags its citation as unacked"; else no "the cited entry changed and nothing flagged: $(ds check 2>&1 | tail -3)"; fi

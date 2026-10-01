@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"strconv"
 	"strings"
 
 	"github.com/ubgo/docsync/block"
@@ -115,6 +116,19 @@ func insertedEnding(lines []string, i int) string {
 	return LineCR(lines[i])
 }
 
+// mintFor mints the id a writer is about to bind to the block at file:line,
+// with a suffix derived from the repository, the place, the file's bytes
+// and any extra discriminator, never from a random draw. A dry run and the
+// real run over the same tree therefore write the same id: `ds adopt
+// --dry-run` printed ids the real run then replaced with others, so the
+// preview could not be checked against the result (bug 33). Two different
+// blocks differ in place or bytes, so they never share a seed. The label is
+// left out, so relabelling keeps the suffix, which is the identity (§8).
+func (s *System) mintFor(label, file string, line int, src []byte, extra ...string) (string, error) {
+	seed := strings.Join(append([]string{s.repo, file, strconv.Itoa(line)}, extra...), "\x00") + "\x00" + string(src)
+	return id.NewDerived(s.idcfg, label, []byte(seed))
+}
+
 // DefineOptions are the directive keys `ds def` may set (§9.1).
 type DefineOptions struct {
 	// Label is the id prefix; empty derives one from the symbol or file.
@@ -179,7 +193,7 @@ func (s *System) Define(_ context.Context, target string, opts DefineOptions) (D
 	if label == "" {
 		label = id.Slug(strings.TrimSuffix(baseName(path), extract.Ext(path)))
 	}
-	newID, err := id.New(s.idcfg, label)
+	newID, err := s.mintFor(label, path, located.Pos.Start, src, opts.Env)
 	if err != nil {
 		return DefineResult{}, err
 	}

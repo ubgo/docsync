@@ -178,15 +178,18 @@ func must[T any](v T, err error) T {
 $ ds check
 docs/sessions.md
   3	error    unacked            savesession-73km8a3x changed (moved, body) since this sentence was first cited
+      | +	if id == "" { return errEmpty }
       still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 1 error
 $ cd ../prog
 $ go build -o bin/dscheck ./dscheck && bin/dscheck ../repo; echo "exit=$?"
-docs/sessions.md:3	error	unacked	savesession-73km8a3x changed (moved, body) since this sentence was first cited
+docs/sessions.md:3	error	unacked	savesession-73km8a3x changed (moved, unknown) since this sentence was first cited
 	still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
 exit=1
 ```
+
+The class here is `unknown` where `ds` says `body`, and there is no diff, because this program hands the `System` no earlier bodies: a change it cannot read is never guessed to be a body change, since `stability=api` does not flag one. `ds` reads them from the body store, `.ds/blocks/<hash>`, through `WithOldContent` (the body of a previous ledger row) and `WithBodyAt` (any body by hash); a program that wants the same classes and diffs passes both.
 
 `rep` is a `docsync.Report`. Its exported fields carry the same JSON tags as `ds check --json` (`json_format`, `summary`, `states`, `findings`, `exit_code`), so `json.Marshal(rep)` gives you the machine contract, and `rep.Findings` is a slice of `check.Finding` with `State`, `Severity`, `Doc`, `Line`, `ID`, `Classes`, `Diff`, and a `Remedy` holding either `IfStillTrue` and `IfNot` (for `unacked`) or `Fix` (for everything else). `rep.Scan` holds the scan the report came from, which `Graph`, `Blame`, `Report`, and `ContextFor` take so they do not rescan.
 
@@ -204,7 +207,7 @@ go build -o bin/dscheck-stdlib ./dscheck-stdlib
 
 ```console
 $ bin/dscheck-stdlib ../repo     # built without the structured and tree-sitter tiers, tree unchanged
-docs/sessions.md:3	error	unacked	savesession-73km8a3x changed (body) since this sentence was first cited
+docs/sessions.md:3	error	unacked	savesession-73km8a3x changed (unknown) since this sentence was first cited
 	still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
 ```
 
@@ -435,6 +438,7 @@ $ cd ../repo
 $ ../prog/bin/pds check
 docs/sessions.md
   3	error    unacked            savesession-73km8a3x changed (moved, body) since this sentence was first cited
+      | +	if id == "" { return errEmpty }
       still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 1 error

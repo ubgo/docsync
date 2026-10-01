@@ -379,6 +379,52 @@ func TestOtherVerbs(t *testing.T) {
 	}
 }
 
+// TestApplyRunsMakesFailuresFindings pins bug 29: a `ds:run` that failed
+// under `check --run` made the command exit 1 with no finding naming it, and
+// the summary counted only passing findings. The outcome of each executed
+// run is now its finding, and the report is recounted.
+func TestApplyRunsMakesFailuresFindings(t *testing.T) {
+	t.Parallel()
+	refs := []block.Reference{
+		ref("run", "", "r.md", 1, map[string]string{"cmd": "false"}),
+		ref("run", "", "r.md", 2, map[string]string{"cmd": "true"}),
+		ref("run", "", "r.md", 3, map[string]string{"cmd": "x"}),
+		ref("run", "", "r.md", 4, map[string]string{"cmd": "never reported"}),
+		ref("run", "missing-h3v8n2wd", "r.md", 5, nil),
+	}
+	rep := Run(Input{Repo: "api", Now: now, Refs: refs, Opts: Options{RunEnabled: true}})
+	if rep.ExitCode != 1 {
+		t.Fatalf("the broken id fails the run already: %+v", rep.Summary)
+	}
+	rep = ApplyRuns(rep, []RunResult{
+		{Doc: "r.md", Line: 1, Command: "false", Failed: true},
+		{Doc: "r.md", Line: 2, Command: "true"},
+		{Doc: "r.md", Line: 3, Skipped: "cmd= is not allowed here"},
+		// A result for a broken directive does not hide that it is broken.
+		{Doc: "r.md", Line: 5, Command: "x", Failed: true},
+	})
+	bs := byState(rep)
+	if f := bs[StateRunFailed]; len(f) != 1 || f[0].Line != 1 || f[0].Severity != SeverityError || f[0].Message != "run failed: false" || !strings.Contains(f[0].Remedy.Fix, "run `false` by hand") {
+		t.Errorf("failed run = %+v", f)
+	}
+	if f := bs[StateSkipped]; len(f) != 1 || f[0].Line != 3 || f[0].Severity != SeverityInfo || !strings.Contains(f[0].Message, "not allowed") {
+		t.Errorf("skipped run = %+v", f)
+	}
+	if f := bs[StateOK]; len(f) != 2 || f[0].Message != "run passed: true" || f[1].Message != "run directive will execute where enabled" {
+		t.Errorf("passing and unreported runs = %+v", f)
+	}
+	if len(bs[StateBroken]) != 1 {
+		t.Errorf("broken = %+v", bs[StateBroken])
+	}
+	if rep.Summary[StateRunFailed] != 1 || rep.BySeverity[SeverityError] != 2 || rep.ExitCode != 1 {
+		t.Errorf("recount = %+v %+v %d", rep.Summary, rep.BySeverity, rep.ExitCode)
+	}
+	// Recounting is the same counting Run does.
+	if s, b, e := Tally(nil); len(s) != 0 || len(b) != 0 || e != 0 {
+		t.Error("an empty report counts nothing")
+	}
+}
+
 func TestURLHookOutcomes(t *testing.T) {
 	t.Parallel()
 	mk := func(res URLResult, title string) Finding {
@@ -859,7 +905,8 @@ func TestVerbHandlersAndKeys(t *testing.T) {
 	rep = Run(Input{
 		Repo: "api", Now: now, Defs: []block.Block{nw}, Refs: []block.Reference{ref("block", nw.ID, "d.md", 1, nil)},
 		Prev: ledger.Ledger{Rows: []ledger.Row{ledger.FromBlock("api", old)}},
-		Opts: Options{Classify: func(o, n block.Block, oc string) []block.Class {
+		// A classifier is asked only when the old body is known (bug 28).
+		Opts: Options{OldContent: func(ledger.Row) (string, bool) { return old.Content, true }, Classify: func(o, n block.Block, oc string) []block.Class {
 			called = true
 			return []block.Class{block.ClassWhitespace}
 		}},
@@ -957,4 +1004,26 @@ func TestWordingHoldsAnAckToItsSentence(t *testing.T) {
 	blockPos.Carrier = block.CarrierBlock
 	blockPos.SetSentence("")
 	one(t, run(blockPos, ack(extract.Rule, old), true), StateOK)
+}
+
+// TestFindingsOnOneLineOrderByBlock pins the check half of bug 32: two
+// citations on one doc line were ordered by id, so the same tree listed them
+// in the order of its random suffixes. They follow their blocks' places.
+func TestFindingsOnOneLineOrderByBlock(t *testing.T) {
+	t.Parallel()
+	low := def("limit-zzzzzzzz", "a.go", 4, "1", nil)
+	high := def("limit-aaaaaaaa", "a.go", 7, "10", nil)
+	other := def("limit-bbbbbbbb", "0.go", 9, "5", nil)
+	rep := Run(Input{Repo: "api", Now: now, Defs: []block.Block{high, low, other}, Refs: []block.Reference{
+		ref("block", high.ID, "d.md", 3, nil), ref("block", low.ID, "d.md", 3, nil), ref("block", other.ID, "d.md", 3, nil),
+	}})
+	var got []string
+	for _, f := range rep.Findings {
+		if f.Doc == "d.md" {
+			got = append(got, f.ID)
+		}
+	}
+	if strings.Join(got, " ") != "limit-bbbbbbbb limit-zzzzzzzz limit-aaaaaaaa" {
+		t.Errorf("order = %v", got)
+	}
 }

@@ -192,7 +192,7 @@ func (s *System) Adopt(_ context.Context, res scan.Result) (AdoptResult, error) 
 					if label == "" {
 						label = id.Slug(strings.TrimSuffix(baseName(file), extract.Ext(file)))
 					}
-					blockID, err = id.New(s.idcfg, label)
+					blockID, err = s.mintFor(label, file, located.Pos.Start, src)
 					if err != nil {
 						return AdoptResult{}, err
 					}

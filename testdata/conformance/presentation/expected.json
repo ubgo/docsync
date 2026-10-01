@@ -25,6 +25,13 @@
     {
       "doc": "docs/p.md",
       "line": 7,
+      "id": "port-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/p.md",
+      "line": 7,
       "id": "long-m2q1s8vt",
       "state": "ok",
       "severity": "none"
@@ -35,13 +42,6 @@
       "id": "long-m2q1s8vt",
       "state": "range",
       "severity": "warning"
-    },
-    {
-      "doc": "docs/p.md",
-      "line": 7,
-      "id": "port-a2b6f8jk",
-      "state": "ok",
-      "severity": "none"
     }
   ]
 }

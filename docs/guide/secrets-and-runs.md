@@ -111,7 +111,9 @@ docs/readme.md:3  run skipped: cmd= is allowed only in docs matching run.allow
 runbooks/deploy.md:3  run ok: go version
 runbooks/deploy.md:5  run ok: sh 'scripts/smoke.sh'
 runbooks/deploy.md:7  run ok: echo "users: 42 in $DS_ENV ($DATABASE_URL)"
-4 none
+docs/readme.md
+  3	info     skipped            run not executed: cmd= is allowed only in docs matching run.allow
+1 info, 3 ok
 ```
 
 Two more lines in the runbook, one with a timeout shorter than the command and one that fails:
@@ -127,14 +129,22 @@ Fails: <!-- ds:run cmd="exit 3" expect=ok -->
 ds scan
 -->
 
-The `sleep 2` runs to completion despite `timeout=1s`. A command that misses its expectation prints `run FAILED` and makes `ds check` exit 1, although it adds no row to the findings summary:
+The `sleep 2` runs to completion despite `timeout=1s`. A command that misses its expectation prints `run FAILED` as it goes and is a `run failed` finding, an error naming the command, so `ds check` exits 1; a run that was not executed, here a `cmd=` outside `run.allow`, is `skipped` with the reason:
 
 ```console
 $ STAGING_DATABASE_URL=postgres://staging-db/app ds check --run; echo "exit=$?"
-…
+docs/readme.md:3  run skipped: cmd= is allowed only in docs matching run.allow
+runbooks/deploy.md:3  run ok: go version
+runbooks/deploy.md:5  run ok: sh 'scripts/smoke.sh'
+runbooks/deploy.md:7  run ok: echo "users: 42 in $DS_ENV ($DATABASE_URL)"
 runbooks/deploy.md:9  run ok: sleep 2
 runbooks/deploy.md:11  run FAILED: exit 3
-6 none
+docs/readme.md
+  3	info     skipped            run not executed: cmd= is allowed only in docs matching run.allow
+runbooks/deploy.md
+  11	error    run failed         run failed: exit 3
+      fix: run `exit 3` by hand to see why; fix the command, or the sentence at runbooks/deploy.md:11 if it no longer holds
+1 error, 1 info, 4 ok
 exit=1
 ```
 
@@ -305,7 +315,7 @@ docs/links.md
       fix: the page at http://127.0.0.1:8765/guide no longer has title "Manual"; confirm it is still the right page
   11	warning  retitled           title is now "Storage guide, 2nd edition"
       fix: the page at http://127.0.0.1:8765/guide no longer has title "\"Storage\""; confirm it is still the right page
-1 error, 3 warning, 2 none
+1 error, 3 warning, 2 ok
 ```
 
 Line 3 is missing from both runs, and line 11 is reported although the page title does contain "Storage"; [Writing the link form](#writing-the-link-form) explains both. Lines 13 and 15 are `ok` and, like every `ok`, are counted in the summary rather than listed.
@@ -470,7 +480,7 @@ A `from=` naming an undefined id, or a `from=` cycle, is also `chain broken`. Th
 ```console
 $ perl -pi -e 's/secrets.STRIPE_KEY/secrets.STRIPE_SECRET/' .github/workflows/deploy.yml
 $ ds check
-2 none
+2 ok
 ```
 
 <!-- doctest
@@ -581,7 +591,7 @@ $ PATH="$PWD/../plugins:$PATH" ds check --resolve
 internal/pay/stripe.go
   6	warning  unverifiable       provider env not reachable: procplugin: plugin executable not found: ds-resolve-env
       fix: external link checks need --resolve with network access
-2 warning, 2 none
+2 warning, 2 ok
 ```
 
 A plugin that is missing makes its hop `unverifiable`, a warning, rather than failing the check. The `fix:` line on these findings mentions external links; for a secret it means the plugin. Until the names agree, link one to the other where the plugins are installed:
@@ -629,7 +639,7 @@ $ PATH="$PWD/../plugins:$PATH" ds check --resolve
 internal/pay/stripe.go
   6	warning  unverifiable       provider env not reachable: provider env is not in resolve.providers
       fix: external link checks need --resolve with network access
-1 warning, 1 info, 2 none
+1 warning, 1 info, 2 ok
 $ cat .ds/hashes.json
 {
   "op-stripe-key-p9c2v7ld": "a245b332a780393cd4fafdcb467e7bb40ae2880f160782704d5bc2fdcab6bd8f"
@@ -650,7 +660,7 @@ $ PATH="$PWD/../plugins:$PATH" ds check --resolve
   2	error    out of sync        aws-stripe-key-c3d4e5f6 differs from truth op-stripe-key-p9c2v7ld
       fix: aws-stripe-key-c3d4e5f6 differs from its truth op-stripe-key-p9c2v7ld; run the sync (scripts/push-aws.sh) and ack the runbooks that cite the chain
 …
-1 error, 2 warning, 1 info, 2 none
+1 error, 2 warning, 1 info, 2 ok
 ```
 
 And with the GitHub secret deleted:
@@ -800,7 +810,7 @@ $ PATH="$PWD/../gobin:$PWD/../plugins:$PATH" ds check --resolve
 internal/pay/stripe.go
   6	warning  unverifiable       provider env not reachable: provider env is not in resolve.providers
       fix: external link checks need --resolve with network access
-1 warning, 1 info, 2 none
+1 warning, 1 info, 2 ok
 ```
 
 The same protocol serves other plugin kinds: `ds-pick-<scheme>` for a new `pick=` scheme and `ds-<verb>` for a new directive verb, each listed in config (`[plugins] picks = […]`, `verbs = […]`), and `ds-records-<source>` for a `ds:table` source named in `[records] source`. The request and reply shapes for each are in [the spec](../SPEC.md#374-process-plugins-for-any-language).
@@ -858,9 +868,11 @@ Each environment's def is tracked separately, so a change to prod is never compa
 $ ds check --env staging
 docs/hosts.md
   3	error    unacked            api-host-d4k8w2mn changed (value) since this sentence was first cited
+      | -api.example.com
+      | +api.staging.example.com
       still true: ds ack api-host-d4k8w2mn --doc docs/hosts.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/hosts.md:3, then ack
-1 error, 1 none
+1 error, 1 ok
 ```
 
 And a citation of an environment with no def is `broken`:
@@ -877,7 +889,7 @@ $ ds check
 docs/hosts.md
   7	error    broken             api-host-d4k8w2mn is not defined for env=dev
       fix: api-host-d4k8w2mn has no definition for env=dev; add one or cite a defined environment
-1 error, 2 none
+1 error, 2 ok
 ```
 
 Secrets work the same way: one `truth=true` def per environment for the same id.

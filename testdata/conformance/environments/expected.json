@@ -5,22 +5,22 @@
       "doc": "docs/e.md",
       "line": 1,
       "id": "host-a2b6f8jk",
-      "state": "ok",
-      "severity": "none"
-    },
-    {
-      "doc": "docs/e.md",
-      "line": 1,
-      "id": "host-a2b6f8jk",
-      "state": "ok",
-      "severity": "none"
-    },
-    {
-      "doc": "docs/e.md",
-      "line": 1,
-      "id": "host-a2b6f8jk",
       "state": "broken",
       "severity": "error"
+    },
+    {
+      "doc": "docs/e.md",
+      "line": 1,
+      "id": "host-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
+    },
+    {
+      "doc": "docs/e.md",
+      "line": 1,
+      "id": "host-a2b6f8jk",
+      "state": "ok",
+      "severity": "none"
     }
   ]
 }
