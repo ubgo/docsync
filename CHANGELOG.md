@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-01
+
+A release of the `ds` binary and the `cli` module (0.1.5), the library (0.1.3), and the tier modules (`ext/structured` 0.1.1, `ext/treesitter` 0.1.2, `ext/records/sqlite` 0.1.1): 81 fixes from a sweep that ran every documented behaviour against the binary. Read Upgrading first.
+
 ### Changed
 
 - `--resolve` now also needs `[resolve] enabled = true`, as `--run` needs `[run] enabled`; without it `ds` says so on stderr and contacts nothing. Add the key to a nightly job's config if it used `--resolve`.
