@@ -1,7 +1,7 @@
-# docsync refs format=2 extract=1 repo=docsync commit=5762357 scanned_at=2026-10-01T08:12:21Z
+# docsync refs format=2 extract=1 repo=docsync commit=38ea7bb scanned_at=2026-10-01T08:46:37Z
 id	repo	doc	line	verb	carrier	acked_hash	seen_hash	sentence_hash	env	args
 gitignorebody-jgek8ecm	docsync	README.md	181	block	block	651f34d3d4b1225c324b617cc64a81fc0ac0c5884b5cb066f55b0c782b0e9bef	a004e82def0f945a7406469d74c93bf1bc17045039b4d4c20545b1148ce7db96			id=gitignorebody-jgek8ecm
 flags-zfrzu4vz	docsync	README.md	243	block	block		4ac21d7b990947aec4faa6533935f75e7edf26f6f3623532c3660023576bb623			id=flags-zfrzu4vz
-rule-7y7umdv9	docsync	docs/SPEC.md	541	block	block	6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b	d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35			id=rule-7y7umdv9
-cacheinputs-vyhx6vbz	docsync	docs/SPEC.md	578	block	block	77f6b17de12458cad5ca52e09ca30da17ad7df0923c1121e788d3051af71f915	345ffb13442f6033632da3f832384dadf3ee2c7fa14e737af6c4d9dbb4661bd2			id=cacheinputs-vyhx6vbz
-statevalues-vwvk2kq3	docsync	docs/SPEC.md	584	block	block	868ac4d5875f8eb1592f0d27f887b067d42c0cffeb565514d77b937a350850a2	310f9f1b7e15ccde06309f2a8ea3ef2ab72c0a441d042c954d4c64894fbd0da0			id=statevalues-vwvk2kq3
+rule-7y7umdv9	docsync	docs/SPEC.md	545	block	block	6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b	d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35			id=rule-7y7umdv9
+cacheinputs-vyhx6vbz	docsync	docs/SPEC.md	582	block	block	77f6b17de12458cad5ca52e09ca30da17ad7df0923c1121e788d3051af71f915	345ffb13442f6033632da3f832384dadf3ee2c7fa14e737af6c4d9dbb4661bd2			id=cacheinputs-vyhx6vbz
+statevalues-vwvk2kq3	docsync	docs/SPEC.md	588	block	block	deb60cf236947df64115b1bfeffccc48d28666056f78b486c9d6ef3c8738a8fb	310f9f1b7e15ccde06309f2a8ea3ef2ab72c0a441d042c954d4c64894fbd0da0			id=statevalues-vwvk2kq3

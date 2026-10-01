@@ -12,7 +12,7 @@ import (
 // A repo-mode copy in docs/ written by a build whose links were relative to
 // the repository root is accepted as it is: no hand touched it and its
 // content is current, and an upgrade must not turn every such copy into an
-// error at once; the next refresh rewrites its links (bug 64). An edited
+// error at once; the next refresh rewrites its links (bugs 64 and 129). An edited
 // copy is still tampered.
 func TestRepoModeRootRelativeCopyIsAccepted(t *testing.T) {
 	t.Parallel()
@@ -79,7 +79,7 @@ func TestAboutHash(t *testing.T) {
 // A def added to a member inside a cited block moves the block's lines and
 // puts a directive in its code without changing its hash. The copy that
 // shows the old lines is stale, for refresh, not tampered: no hand touched
-// it. A copy whose code was edited is still tampered.
+// it (bug 129). A copy whose code was edited is still tampered.
 func TestCopyWithMovedLinesIsStaleNotTampered(t *testing.T) {
 	t.Parallel()
 	before := def("scan-k7m2p4xq", "a.go", 3, "type S interface {\n\tB() int\n}", nil)

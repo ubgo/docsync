@@ -921,9 +921,8 @@ func TestSecretContentIsWithheld(t *testing.T) {
 // TestNestedCheckoutsAreNotScanned: a directory with its own .git (a git
 // worktree, a submodule, a cloned dependency) is another repository. Its
 // directives are not this repository's, and a nested copy of the same tree
-// made every one of its defs a duplicate id. A .git file counts as well as a
-// .git directory, since a worktree and a submodule each have a file. Pins the
-// nested-checkout fix.
+// made every one of its defs a duplicate id (bug 128). A .git file counts as
+// well as a .git directory, since a worktree and a submodule each have a file.
 func TestNestedCheckoutsAreNotScanned(t *testing.T) {
 	t.Parallel()
 	fsys := tree()

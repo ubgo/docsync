@@ -29,3 +29,84 @@
 20 policy.require_doc and the unmarked report skipped every file a syntax tier read
 21 ds github comment left each block diff fence open
 22 the text inside a Go string literal was not part of the block hash
+23 finding diff taken from git at the ledger header commit instead of the body store, unchecked by hash
+24 diff since an ack showed the first-seen body instead of the acked one
+25 ack without a prior scan did not store the acked body
+26 ds check text output never printed the diff
+27 changed one-value constant classified body, not value
+28 missing old body classified body, so stability=api passed a signature change checked without a scan
+29 failed ds:run under check --run exited 1 with no finding
+30 summary counted passing findings as "none"
+31 report --stalest order depended on which second acks landed in
+32 find, map and same-line check findings ordered by random id suffix
+33 adopt and def dry runs printed ids the real run did not write
+34 report --unmarked and --gaps listed doc pages
+40 ds def wrote a trailing directive into properties/INI values
+41 ds def path#Holder.member failed for TypeScript and Python
+42 shell functions had no symbol and ds def could not find them
+43 ds def path:A-B silently used line A
+44 ds render left the bare ds:def line in .txt pages
+45 remote JSON def recorded at line 1
+46 .mts .cts .cjs .pyi .tfvars had no comment style
+47 spec said a relabelled citation resolves; it is broken with a suggestion
+48 ds def path#Name used a line matcher instead of the scanning tier
+49 span= ignored by the YAML, TOML and HCL tiers
+50 multi-line directive comment silently dropped
+51 link-form directive with spaces silently dropped
+52 quoted link-form value kept its quotes
+53 remote defs with different picks on one line reported as one block
+54 type= validated nothing
+55 malformed ids accepted
+56 remedies named a nonexistent [scan] key and the ds:table remedy for cfg query=
+57 ds def .gitignore:1 could not derive a label
+58 ds def on a directive line inserted a second directive; crossing blocks not reported
+59 two inline facts on one line reported as one block
+60 render --at took line ranges and permalink commit from HEAD; git error blamed the repository
+61 context --since <commit> ignored and any value accepted
+62 context --since ack / --mode diff disagreed with check's diff
+63 context <id> omitted block-position citations
+64 rendered links were repository-relative, broken from docs/
+65 context with no budget printed "of 0"
+66 ds:block at=<sha> rendered only a link in plain render
+67 ds:cfg block form passed check but render rejected it
+68 ds lsp ignored the client's rootUri
+69 github comment --dry-run required GITHUB_TOKEN/REPOSITORY
+70 review --out only worked with --ai
+71 undo --list called moved committed writes uncommitted and named HEAD
+72 claim about= stayed expired after ack until ds scan
+73 ack --from-commit ignored note=
+74 rename rewrote ids in an exported audit log
+75 a check --json report inside the repo was scanned as citations
+76 SPEC showed ds ack <id> --note without --doc/--line
+77 refresh with nothing to record rewrote ledger and refs
+80 op:// addresses looked for ds-resolve-1password, but the shipped plugin is ds-resolve-onepassword
+81 ds-resolve-vault passed the vault: prefix to vault kv get
+82 ds-resolve-onepassword reported any op failure as does not exist
+83 resolve.enabled ignored, no ds-resolve-env, resolver findings carried the URL remedy
+84 no stale copy state after a rotation
+85 local=true def unverifiable even where its file is present
+86 ds:run timeout= ignored, no expect HTTP-status mode, substring expect ignored exit status
+87 ds:url expect= ignored, network failure reported dead and cached for url.ttl
+100 publish into a local-directory index wrote without committing
+101 workspace stale_after_commits and index were parsed and unused
+102 another repository's citation printed without its repository; its ack remedy failed where printed
+103 ds why missed citers in other repositories
+104 a git-URL index blocked ds def and ds scan until the first ds sync
+105 repo-mode copies of another repository's block had no body and a broken link; render printed copies twice; refresh --dry-run omitted copies
+106 MCP ack accepted any delegated_by and recorded the actor as mcp
+107 MCP impact tool had no staged mode
+108 ds init --agents narrower than SPEC 26.10
+109 GitHub action README promised an ack commit the action never made
+110 publish workflow template never produced the junit.xml it published
+111 Docusaurus 3.10 site did not build with the documented configuration
+112 Hugo status partial listed every reference on every page
+120 config keys parsed but inert (notify.github_issues, sources, workspace.id/env), env.known only checked env.default
+121 [id] suffix_length range only enforced at mint, not config load
+122 SPEC said scan names every skipped file; it names only files that held defs or citations
+123 SPEC section 37 library API and modules did not match the code
+124 SPEC section 17 findings table did not match check.StateValues
+125 ds doctor had no workspace, index reachability or resolver rows
+126 cli.WithName still printed ds in version and remedies; secret ds:cfg render gave a misleading warning
+127 ds init docs glob depends on layout and was undocumented
+128 ds scan read checkouts nested in the repository (worktrees, cloned dependencies) as part of it
+129 a repo-mode copy that only moved was reported tampered, and old-style copies failed check on upgrade

@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `--resolve` now also needs `[resolve] enabled = true`, as `--run` needs `[run] enabled`; without it `ds` says so on stderr and contacts nothing. Add the key to a nightly job's config if it used `--resolve`.
+- Config keys that were accepted and did nothing are refused when the config loads, naming the key: `notify.github_issues`, `[sources.*]`, `[workspace.id]` and `[workspace.env]`.
+- `env.known` applies to every environment name: `env.default`, `[run.env.<name>]`, `--env` on `check`, `render` and `def`, and `env=` on defs and citations.
+- `[id] suffix_length` and `suffix_alphabet` are checked when the config loads.
+- Agent acks (MCP and `ds ack --agent`) require a delegate listed in `[owners]`; MCP acks are recorded under the client's name.
+- `ds def`, `ds adopt` and `ds def --fix` derive an id's suffix from the repository, the file, the line and its content, so a dry run prints the id the real run writes.
+- Rendered links are relative to the page, so links in `docs/` work on GitHub; `{rel}` joins `{file}` in `[check] permalink`. A repo-mode copy written with the old root-relative links is accepted as it is, and the next `ds refresh` rewrites it.
+- The `ds check` text summary counts passing findings as `ok` instead of `none`, and prints the diff under each finding.
+- A citation must carry its block's current label: one with a stale label is `broken` and names the id it meant (the spec said the suffix alone identified it).
+- `<!-- ds:cfg -->` in block position is a scan problem, since render cannot show it.
+- Reports `ds` writes (`check --json`, `audit --export`) are not scanned, so they create no phantom citations; the CI template from `ds init` writes its report to `$RUNNER_TEMP`.
+- The scanner skips any checkout nested in the repository (a directory with its own `.git`: a worktree, a submodule, a cloned dependency), as the spec already said it did for submodules.
+
+### Added
+
+- `ds-resolve-env`, shipped in the release archives and install scripts: `source=env` hops are checked against the environment `ds` runs in.
+- A `stale copy` finding: after a rotation, a copy that still holds the old value.
+- A `run failed` finding for a `ds:run` that fails under `check --run`; a run not executed is `skipped` with the reason.
+- `ds doctor` rows for the workspace, the reachability of its index, and each `resolve.providers` plugin.
+- `ds init --agents` registers `ds mcp` with Cursor, VS Code and Gemini configs where they exist, and honours `agents.mcp` and `agents.session_hook`.
+- The MCP `impact` tool takes `staged`; `ds why` lists citations from other repositories; `ds context --since <commit>` works.
+- The GitHub action commits acks recorded under the `docs-acked` label to the pull request branch; the publish workflow template produces the JUnit report it publishes.
+- The Docusaurus plugin gains `sourceUrl` and refuses the `remarkPlugins` position with a clear error.
+- `scripts/e2e/determinism.sh`, `round-trips.sh`, `upgrade.sh`, `resolvers.sh`, `def-targets.sh`, `cli-commands.sh`, `classify-and-diff.sh`, `workspace-surfaces.sh`, and source-scanning tests that config keys take effect, that messages name real keys and commands, and that SPEC's findings table and library API match the code.
+
+### Fixed
+
+- Checking and diffs: a finding's diff comes from the stored body of the hash its citation was acked or first seen at, and `ds ack` stores the body it approves, so the diff is never the wrong old version or missing. A change checked without a prior scan is never classified `body` by default, so `stability=api` no longer passes a signature change; a changed one-line constant is `value`. `ds find`, `ds map`, `ds report --stalest` and same-line findings are ordered by place, not by random id suffix.
+- `ds def`: it no longer writes a trailing directive into `.properties`, INI and `.env` values (where it became part of the value); `path#Name` finds every name a scan records (`Holder.Member`, Python constants and class attributes, TypeScript object paths, HCL and TOML tables, shell functions); `path:A-B` binds that range or refuses; a dotfile gets a label; a target on an existing directive returns that def instead of adding a second one.
+- Directives: `.mts`, `.cts`, `.cjs`, `.pyi`, `.tfvars`, `.markdown` and `.env.*` take directives; a directive comment over several lines is read; a link-form directive with spaces is written `[text](<ds:…>)` and one markdown cannot read is reported instead of dropped; quoted link values lose their quotes; `span=` works in YAML, TOML and HCL; `type=` and ids are validated; two inline facts in one sentence, and two remote defs picking different values on one line, are separate blocks.
+- Render, context and commands: `render --at` takes everything from that commit; `ds:block at=` renders its snapshot; `.txt` pages lose the bare directive line; `context` shows block-position citations and the same diff as `check`; `ds lsp` uses the client's workspace root; `github comment --dry-run` needs no token; `review --out` works without `--ai`; `undo --list` labels moved committed writes correctly; a renewed claim clears at once; `ack --from-commit` records `note=`; `refresh` with nothing to record writes nothing.
+- Secrets, URLs and runs: 1Password addresses resolve through the shipped `ds-resolve-onepassword`; Vault addresses lose their `vault:` prefix; a signed-out `op` is `unverifiable`; a `local=true` def is checked where its file exists; `ds:run` honours `timeout=` and `expect=<status>` and requires a zero exit; `ds:url` honours `expect=`, and a link that gets no answer is `unverifiable` and never cached as dead.
+- Cross-repo: `ds publish` commits a local git index; `stale_after_commits` and `index` take effect; another repository's citation says which repository and where to ack it; a git-hosted index is cloned by the first command that needs it; repo-mode copies of another repository's block carry its body and are not printed twice.
+- A repo-mode copy whose code is all still in its block, only moved (a def added inside it, a `lines=` window shifted), is `stale` for `ds refresh`, not `tampered`.
+- `cli.WithName` reaches `version`, remedies and doctor rows; the Hugo status partial lists only the current page's references; the spec's findings table, library API, scan-skip wording and `ds init` docs default match the code.
+
+### Upgrading
+
+Two changes may report once after upgrading. Repo-mode copies are accepted with their old links, so nothing is needed there; run `ds refresh` when convenient to make their links relative to the page. If a nightly job runs `ds check --resolve`, add `[resolve] enabled = true` to `.ds/config.toml`, or it will check nothing.
+
 ## [0.1.4] - 2026-10-01
 
 A release of the `ds` binary and the `cli` module (0.1.4), the library (0.1.2) and the tree-sitter tier (0.1.1). Read Upgrading before you scan with it: Go blocks containing strings report once.

@@ -523,12 +523,10 @@ $ ds scan
 1 files, 6 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file py/
 max-retries-2hgcy9ty    const  py/app.py:4-4      cited by 0
-name-twpzwnrp           func   py/app.py:14-15    cited by 0
 store-class-88b3vcgd    type   py/app.py:7-21     cited by 0
-store-save-vbnk5kju     func   py/app.py:18-21    cited by 0
 store-timeout-scjg3yuj  const  py/app.py:10-10    cited by 0
 name-twpzwnrp           func   py/app.py:14-15    cited by 0
-save-vbnk5kju           func   py/app.py:18-21    cited by 0
+store-save-vbnk5kju     func   py/app.py:18-21    cited by 0
 connect-2fkvtcsc        func   py/app.py:25-26    cited by 0
 $ ds find Store.timeout
 store-timeout-scjg3yuj  const  py/app.py:10-10    cited by 0
@@ -1061,15 +1059,12 @@ $ ds find --file code/
 app-class-wkk7f6t7      stmt   code/App.java:2-10      cited by 0
 app-port-9ysqns5j       stmt   code/App.java:4-4       cited by 0
 app-run-kqdx5h53        stmt   code/App.java:7-9       cited by 0
-connect-76suf4x5        func   code/lib.rs:17-19       cited by 0
-deploy-func-re47zmq6    func   code/deploy.sh:8-11     cited by 0
-deploy-region-kakh3yyr  stmt   code/deploy.sh:5-5      cited by 0
 docker-build-2c4hwumb   stmt   code/Dockerfile:2-5     cited by 0
 docker-expose-e6mwzcqk  stmt   code/Dockerfile:9-10    cited by 0
 make-port-wmsgk88s      stmt   code/Makefile:2-2       cited by 0
 make-build-cr6r4dg6     stmt   code/Makefile:5-6       cited by 0
 deploy-region-kakh3yyr  stmt   code/deploy.sh:5-5      cited by 0
-deploy-func-re47zmq6    stmt   code/deploy.sh:8-11     cited by 0
+deploy-func-re47zmq6    func   code/deploy.sh:8-11     cited by 0
 max-conn-ncgt9z56       const  code/lib.rs:2-2         cited by 0
 pool-7juqmkbh           type   code/lib.rs:5-7         cited by 0
 new-zv9qq7bm            func   code/lib.rs:11-13       cited by 0

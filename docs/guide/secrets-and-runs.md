@@ -327,10 +327,10 @@ docs/links.md
       fix: the link http://127.0.0.1:8765/toast returned 404; update or remove it at docs/links.md:7
   9	warning  retitled           title is now "Storage guide, 2nd edition"
       fix: the page at http://127.0.0.1:8765/guide no longer has title "Manual"; confirm it is still the right page
-1 error, 2 warning, 4 ok
+1 error, 2 warning, 5 ok
 ```
 
-Lines 3, 11, 13 and 15 are `ok` and, like every `ok`, are counted in the summary rather than listed; [Writing the link form](#writing-the-link-form) explains how lines 3 and 11 are written.
+Lines 3, 11, 13, 15 and 18 are `ok` (line 18 answers the 404 it expects) and, like every `ok`, are counted in the summary rather than listed; [Writing the link form](#writing-the-link-form) explains how lines 3 and 11 are written.
 
 <!-- doctest
 kill $(cat ../server.pid)
