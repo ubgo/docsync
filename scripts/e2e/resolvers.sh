@@ -45,13 +45,19 @@ if [ -z "\$v" ]; then echo 'No value found at that path' >&2; exit 2; fi
 printf '%s' "\$v"
 EOF
 chmod +x "$B/op" "$B/vault"
+# On Windows the plugins are native programs and start a CLI through PATHEXT,
+# which finds a .bat but never a #! script; a one-line wrapper hands each
+# stand-in to Git Bash's sh, so the same stand-ins run on every platform.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) for c in op vault; do printf '@sh "%%~dp0%s" %%*\r\n' "$c" > "$B/$c.bat"; done ;;
+esac
 PATH="$B:$PATH"; export PATH
 printf 'op://Platform/stripe/credential sk_live_one\nsecret/stripe sk_live_one\n' > "$S/secrets"
 
 W="$S/w"; mkdir -p "$W/docs" "$W/runbooks"; cd "$W" || exit 1
 git init -q .; git config user.email t@t; git config user.name t
 printf 'STRIPE_KEY=op://Platform/stripe/credential   # ds:def id=op-stripe-p9c2v7ld secret=true truth=true\nVAULT_KEY=vault:secret/stripe   # ds:def id=vault-stripe-b3c7g9kl secret=true from=op-stripe-p9c2v7ld\n' > secrets.env
-printf 'package pay\n\nimport "os"\n\nfunc key() string {\n\t// ds:def id=app-stripe-m4w8k2qn secret=true source=env from=op-stripe-p9c2v7ld pick=regex:\x27"(\\w+)"\x27\n\treturn os.Getenv("DS_E2E_STRIPE_KEY")\n}\n' > pay.go
+printf 'package pay\n\nimport "os"\n\nfunc key() string {\n\t// ds:def id=app-stripe-m4w8k2qn secret=true source=env from=op-stripe-p9c2v7ld pick=regex:\047"(\\w+)"\047\n\treturn os.Getenv("DS_E2E_STRIPE_KEY")\n}\n' > pay.go
 printf '# Pay\n\nStripe: <!-- ds:chain id=app-stripe-m4w8k2qn -->\n\n[v](ds:cfg?id=vault-stripe-b3c7g9kl)\n\n<!-- ds:url href=http://127.0.0.1:1/gone -->\n\n<!-- ds:def id=prod-env-x4y5z6a7 file=.env.prod local=true pick=env:STRIPE_KEY -->\n' > docs/pay.md
 ds init >/dev/null
 printf '\n[secret]\npaths = []\n' >> .ds/config.toml

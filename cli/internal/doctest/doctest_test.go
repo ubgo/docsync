@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -323,5 +324,30 @@ func TestMainRuns(t *testing.T) {
 	main()
 	if code != 0 {
 		t.Errorf("exit = %d", code)
+	}
+}
+
+// TestShellForms: with a cygpath on PATH (an MSYS shell on Windows) the
+// runner also recognises the repository in the spelling that shell prints;
+// with none, or one that fails, there is no other spelling.
+func TestShellForms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in cygpath is a #! script, which Windows cannot start; the Windows run exercises the real one through TestRunPage")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "cygpath")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\n[ \"$2\" = fail ] && exit 1\necho /tmp/msys-form\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	if got := shellForms("C:/x"); len(got) != 1 || got[0] != "/tmp/msys-form" {
+		t.Errorf("with cygpath = %q", got)
+	}
+	if got := shellForms("fail"); got != nil {
+		t.Errorf("a failing cygpath = %q", got)
+	}
+	t.Setenv("PATH", t.TempDir())
+	if got := shellForms("C:/x"); got != nil {
+		t.Errorf("no cygpath = %q", got)
 	}
 }

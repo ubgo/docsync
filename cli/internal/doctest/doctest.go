@@ -435,7 +435,8 @@ func runPage(name, page, tmp string, env []string, shell string, out io.Writer) 
 		return result{}, err
 	}
 	resolved, _ := filepath.EvalSymlinks(root)
-	r := &runner{root: root, cwd: repo, env: env, shell: shell, out: out, wantN: newNormaliser(), gotN: newNormaliser(root, resolved), ids: newIDPairs()}
+	forms := append([]string{root, resolved}, shellForms(root)...)
+	r := &runner{root: root, cwd: repo, env: env, shell: shell, out: out, wantN: newNormaliser(), gotN: newNormaliser(forms...), ids: newIDPairs()}
 	var res result
 	for _, s := range steps {
 		switch s.kind {
@@ -480,6 +481,24 @@ func runPage(name, page, tmp string, env []string, shell string, out io.Writer) 
 		}
 	}
 	return res, nil
+}
+
+// shellForms returns the other spellings a shell may print root in. Under
+// Git Bash on Windows, `pwd` prints the temporary directory through MSYS's
+// mounts (C:\Users\…\Temp becomes /tmp), a path nothing else here would
+// recognise as the page's repository; cygpath, which every MSYS shell
+// carries, gives that spelling. Elsewhere there is no cygpath and no other
+// spelling.
+func shellForms(root string) []string {
+	p, err := exec.LookPath("cygpath")
+	if err != nil {
+		return nil
+	}
+	out, err := exec.Command(p, "-u", root).Output()
+	if err != nil {
+		return nil
+	}
+	return []string{strings.TrimSpace(string(out))}
 }
 
 // write performs a file step.
