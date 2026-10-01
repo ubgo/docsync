@@ -54,7 +54,10 @@ chmod +x "$B/op" "$B/vault"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) for c in op vault; do printf '@sh "%%~dp0%s" %%*\r\n' "$c" > "$B/$c.bat"; done ;;
 esac
-PATH="$B:$PATH"; export PATH
+# PATH is split on ':' in Git Bash, so a C:/ path there breaks in two; it
+# takes the shell's own /c/ spelling of the directory.
+PB=$B; command -v cygpath >/dev/null 2>&1 && PB=$(cygpath -u "$B")
+PATH="$PB:$PATH"; export PATH
 printf 'op://Platform/stripe/credential sk_live_one\nsecret/stripe sk_live_one\n' > "$S/secrets"
 
 W="$S/w"; mkdir -p "$W/docs" "$W/runbooks"; cd "$W" || exit 1
