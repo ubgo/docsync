@@ -220,8 +220,8 @@ func TestRenameGraphReportAdoptUndo(t *testing.T) {
 		_ = os.Chmod(filepath.Join(dir, "config/auth.yaml"), 0o644)
 		os.Remove(filepath.Join(dir, "docs/ro.md"))
 	}
-	write(t, dir, "-.txt", "x\n")
-	write(t, dir, "docs/dash.md", "[x](-.txt#L1)\n")
+	write(t, dir, "-.-", "x\n")
+	write(t, dir, "docs/dash.md", "[x](-.-#L1)\n")
 	if r := run(t, dir, v, "adopt"); r.code != ExitError {
 		t.Errorf("adopt unmintable = %+v", r)
 	}

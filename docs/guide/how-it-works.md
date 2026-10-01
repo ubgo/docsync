@@ -293,7 +293,7 @@ So `ds def config/app.json:3` refuses and says what to do instead: write a remot
 
 ```
 $ ds def config/app.json:3
-ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config/app.json pick=…`), or add the type to [scan] if it does have comments
+ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config/app.json pick=…`). The comment syntaxes are built in, not configured: if this type does take comments, it needs an entry in docsync's carrier table
 ```
 
 This one lives in a markdown page:

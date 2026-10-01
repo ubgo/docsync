@@ -52,6 +52,9 @@ var (
 	ErrBadAlphabet   = errors.New("id: alphabet must be unique lowercase ASCII letters and digits, at least 16 symbols")
 	ErrBadLength     = errors.New("id: suffix length out of range")
 	ErrEntropySource = errors.New("id: reading random bytes failed")
+	// ErrBadShape is an id outside the §8 character rule: lowercase letters
+	// and digits in at least two words joined by single dashes.
+	ErrBadShape = errors.New("id: must be lowercase letters and digits in words joined by single dashes, label-suffix")
 )
 
 // minAlphabet keeps 32^n arithmetic meaningful; a 4-symbol alphabet with
@@ -160,6 +163,27 @@ func Split(c Config, id string) (prefix, suffix string, err error) {
 		return "", "", fmt.Errorf("%w: %q", ErrBadSuffix, suffix)
 	}
 	return prefix, suffix, nil
+}
+
+// CheckShape reports whether id keeps the §8 character rule every reader of
+// ids relies on: lowercase ASCII words of letters and digits joined by single
+// dashes, at least two of them -- `<label>-<suffix>`.
+//
+// It is looser than Split on purpose. Split holds an id to the minting
+// config, the suffix length and alphabet, and ids are also written by hand:
+// the spec's own `oncall-lead-r9k1w5zb` uses a digit the alphabet leaves
+// out, and short hand-made ids like `sess-ttl` cite and render correctly.
+// Reporting those would bury the ids that actually break things -- `Foo_Bar`
+// (bug 55), which a slug never matches, `ds rename` cannot relabel and a
+// suffix lookup cannot split -- under ones that work.
+func CheckShape(id string) error {
+	if id == "" {
+		return ErrEmpty
+	}
+	if !strings.Contains(id, "-") || !validPrefix(id) {
+		return ErrBadShape
+	}
+	return nil
 }
 
 // Valid reports whether id parses under the config.

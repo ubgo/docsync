@@ -256,7 +256,7 @@ func (a *App) defCmd() *cobra.Command {
 	var opts docsync.DefineOptions
 	var dry, fix bool
 	cmd := &cobra.Command{
-		Use:   "def <file>#<symbol> | <file>:<line> | --fix",
+		Use:   "def <file>#<symbol> | <file>:<line> | <file>:<start>-<end> | --fix",
 		Short: "return the block's id, minting one and inserting the directive when it has none; --fix re-mints duplicated ids",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

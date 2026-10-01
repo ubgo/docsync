@@ -177,6 +177,7 @@ const (
 	remedyURL            = "external link checks need --resolve with network access"
 	remedyRun            = "pass --run to execute %s:run directives where they are enabled"
 	remedyTable          = "register a record source in [records] to render %s:table"
+	remedyCfgQuery       = "query sources are not built yet (SPEC §38); put the value in a def and cite it with %s:cfg?id=…, or leave the link text as the last known value"
 	remedyOrphan         = "the page %s covers %s, which is not defined; remove it from covers or restore the def"
 	remedyUncovered      = "%s is defined but nothing cites or covers it; cite it from a page or remove the def"
 	remedyUnknownVerb    = "%s is not a registered verb; register a handler or fix the directive at %s:%d"

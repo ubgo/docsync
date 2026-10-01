@@ -62,6 +62,11 @@ var (
 	// with the scan's own extractor, so the refusal comes before the file is
 	// touched and `--dry-run` reports it too.
 	ErrWouldNotBind = errors.New("docsync: the directive would not bind")
+	// ErrRange is a `path:start-end` target that no def can bind exactly:
+	// the tier's block from start ends elsewhere and no span= moves it to
+	// end. Refused rather than narrowed, because the old reading -- the
+	// first line only, silently -- defined a block nobody asked for.
+	ErrRange = errors.New("docsync: no def binds exactly that line range")
 	// ErrBadLabel is a rename target that is not a label: lowercase
 	// words joined by single dashes. A label with a space was written into
 	// every def and citation, and each came out as a broken directive.

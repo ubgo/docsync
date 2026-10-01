@@ -458,7 +458,7 @@ A remote def hashes the picked value, so the citation is flagged when `server.po
 
 ```
 $ ds def config/app.json:1
-ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config/app.json pick=…`), …
+ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config/app.json pick=…`)…
 ```
 
 A bare `ds:def` line already present in such a file is reported as `directive is not inside a comment`, and `ds repair --apply` removes it; in a file that does have comments, `ds repair --apply` comments it instead.
@@ -585,7 +585,7 @@ picks `STRIPE_KEY` out of the line (see [Secrets and chains](#secrets-and-chains
 
 A `pick` argument that contains a space must have the whole value quoted, because a value is only quoted when it starts with a quote: write `pick="after:'version: '"`, not `pick=after:'version: '`; the second is a `problem`, `key must match [a-z][a-z0-9_]*`.
 
-Two remote defs whose picks land on the same line of the same file are reported as `two ids bound to the same block`, even when the picks differ. `ds scan` names both directives:
+Two remote defs whose different picks land on the same line of the same file are two blocks; only the same pick twice is reported as `two ids bound to the same block`:
 
 ```markdown file=docs/pick.md append=true
 <!-- ds:def id=p-betw-j2j2j2j2 file=t/a.txt pick=between:'(',')' -->
@@ -593,12 +593,8 @@ Two remote defs whose picks land on the same line of the same file are reported 
 
 ```
 $ ds scan
-9 files, 12 defs, 0 refs, 2 problems, 0 skipped
-  docs/pick.md:10  scan: two ids bound to the same block: p-after-h2h2h2h2, p-betw-j2j2j2j2 at t/a.txt:2-2
-  docs/pick.md:14  scan: two ids bound to the same block: p-after-h2h2h2h2, p-betw-j2j2j2j2 at t/a.txt:2-2
+9 files, 12 defs, 0 refs, 0 problems, 0 skipped
 ```
-
-Keep one remote def per target line.
 
 ## ds:block — cite or show a block
 

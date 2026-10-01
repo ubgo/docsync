@@ -53,6 +53,10 @@ type entry struct {
 	end       int // last line of the entry
 	isScalar  bool
 	scalarVal string
+	// span and hasSpan carry the def's `span=+N`, which replaces the
+	// entry's own extent with the bound line plus N lines.
+	span    int
+	hasSpan bool
 }
 
 // Extract binds directives to YAML entries.

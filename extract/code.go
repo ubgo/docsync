@@ -54,7 +54,7 @@ func (Code) Match(p string) bool { return extIn(p, codeExts) }
 var sqlExts = map[string]bool{".sql": true}
 
 // indentExts use indentation blocks after a line ending in `:`.
-var indentExts = map[string]bool{".py": true}
+var indentExts = map[string]bool{".py": true, ".pyi": true}
 
 // Extract implements Extractor.
 func (Code) Extract(p string, src []byte, prefix string) Found {
@@ -89,7 +89,7 @@ var declRE = []struct {
 	symbol func(m []string) string
 }{
 	{regexp.MustCompile(`^\s*func\s+\(\s*\w+\s+\*?(\w+)\s*\)\s+(\w+)\s*\(`), block.KindFunc, func(m []string) string { return m[1] + "." + m[2] }},
-	{regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:func|fn|function|def|fun)\s+(\w+)`), block.KindFunc, func(m []string) string { return m[1] }},
+	{regexp.MustCompile(`^\s*(?:export\s+)?(?:local\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:func|fn|function|def|fun)\s+(\w+)`), block.KindFunc, func(m []string) string { return m[1] }},
 	{regexp.MustCompile(`^\s*(?:export\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:type|class|struct|interface|enum|trait|impl|object|record|data\s+class)\s+(\w+)`), block.KindType, func(m []string) string { return m[1] }},
 	{regexp.MustCompile(`^\s*(?:const|var)\s*\(\s*$`), block.KindConst, func([]string) string { return "" }},
 	{regexp.MustCompile(`^\s*(?:export\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:const|var|let|static|val)\s+(?:[\w\[\]<>*.]+\s+)?(\w+)\s*(?:[=:]|$)`), block.KindConst, func(m []string) string { return m[1] }},
@@ -242,6 +242,17 @@ var goDeclRE = regexp.MustCompile(`^\s*(?:const|var)\s+([A-Za-z_]\w*)`)
 // goExt is the extension whose declarations put the name before the type.
 const goExt = ".go"
 
+// shellExts are the shells whose POSIX function form, `name() {`, carries
+// no keyword: the generic `function name` rule never saw it, so a def above
+// one was recorded with no symbol and `ds def script.sh#deploy` found
+// nothing (bug 42). The `function name {` form is the generic rule's.
+var shellExts = map[string]bool{".sh": true, ".bash": true, ".zsh": true}
+
+// shellFuncRE reads `name() {`, `name () {` and `name()` with the brace on
+// the next line. The parentheses must be empty, which is what keeps a command
+// substitution or a test out of it.
+var shellFuncRE = regexp.MustCompile(`^\s*([A-Za-z_][\w-]*)\s*\(\s*\)\s*(?:\{.*)?$`)
+
 // declaration classifies the line at i (0-based) and extracts its symbol,
 // reading the lines above it so an entry inside a declaration group is
 // recognised as the declaration it is. See enclosingGroup for why the
@@ -252,6 +263,11 @@ func declaration(lines []string, i int, ext string) (block.Kind, string) {
 	if ext == goExt {
 		if m := goDeclRE.FindStringSubmatch(lines[i]); m != nil {
 			return block.KindConst, m[1]
+		}
+	}
+	if shellExts[ext] {
+		if m := shellFuncRE.FindStringSubmatch(lines[i]); m != nil {
+			return block.KindFunc, m[1]
 		}
 	}
 	if k, sym := declLine(lines[i]); sym != "" {

@@ -471,7 +471,7 @@ func TestAdopt(t *testing.T) {
 		t.Error("descending range parses as a line target; Locate decides")
 	}
 	// A target whose label slugs to nothing cannot be minted.
-	dash := fstest.MapFS{"-.txt": {Data: []byte("x\n")}, "docs/d.md": {Data: []byte("[x](-.txt#L1)\n")}}
+	dash := fstest.MapFS{"-.-": {Data: []byte("x\n")}, "docs/d.md": {Data: []byte("[x](-.-#L1)\n")}}
 	s5 := newSys(t, dash)
 	res5, _ := s5.Scan(context.Background())
 	if _, err := s5.Adopt(context.Background(), res5); err == nil {

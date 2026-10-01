@@ -14,22 +14,22 @@ ds init
 | Language or format | Files | Tier | `ds def path#Name` | Comment form |
 |---|---|---|---|---|
 | Go | `.go` | `go` (syntax) | functions, methods, types, constants, variables, group entries, imports | `//` |
-| TypeScript | `.ts` | `typescript` (syntax) | functions, classes, interfaces, enums, type aliases, constants, members by bare name | `//` |
+| TypeScript | `.ts`, `.mts`, `.cts` | `typescript` (syntax) | functions, classes, interfaces, enums, type aliases, constants, members (`Options.port` or `port`), object paths (`server.port`) | `//` |
 | TSX | `.tsx` | `tsx` (syntax) | as TypeScript | `//` |
-| JavaScript | `.js`, `.jsx`, `.mjs` | `javascript` (syntax) | functions, classes, constants | `//` |
-| Python | `.py` | `python` (syntax) | functions, classes, methods by bare name; constants by line | `#` |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | `javascript` (syntax) | functions, classes, constants, object paths | `//` |
+| Python | `.py`, `.pyi` | `python` (syntax) | functions, classes, methods (`Store.save` or `save`), module constants, class attributes | `#` |
 | SQL | `.sql` | `sql` (syntax) | statements, by the name they create | `--` |
 | YAML | `.yaml`, `.yml`, `Taskfile.yml` | `yaml` (structured) | key path, `server.port` | `#` |
-| TOML | `.toml` | `toml` (structured) | key path, `server.port`; tables by line | `#` |
-| HCL, Terraform | `.tf`, `.hcl` | `hcl` (structured) | by line only | `#` or `//` |
+| TOML | `.toml` | `toml` (structured) | key path, `server.port`; tables, `server` | `#` |
+| HCL, Terraform | `.tf`, `.hcl`, `.tfvars` | `hcl` (structured) | block and attribute paths, `variable.region`, `resource.aws_instance.web.instance_type` | `#` or `//` |
 | INI | `.ini`, `.cfg` | `config` | `section.key` | `#` or `;` |
 | dotenv | `.env`, `*.env`, `.tpl` | `config` | `NAME` | `#` |
 | Java properties | `.properties` | `config` | `"server.port"` (quoted) | `#` or `!` |
 | Other config | `.conf`, `.editorconfig` | `config` | by line | `#` |
 | Rust, Kotlin, Ruby, PHP | `.rs`, `.kt`, `.rb`, `.php` | `code` (heuristic) | `fn`, `struct`, `const`, `fun`, `def`, `function` | `//`; `#` for Ruby |
 | C, C++, C#, Java, Swift, Scala, Dart, Zig | `.c`, `.h`, `.cpp`, `.cs`, `.java`, `.swift`, `.scala`, `.dart`, `.zig` | `code` (heuristic) | by line | `//` |
-| Shell, Perl, R, Elixir, Nix | `.sh`, `.bash`, `.zsh`, `.pl`, `.r`, `.ex`, `.exs`, `.nix` | `code` (heuristic) | by line | `#` |
-| Lua, Haskell | `.lua`, `.hs` | `code` (heuristic) | by line | `--` |
+| Shell, Perl, R, Elixir, Nix | `.sh`, `.bash`, `.zsh`, `.pl`, `.r`, `.ex`, `.exs`, `.nix` | `code` (heuristic) | shell functions (`deploy() {`, `function deploy`), else by line | `#` |
+| Lua, Haskell | `.lua`, `.hs` | `code` (heuristic) | Lua `function` and `local function`, else by line | `--` |
 | CSS, SCSS | `.css`, `.scss` | `code` (heuristic) | by line | `/* … */` (SCSS also `//`) |
 | Dockerfile, Makefile | `Dockerfile`, `Makefile` | `code` (heuristic) | by line | `#` |
 | Markdown | `.md`, `.markdown` | `markdown` (document) | heading text | `<!-- … -->` |
@@ -57,8 +57,9 @@ The syntax tiers parse the file with a real grammar, so a def binds exactly one 
 
 - **By symbol**, `ds def path#Name`: the symbol column above says what can be named. In code, `Name` is a declaration's name or `Type.Method`; in YAML, TOML, INI and dotenv it is a key path; in markdown, AsciiDoc and rst it is a heading's text.
 - **By line**, `ds def path:N`: binds whatever starts at line N, exactly as a hand-written directive above that line would. This works in every file that has a comment syntax, and is the way to reach anything the symbol lookup does not find.
+- **By range**, `ds def path:A-B`: binds exactly lines A to B, writing the `span=` the tier needs, or refuses when no def starting at A can end at B.
 
-When `ds def` is given a line in a file with no symbol, it derives the label from the file name (`dockerfile-…`, `makefile-…`). For a name it cannot turn into a label, such as `.gitignore`, pass `--label`:
+When `ds def` is given a line in a file with no symbol, it derives the label from the file name (`dockerfile-…`, `makefile-…`); a dotfile that is all extension uses its whole name. `--label` sets one of your own:
 
 ```text file=.gitignore
 node_modules/
@@ -66,10 +67,10 @@ dist/
 ```
 
 ```
-$ ds def .gitignore:1
-ds: id: prefix must be lowercase words separated by dashes
 $ ds def .gitignore:1 --label ignore-node
 ignore-node-f7cf2bka
+$ ds def .gitignore:3
+gitignore-k3m8w2pd
 ```
 
 Before writing, `ds def` checks the edit would bind cleanly and refuses if it would not, so a refused `ds def` never touches the file.
@@ -87,7 +88,7 @@ const (
 
 ```
 $ ds scan
-2 files, 2 defs, 0 refs, 0 problems, 0 skipped
+2 files, 3 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file trail/
 go-trail-h3j4k5m6  line  trail/trail.go:4-4    cited by 0
 ```
@@ -227,11 +228,11 @@ $ ds find Limits.MinLength
 limits-minlength-3ufswfvp  const  go/limits.go:21-21    cited by 0
 ```
 
-`ds def path#Limits.MinLength` does not find it, though; use the bare name `#MinLength` when nothing earlier in the file has that name, or `path:N`. Here `#MinLength` would resolve to the constant, so the field was defined by line:
+`ds def` finds it by that name, because it asks the tier that scans the file what each block is called. The bare name `#MinLength` would resolve to the constant, the first declaration with that name; the holder makes it the field:
 
 ```
 $ ds def go/limits.go#Limits.MinLength
-ds: extract: symbol not found: declaration "Limits.MinLength"
+limits-minlength-3ufswfvp
 ```
 
 - An import binds its own line and is asked for by its path, `#strings`, or its alias, `#str`; it is recorded under the alias when there is one.
@@ -342,17 +343,17 @@ start-r5axv9cy         func   ts/config.ts:22-24    cited by 0
 ```
 
 - Functions, classes, interfaces, enums, type aliases and `const`/`let`/`var` declarations bind their whole declaration; `export` is part of it.
-- Interface properties, enum members, class fields and methods bind themselves and are recorded with their holder (`Options.port`, `Mode.Prod`, `Server.start`). By symbol, ask for the bare name: `#port`, `#Prod`, `#maxConnections`, `#start`. The holder form is not found:
+- Interface properties, enum members, class fields and methods bind themselves and are recorded with their holder (`Options.port`, `Mode.Prod`, `Server.start`). By symbol, ask for either form: the bare name, `#port`, finds the first member with that name, and the holder form, `#Options.port`, finds that one. Here both name the block already defined:
 
 ```
 $ ds find Server.start
 start-r5axv9cy  func  ts/config.ts:22-24    cited by 0
 $ ds def ts/config.ts#Options.port
-ds: extract: symbol not found: declaration "Options.port"
+port-6nxhmw97
 ```
 
 - A decorated method: `ds def path#start` writes the directive between the decorator and the method, and the block is the method without the decorator.
-- A property of an object literal binds, named by the keys that lead to it. Create it with `ds def path:N`; `#server.port` is not found by symbol:
+- A property of an object literal binds, named by the keys that lead to it, and `ds def path#server.port` finds it by that name:
 
 ```typescript file=ts/vite.config.ts
 export default {
@@ -365,8 +366,6 @@ export default {
 
 ```
 $ ds def ts/vite.config.ts#server.port
-ds: extract: symbol not found: declaration "server.port"
-$ ds def ts/vite.config.ts:3
 server-port-qup5y6bf
 $ ds scan
 2 files, 8 defs, 0 refs, 0 problems, 0 skipped
@@ -431,7 +430,7 @@ small-vxxznftm    const  web/Button.tsx:9-9    cited by 0
 util-nsbwtyqp     stmt   web/util.js:10-10     cited by 0
 ```
 
-Caveat: `.mts`, `.cts` and `.cjs` files are not read for directives at the moment, and `ds def` refuses them:
+`.mts`, `.cts` and `.cjs` files are read the same way as `.ts` and `.js`:
 
 ```javascript file=web/legacy.cjs
 const A = 1;
@@ -439,10 +438,8 @@ const A = 1;
 
 ```
 $ ds def web/legacy.cjs:1
-ds: docsync: no comment carrier for this file type: .cjs has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=web/legacy.cjs pick=…`), or add the type to [scan] if it does have comments
+a-gxxvjzbf
 ```
-
-Keep defs in `.ts` and `.js` files, or point at these files with a remote def.
 
 ## Python
 
@@ -478,25 +475,23 @@ def connect(url):
     return url
 ```
 
-Module constants and class attributes are not found by symbol, so they are defined by line:
+Every name the tier records can be asked for: module constants, classes, methods as `Class.method` or by their bare name, and class attributes:
 
 ```
 $ ds def py/app.py#MAX_RETRIES
-ds: extract: symbol not found: declaration "MAX_RETRIES"
+max-retries-2hgcy9ty
 $ ds def py/app.py#Store.save
-ds: extract: symbol not found: declaration "Store.save"
+store-save-vbnk5kju
 $ ds def py/app.py#connect
 connect-2fkvtcsc
 $ ds def py/app.py#save
-save-vbnk5kju
+store-save-vbnk5kju
 $ ds def py/app.py#name
 name-twpzwnrp
-$ ds def py/app.py:7
+$ ds def py/app.py#Store.timeout
 store-timeout-scjg3yuj
 $ ds def py/app.py#Store --label store-class
 store-class-88b3vcgd
-$ ds def py/app.py:3
-max-retries-2hgcy9ty
 $ cat py/app.py
 import os
 
@@ -514,7 +509,7 @@ class Store:
     def name(self):
         return "store"
 
-    # ds:def id=save-vbnk5kju
+    # ds:def id=store-save-vbnk5kju
     def save(self, item):
         if not item:
             raise ValueError("empty")
@@ -530,18 +525,18 @@ $ ds find --file py/
 connect-2fkvtcsc        func   py/app.py:25-26    cited by 0
 max-retries-2hgcy9ty    const  py/app.py:4-4      cited by 0
 name-twpzwnrp           func   py/app.py:14-15    cited by 0
-save-vbnk5kju           func   py/app.py:18-21    cited by 0
 store-class-88b3vcgd    type   py/app.py:7-21     cited by 0
+store-save-vbnk5kju     func   py/app.py:18-21    cited by 0
 store-timeout-scjg3yuj  const  py/app.py:10-10    cited by 0
 $ ds find Store.timeout
 store-timeout-scjg3yuj  const  py/app.py:10-10    cited by 0
 ```
 
-- A function, method or class binds its whole indented body. Methods are recorded as `Class.method`, but found by symbol only under their bare name (`#save`, `#name`).
+- A function, method or class binds its whole indented body. Methods are recorded as `Class.method` and found by symbol under that name or their bare name (`#Store.save`, `#save`).
 - A module-level assignment and a class attribute bind their line and are facts: `ds facts` shows `3` and `30`.
 - With a decorator, `ds def` writes the directive between the decorator and the `def`, which is valid Python; the block is the function without its decorator.
 
-Caveat: `.pyi` stub files are not read for directives at the moment.
+`.pyi` stub files are read the same way.
 
 ## SQL
 
@@ -706,9 +701,7 @@ $ ds def cfg/app.toml#server.port
 server-port-x236d9ns
 $ ds def cfg/app.toml#database.pool.max
 database-pool-max-t2ncznbs
-$ ds def cfg/app.toml#server
-ds: extract: symbol not found: key "server"
-$ ds def cfg/app.toml:3 --label server-table
+$ ds def cfg/app.toml#server --label server-table
 server-table-egp4erfz
 $ cat cfg/app.toml
 title = "app"
@@ -732,9 +725,8 @@ database-pool-max-t2ncznbs  20     cfg/app.toml:8  0
 ```
 
 - A key binds its line, named by its table path, and its value is a fact.
-- A table header binds the table, up to the next table. A table is not found by symbol, so define it with `ds def path:N` on its header line.
-
-Caveat: `span=` is ignored in TOML.
+- A table header binds the table, up to the next table, and is found by its name (`#server`).
+- `span=+N` makes a key's block its line and the N lines below it.
 
 ## HCL and Terraform
 
@@ -745,7 +737,7 @@ git init -q -b main .
 ds init
 -->
 
-Comment: `#` (or `//`). Tier: `hcl`. Files: `.tf`, `.hcl`; `.tfvars` is read too, but see the caveat. Start with:
+Comment: `#` (or `//`). Tier: `hcl`. Files: `.tf`, `.hcl` and `.tfvars`. Start with:
 
 ```hcl file=cfg/main.tf
 variable "region" {
@@ -760,20 +752,18 @@ resource "aws_instance" "web" {
 }
 ```
 
-Nothing is found by symbol, so every def is made by line, bottom up, with a label for each:
+Blocks and attributes are found by the path the tier records. These names are long, so each def gets a label:
 
 ```
-$ ds def cfg/main.tf#resource.aws_instance.web.instance_type
-ds: extract: symbol not found: declaration "resource.aws_instance.web.instance_type"
 $ ds def cfg/main.tf:8
 ds: docsync: the directive would not bind: extract: ds:def has nothing after it to bind to
-$ ds def cfg/main.tf:6 --label instance-type
+$ ds def cfg/main.tf#resource.aws_instance.web.instance_type --label instance-type
 instance-type-7tay2hrx
-$ ds def cfg/main.tf:5 --label aws-web
+$ ds def cfg/main.tf#resource.aws_instance.web --label aws-web
 aws-web-zr5s3s55
-$ ds def cfg/main.tf:2 --label region-default
+$ ds def cfg/main.tf#variable.region.default --label region-default
 region-default-anmttm88
-$ ds def cfg/main.tf:1 --label region-var
+$ ds def cfg/main.tf#variable.region --label region-var
 region-var-e45mfvg9
 $ cat cfg/main.tf
 # ds:def id=region-var-e45mfvg9
@@ -806,7 +796,7 @@ instance-type-7tay2hrx  key  cfg/main.tf:10-10    cited by 0
 - An attribute inside a nested map (`Name = "web"` inside `tags = { … }`, line 8 above) cannot be bound, and `ds def` refuses it. Bind the map's attribute (`tags`) or the whole block.
 - A remote def can pick an attribute out of any HCL file: `pick=hcl:resource.aws_instance.web.instance_type`.
 
-Caveat: `ds def` refuses `.tfvars` files, but a directive you write by hand is read. `span=` is ignored in HCL.
+`span=+N` makes an attribute's block its line and the N lines below it. `.tfvars` files take directives like `.tf`:
 
 ```hcl file=cfg/dev.tfvars
 x = 2
@@ -818,9 +808,9 @@ x = 1 # ds:def id=tfv-x-d3e4f5g6
 
 ```
 $ ds def cfg/dev.tfvars:1
-ds: docsync: no comment carrier for this file type: .tfvars has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=cfg/dev.tfvars pick=…`), or add the type to [scan] if it does have comments
+x-p4n7c2wk
 $ ds scan
-3 files, 5 defs, 0 refs, 0 problems, 0 skipped
+3 files, 6 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file cfg/prod.tfvars
 tfv-x-d3e4f5g6  key  cfg/prod.tfvars:1-1    cited by 0
 ```
@@ -865,25 +855,29 @@ api-port-d2xsr38r
 $ ds def 'misc/app.properties#"server.port"'
 prop-above-k3m4n5p6
 $ ds def misc/nginx.conf#listen
-ds: extract: symbol not found: key "listen"
+ds: extract: symbol not found: key "listen" (the config tier names no block "listen" in misc/nginx.conf)
 $ ds def misc/nginx.conf:2
 nginx-e7e6tkxy
 $ cat misc/app.ini misc/.env misc/nginx.conf
 [server]
-port = 8081   # ds:def id=server-port-9sr7s89q
+# ds:def id=server-port-9sr7s89q
+port = 8081
 host = localhost
 API_HOST=api.example.com
-API_PORT=8081   # ds:def id=api-port-d2xsr38r
+# ds:def id=api-port-d2xsr38r
+API_PORT=8081
 worker_processes 4;
-listen 80;   # ds:def id=nginx-e7e6tkxy
+# ds:def id=nginx-e7e6tkxy
+listen 80;
 $ ds facts
 ID                    VALUE       WHERE                  CITED BY
-api-port-d2xsr38r     8081        misc/.env:2            0
-server-port-9sr7s89q  8081        misc/app.ini:2         0
+api-port-d2xsr38r     8081        misc/.env:3            0
+server-port-9sr7s89q  8081        misc/app.ini:3         0
 prop-above-k3m4n5p6   8081        misc/app.properties:2  0
-nginx-e7e6tkxy        listen 80;  misc/nginx.conf:2      0
+nginx-e7e6tkxy        listen 80;  misc/nginx.conf:3      0
 ```
 
+- `ds def` writes the directive on the line above the key in these formats. To Java properties, Python's configparser, EditorConfig and `docker run --env-file`, `port=8081   # ds:def id=…` is a value with the comment in it, so a trailing directive would change the setting; YAML and TOML read a trailing comment as one, and there `ds def` writes it on the key's line. A trailing directive you write yourself is still read.
 - A key binds its line and its value is a fact. INI keys are recorded as `section.key` (the bare key also works by symbol, `#port`), dotenv keys as their name, properties keys quoted when they hold a dot (`"server.port"`). A `.conf` file has no keys docsync knows, so a def binds the line and is reached by `path:N`.
 - `span=+N` widens a key's def to N more lines:
 
@@ -915,7 +909,7 @@ ds init
 
 Tier: `code`. This is a heuristic binder for every language with a comment syntax but no grammar in docsync. It recognises common declaration shapes; it does not parse the language.
 
-- **By symbol** it finds declarations that start with a keyword: Rust `fn`, `pub fn`, `struct`, `const`; Kotlin `fun`; Ruby `def`; PHP `function`. It does not find a declaration that starts with a type or modifiers, such as C's `int add(`, Java's `public class App`, C#'s `public int Add(`, Lua's `local function`, a shell `foo() {`, or a Makefile target. Use `ds def path:N` for those.
+- **By symbol** it finds declarations that start with a keyword: Rust `fn`, `pub fn`, `struct`, `const`; Kotlin `fun`; Ruby `def`; PHP `function`. It also finds a shell function, `deploy() {`, and Lua's `local function`. It does not find a declaration that starts with a type or modifiers, such as C's `int add(`, Java's `public class App` or C#'s `public int Add(`, or a Makefile target. Use `ds def path:N` for those.
 - **Extent**: a block with braces binds through its closing brace; anything else binds up to the next blank line. `span=+N` overrides that.
 
 Rust, by symbol:
@@ -970,7 +964,7 @@ public class App {
 
 ```
 $ ds def code/App.java#App
-ds: extract: symbol not found: declaration "App"
+ds: extract: symbol not found: declaration "App" (the code tier names no block "App" in code/App.java)
 $ ds def code/App.java:4 --label app-run
 app-run-kqdx5h53
 $ ds def code/App.java:2 --label app-port
@@ -990,7 +984,7 @@ public class App {
 }
 ```
 
-Shell, by line:
+Shell, by line here (a function is found by its name too, `#deploy`):
 
 ```bash file=code/deploy.sh
 #!/usr/bin/env bash
@@ -1066,7 +1060,7 @@ app-class-wkk7f6t7      stmt   code/App.java:2-10      cited by 0
 app-port-9ysqns5j       stmt   code/App.java:4-4       cited by 0
 app-run-kqdx5h53        stmt   code/App.java:7-9       cited by 0
 connect-76suf4x5        func   code/lib.rs:17-19       cited by 0
-deploy-func-re47zmq6    stmt   code/deploy.sh:8-11     cited by 0
+deploy-func-re47zmq6    func   code/deploy.sh:8-11     cited by 0
 deploy-region-kakh3yyr  stmt   code/deploy.sh:5-5      cited by 0
 docker-build-2c4hwumb   stmt   code/Dockerfile:2-5     cited by 0
 docker-expose-e6mwzcqk  stmt   code/Dockerfile:9-10    cited by 0
@@ -1328,7 +1322,7 @@ Week 38  someone
 
 Escalation goes to the lead.
 $ ds def doc/oncall.txt#Rota
-ds: extract: symbol not found: plain text has no symbols; use path:line
+ds: extract: symbol not found: plain text has no symbols; use path:line (the text tier names no block "Rota" in doc/oncall.txt)
 $ ds scan
 2 files, 2 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file doc/
@@ -1347,7 +1341,7 @@ First note.
 
 ```
 $ ds def doc/NOTES:1
-ds: docsync: no comment carrier for this file type: NOTES has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=doc/NOTES pick=…`), or add the type to [scan] if it does have comments
+ds: docsync: no comment carrier for this file type: NOTES has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=doc/NOTES pick=…`). The comment syntaxes are built in, not configured: if this type does take comments, it needs an entry in docsync's carrier table
 $ ds scan
 3 files, 3 defs, 0 refs, 0 problems, 0 skipped
 $ ds find --file doc/NOTES
@@ -1376,7 +1370,7 @@ api,8081
 
 ```
 $ ds def doc/app.json:1
-ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=doc/app.json pick=…`), or add the type to [scan] if it does have comments
+ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=doc/app.json pick=…`). The comment syntaxes are built in, not configured: if this type does take comments, it needs an entry in docsync's carrier table
 ```
 
 Define the value from a file that can hold a comment, usually the doc that mentions it, with `file=` and `pick=`:

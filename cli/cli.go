@@ -357,7 +357,11 @@ func (a *App) repoTarget(t string) (string, error) {
 		return rp + "#" + sym, err
 	}
 	if i := strings.LastIndex(t, ":"); i > 0 {
-		if n, err := strconv.Atoi(t[i+1:]); err == nil && n > 0 {
+		// `path:line` or `path:start-end`; the library validates the numbers.
+		// A range was left unresolved here, so `ds def x.txt:2-4` from a
+		// subdirectory looked for x.txt at the repository root (bug 43).
+		from, _, _ := strings.Cut(t[i+1:], "-")
+		if n, err := strconv.Atoi(from); err == nil && n > 0 {
 			rp, err := a.repoPath(t[:i])
 			return rp + t[i:], err
 		}

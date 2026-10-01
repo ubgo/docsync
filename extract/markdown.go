@@ -39,18 +39,14 @@ func (Markdown) Match(p string) bool { return extIn(p, markdownExts) || extIn(p,
 // atxRE matches an ATX heading and captures the hashes and the text.
 var atxRE = regexp.MustCompile(`^(#{1,6})\s+(.*?)\s*#*\s*$`)
 
-// inlineLinkRE matches `[text](target)` and captures both. A preceding `!`
-// (image) is captured so images are not treated as defs.
-var inlineLinkRE = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)\s]+)\)`)
-
 // Extract implements Extractor.
 func (Markdown) Extract(p string, src []byte, prefix string) Found {
 	var f Found
 	lines := splitLines(src)
+	// Every type this tier claims has a style (TestEveryClaimedTypeHasAStyle);
+	// `.markdown` once had none and was read through a fallback while
+	// `ds def` refused it.
 	st, _ := StyleFor(p)
-	if st.BlockOpen == "" {
-		st = Styles[".md"]
-	}
 	html := extIn(p, htmlExts)
 	if !html {
 		f.Page = frontmatterPage(lines)
@@ -87,8 +83,10 @@ func (Markdown) Extract(p string, src []byte, prefix string) Found {
 		// read from the original, so a value written in code — `8081` —
 		// is its text and not the blanks that stood in for it.
 		orig := lines[i]
-		for _, m := range inlineLinkRE.FindAllStringSubmatchIndex(l, -1) {
-			target := orig[m[6]:m[7]]
+		links := mdspan.InlineLinks(l)
+		f.Problems = append(f.Problems, unreadLinks(l, head, links, i+1)...)
+		for _, m := range links {
+			target := orig[m.Dest.Start:m.Dest.End]
 			if !strings.HasPrefix(target, head) {
 				continue
 			}
@@ -98,8 +96,8 @@ func (Markdown) Extract(p string, src []byte, prefix string) Found {
 				f.Problems = append(f.Problems, Problem{Pos: pos, Err: err})
 				continue
 			}
-			text := orig[m[4]:m[5]]
-			if d.Verb == VerbDef && m[2] != m[3] {
+			text := orig[m.Text.Start:m.Text.End]
+			if d.Verb == VerbDef && m.Image {
 				// `![alt](ds:def?…)`: an image has no text to be the value.
 				f.Problems = append(f.Problems, Problem{Pos: pos, Err: ErrDefOnImage})
 				continue
@@ -117,11 +115,37 @@ func (Markdown) Extract(p string, src []byte, prefix string) Found {
 				continue
 			}
 			r := block.Reference{Verb: d.Verb, ID: d.Args[block.KeyID], Pos: pos, Carrier: block.CarrierLink, Args: d.Args}
-			r.SetSentence(paragraphSentence(lines, masked, i, m[0]))
+			r.SetSentence(paragraphSentence(lines, masked, i, m.All.Start))
 			f.Refs = append(f.Refs, Ref{Directive: d, Reference: r})
 		}
 	}
 	return f
+}
+
+// unreadLinks reports a directive link that is not a link: `](ds:` where no
+// inline link was read, nearly always because the destination holds a space,
+// which CommonMark does not allow outside `<…>`. Such a link renders as raw
+// text and used to be dropped by the scanner without a word (bug 51).
+func unreadLinks(l, head string, links []mdspan.Link, line int) []Problem {
+	var out []Problem
+	needle := "](" + head
+	for at := 0; ; {
+		k := strings.Index(l[at:], needle)
+		if k < 0 {
+			return out
+		}
+		k += at
+		read := false
+		for _, m := range links {
+			if m.All.Start <= k && k < m.All.End {
+				read = true
+			}
+		}
+		if !read {
+			out = append(out, Problem{Pos: block.Position{Start: line, End: line}, Err: ErrLinkDestination})
+		}
+		at = k + len(needle)
+	}
 }
 
 // closerRE matches the repo-mode closer; group 1 is the hash.

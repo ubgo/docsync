@@ -270,7 +270,7 @@ ds init
 ```markdown file=docs/links.md
 # Links
 
-See the [storage guide](ds:url?href=http://127.0.0.1:8765/guide&title="Storage guide").
+See the [storage guide](<ds:url?href=http://127.0.0.1:8765/guide&title="Storage guide">).
 
 The [old page](ds:url?href=http://127.0.0.1:8765/old) moved.
 
@@ -292,7 +292,7 @@ ds scan
 ```console
 $ ds check
 docs/links.md
-  5	warning  unverifiable       external link not checked
+  3	warning  unverifiable       external link not checked
       fix: external link checks need --resolve with network access
 …
 $ ds check --resolve
@@ -303,12 +303,10 @@ docs/links.md
       fix: the link http://127.0.0.1:8765/toast returned 404; update or remove it at docs/links.md:7
   9	warning  retitled           title is now "Storage guide, 2nd edition"
       fix: the page at http://127.0.0.1:8765/guide no longer has title "Manual"; confirm it is still the right page
-  11	warning  retitled           title is now "Storage guide, 2nd edition"
-      fix: the page at http://127.0.0.1:8765/guide no longer has title "\"Storage\""; confirm it is still the right page
-1 error, 3 warning, 2 none
+1 error, 2 warning, 4 none
 ```
 
-Line 3 is missing from both runs, and line 11 is reported although the page title does contain "Storage"; [Writing the link form](#writing-the-link-form) explains both. Lines 13 and 15 are `ok` and, like every `ok`, are counted in the summary rather than listed.
+Lines 3, 11, 13 and 15 are `ok` and, like every `ok`, are counted in the summary rather than listed; [Writing the link form](#writing-the-link-form) explains how lines 3 and 11 are written.
 
 <!-- doctest
 kill $(cat ../server.pid)
@@ -336,8 +334,8 @@ rate_per_minute = 30
 
 Three things to know, all seen in testing:
 
-- **No spaces inside a link target.** Markdown ends a link at a space, so `[x](ds:url?href=…&title="Storage guide")` is not a link at all and the directive is silently ignored, as line 3 above was. Write the space as `%20` or `+`, or use the comment form, where quotes work: `<!-- ds:url href=… title="Storage guide" -->`.
-- **No quotes around `title` in the link form.** They are kept as part of the value, so `title="Storage"` looks for a title containing `"Storage"` with the quote marks and reports `retitled`, as line 11 above shows. Write `title=Storage`.
+- **A link target with a space goes in angle brackets.** Markdown ends a link at a space, so `[x](ds:url?href=…&title="Storage guide")` is not a link at all; `ds scan` reports it as `directive link is not a markdown link`. Write `[x](<ds:url?href=…&title="Storage guide">)`, as line 3 above does, or write the space as `%20` or `+`, or use the comment form: `<!-- ds:url href=… title="Storage guide" -->`.
+- **Quotes around a link value are removed.** `title="Storage"` is the title `Storage`, as in the comment form, and a quoted value may hold `&`. Inside quotes nothing is percent-decoded.
 - **A network failure is cached as `dead`.** On a machine that cannot reach the host, `--resolve` reports every link `dead … returned 0` and keeps that result for `url.ttl`, so links stay dead after the network returns. Delete `.ds/urls.json` to check again.
 
 ## Secrets: addresses, never values

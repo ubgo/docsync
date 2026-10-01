@@ -23,6 +23,7 @@ import (
 	"github.com/ubgo/docsync/directive"
 	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/internal/linerange"
+	"github.com/ubgo/docsync/internal/mdspan"
 )
 
 // Note is a rendering problem: the line it happened on and what was wrong.
@@ -155,10 +156,6 @@ var langByExt = map[string]string{
 	".dockerfile": "dockerfile", ".xml": "xml", ".proto": "protobuf", ".graphql": "graphql", ".dart": "dart",
 }
 
-// linkRE matches a markdown link or image whose target is a directive.
-// Groups: 1 = "!" for images, 2 = text, 3 = target.
-var linkRE = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)\s]+)\)`)
-
 // commentRE matches one HTML comment; group 1 is its body.
 var commentRE = regexp.MustCompile(`<!--\s*(.*?)\s*-->`)
 
@@ -194,6 +191,8 @@ func RenderNodes(in Input, opts Options) ([]Node, []Note) {
 	// showed in inline or indented code.
 	carrier := extract.CarrierLines(in.Doc, lines)
 	head := opts.Prefix + directive.Separator
+	st, _ := extract.StyleFor(in.Doc)
+	bare := st.Bare
 	var out []Node
 	for i := 0; i < len(lines); i++ {
 		l := lines[i]
@@ -203,6 +202,7 @@ func RenderNodes(in Input, opts Options) ([]Node, []Note) {
 			continue
 		}
 		// Whole-line comment directive: block position.
+		joined, consumed, isComment := "", 0, false
 		if body, ok := wholeComment(carrier[i]); ok && strings.HasPrefix(body, head) {
 			// Continuation lines fold into it, as the extractor folds them;
 			// rendering line by line dropped their keys — a `lines=` on the
@@ -216,7 +216,21 @@ func RenderNodes(in Input, opts Options) ([]Node, []Note) {
 				}
 				bodies = append(bodies, next)
 			}
-			joined, consumed := directive.Fold(bodies)
+			joined, consumed = directive.Fold(bodies)
+			isComment = true
+		} else if text, last, ok := extract.MultiLineDirective(carrier, i, htmlComments, head); ok && text != "" {
+			// One comment over several lines, read as the extractor reads it
+			// (bug 50), so render acts on the directive check counted.
+			joined, consumed, isComment = text, last-i+1, true
+		} else if bare && strings.HasPrefix(strings.TrimSpace(l), head) {
+			// Plain text carries a directive as a line of its own (§7.1), and
+			// renderers strip it; render left `ds:def id=…` in the output of
+			// every .txt page (bug 44). Continuations fold as the text tier
+			// folds them.
+			joined, consumed = directive.Fold(lines[i:])
+			isComment = true
+		}
+		if isComment {
 			// asWritten keeps every line the directive spans, for when it
 			// is left in the page rather than rendered.
 			asWritten := func() {
@@ -313,9 +327,9 @@ func (r *renderer) defBranch(id, env, branch string) (block.Block, bool) {
 // when the same text appears live beside it.
 func (r *renderer) inline(n int, l, carrier, head string) string {
 	var edits []splice
-	for _, ix := range linkRE.FindAllStringSubmatchIndex(carrier, -1) {
-		m := l[ix[0]:ix[1]]
-		image, text, target := ix[3] > ix[2], l[ix[4]:ix[5]], l[ix[6]:ix[7]]
+	for _, lk := range mdspan.InlineLinks(carrier) {
+		m := l[lk.All.Start:lk.All.End]
+		image, text, target := lk.Image, l[lk.Text.Start:lk.Text.End], l[lk.Dest.Start:lk.Dest.End]
 		if !strings.HasPrefix(target, head) {
 			continue
 		}
@@ -328,7 +342,7 @@ func (r *renderer) inline(n int, l, carrier, head string) string {
 			r.note(n, "directive on an image link renders nothing special")
 			continue
 		}
-		edits = append(edits, splice{ix[0], ix[1], r.inlineVerb(n, d, text, m)})
+		edits = append(edits, splice{lk.All.Start, lk.All.End, r.inlineVerb(n, d, text, m)})
 	}
 	// Trailing comment directives disappear from the prose line. Verbs with a
 	// block rendering (`Stripe: <!-- ds:chain … -->`, §9.8) render it under
@@ -377,7 +391,7 @@ func (r *renderer) inlineVerb(n int, d directive.Directive, text, orig string) s
 	id := d.Args[block.KeyID]
 	switch d.Verb {
 	case extract.VerbDef:
-		if d.Args[block.KeyType] == "url" {
+		if block.ValueType(d.Args[block.KeyType]) == block.TypeURL {
 			return "[" + text + "](" + text + ")"
 		}
 		return text
@@ -390,7 +404,7 @@ func (r *renderer) inlineVerb(n int, d directive.Directive, text, orig string) s
 		return "[" + text + "](" + r.link(b, d.Args[keyAt]) + ")"
 	case extract.VerbCfg:
 		if id == "" {
-			r.note(n, "cfg query= has no configured source; link text kept")
+			r.note(n, "cfg query= is not evaluated by this build; link text kept")
 			return text
 		}
 		b, ok := r.def(id, d.Args[block.KeyEnv])
@@ -821,6 +835,10 @@ const (
 	commentOpen  = "<!--"
 	commentClose = "-->"
 )
+
+// htmlComments is the comment style render reads block-position directives
+// in: the HTML comment, as wholeComment does.
+var htmlComments = extract.Style{BlockOpen: commentOpen, BlockClose: commentClose}
 
 // rawComment is wholeComment without trimming the inside, which a
 // continuation line needs: it is recognised by the whitespace its body

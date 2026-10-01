@@ -25,6 +25,7 @@ import (
 
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/extract"
+	"github.com/ubgo/docsync/id"
 	"github.com/ubgo/docsync/internal/glob"
 	"github.com/ubgo/docsync/internal/textnorm"
 	"github.com/ubgo/docsync/pick"
@@ -85,13 +86,26 @@ var (
 	// neither. It is nearly always a directive that failed to bind where its
 	// author aimed it and landed on a neighbour (bug 18); the honest remedy is
 	// to move or remove one, which is why the message names both.
-	ErrSharedBlock    = errors.New("scan: two ids bound to the same block")
+	ErrSharedBlock = errors.New("scan: two ids bound to the same block")
+	// ErrCrossingBlocks is two blocks in one file that overlap without one
+	// containing the other: each holds part of the other, so an edit to the
+	// shared lines flags both. Nesting is not this and is never reported.
+	ErrCrossingBlocks = errors.New("scan: two blocks overlap without one containing the other")
 	ErrDefInGenerated = errors.New("scan: ds:def in a generated file will be overwritten by the next generation")
 	// ErrBadStability is an unrecognised `stability=`. It is a finding
 	// rather than a silent default because the fallback is `stable`, so a
 	// typo in `frozen` would quietly relax the policy the author asked for
 	// and the block would stop flagging changes they wanted flagged.
 	ErrBadStability = errors.New("scan: unknown stability")
+	// ErrBadType is an unrecognised `type=`, and ErrTypeMismatch a value that
+	// does not have the shape its type declares. Both used to pass silently:
+	// type= was read by render (for url) and printed by facts, and nothing
+	// checked it.
+	ErrBadType = errors.New("scan: unknown type")
+	// ErrMalformedID is a def whose id is not in the §8 shape for this
+	// workspace, `<label>-<suffix>` (bug 55).
+	ErrMalformedID  = errors.New("scan: malformed id")
+	ErrTypeMismatch = errors.New("scan: value does not match its type=")
 	// ErrBareDirective is a directive written as a line of its own in a file
 	// whose type does carry comments. It is almost always damage rather than a
 	// choice: `ds def` used to insert an uncommented line into any file type it
@@ -345,6 +359,8 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 			// and policy are validated too.
 			if strings.IndexFunc(def.Block.ID, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
 				res.Problems = append(res.Problems, Problem{Pos: def.Block.DirectivePos, Err: fmt.Errorf("%w: %q", ErrBadID, def.Block.ID)})
+			} else if err := id.CheckShape(def.Block.ID); err != nil {
+				res.Problems = append(res.Problems, Problem{Pos: def.Block.DirectivePos, Err: fmt.Errorf("%w: %q: %v", ErrMalformedID, def.Block.ID, err)})
 			}
 			// A bare directive line in a type that has comments is damage; in
 			// one whose carrier IS a bare line (plain text) it is correct.
@@ -388,6 +404,7 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 	for _, def := range remotes {
 		resolveRemote(fsys, def, opts, &res)
 	}
+	checkTypes(&res)
 	detectDuplicates(&res)
 	detectSharedBlocks(&res)
 	sortResult(&res)
@@ -633,9 +650,23 @@ func detectSharedBlocks(res *Result) {
 		if d.Pos.File == "" || d.Pos.Start == 0 {
 			continue
 		}
+		// An inline fact's block is its link text, a span inside a line, so
+		// two facts on one line are two blocks; keyed by line they collided,
+		// and the spec's own two-facts-in-a-sentence example could not be
+		// scanned cleanly (bug 59).
+		if d.Kind == block.KindLinkText {
+			continue
+		}
 		k := fmt.Sprintf("%s:%d-%d\x00%s", d.Pos.File, d.Pos.Start, d.Pos.End, d.Env())
+		// A remote def is identified by what it picks as well as where: two
+		// keys of one JSON line are two values (bug 53). The same pick twice
+		// still shares a block and is still reported.
+		if _, remote := d.Args[block.KeyFile]; remote {
+			k += "\x00" + d.Args[block.KeyPick]
+		}
 		at[k] = append(at[k], i)
 	}
+	detectCrossingBlocks(res)
 	for _, idx := range at {
 		if len(idx) < 2 {
 			continue
@@ -659,6 +690,68 @@ func detectSharedBlocks(res *Result) {
 		d := res.Defs[idx[0]]
 		for _, i := range idx {
 			res.Problems = append(res.Problems, Problem{Pos: res.Defs[i].DirectivePos, Err: fmt.Errorf("%w: %s at %s:%d-%d", ErrSharedBlock, strings.Join(ids, ", "), d.Pos.File, d.Pos.Start, d.Pos.End)})
+		}
+	}
+}
+
+// checkTypes reports a def whose `type=` is not a known value type, and one
+// whose value does not have the declared shape (bug 54). It runs on the final
+// value: after the pick, and after a remote def is resolved. A secret whose
+// value was blanked has nothing to check, and is never printed here.
+func checkTypes(res *Result) {
+	for _, d := range res.Defs {
+		raw, ok := d.Args[block.KeyType]
+		if !ok {
+			continue
+		}
+		t := block.ValueType(raw)
+		switch {
+		case !t.Known():
+			res.Problems = append(res.Problems, Problem{Pos: d.DirectivePos, Err: fmt.Errorf("%w: %q is not one of %s", ErrBadType, raw, typeList())})
+		case d.IsSecret():
+			// Never echo a secret's value, even into a finding.
+		case !t.Accepts(d.Content):
+			res.Problems = append(res.Problems, Problem{Pos: d.DirectivePos, Err: fmt.Errorf("%w: %s's value %q is not of type %s", ErrTypeMismatch, d.ID, d.Content, t)})
+		}
+	}
+}
+
+// typeList spells ValueTypeValues for a message.
+func typeList() string {
+	out := make([]string, len(block.ValueTypeValues))
+	for i, t := range block.ValueTypeValues {
+		out[i] = string(t)
+	}
+	return strings.Join(out, ", ")
+}
+
+// detectCrossingBlocks reports pairs of defs in one file whose blocks overlap
+// without either containing the other (bug 58). Nesting is how declarations
+// and sections are built and is never reported; crossing is a directive whose
+// extent was cut short or run on -- usually a span= written by hand, or a def
+// inserted inside another's span -- and it makes an edit to the shared lines
+// flag both blocks while each still claims lines the other does not.
+// Remote defs are left out (their extent is in another file, chosen by a
+// pick), and so are inline facts, whose block is part of one line.
+func detectCrossingBlocks(res *Result) {
+	byFile := map[string][]int{}
+	for i, d := range res.Defs {
+		if _, remote := d.Args[block.KeyFile]; remote || d.Kind == block.KindLinkText || d.Pos.Start == 0 {
+			continue
+		}
+		byFile[d.Pos.File] = append(byFile[d.Pos.File], i)
+	}
+	for _, idx := range byFile {
+		for x, i := range idx {
+			for _, j := range idx[x+1:] {
+				a, b := res.Defs[i], res.Defs[j]
+				if a.Env() != b.Env() || !block.Crosses(a.Pos, b.Pos) {
+					continue
+				}
+				for _, d := range []block.Block{a, b} {
+					res.Problems = append(res.Problems, Problem{Pos: d.DirectivePos, Err: fmt.Errorf("%w: %s at %d-%d and %s at %d-%d in %s", ErrCrossingBlocks, a.ID, a.Pos.Start, a.Pos.End, b.ID, b.Pos.Start, b.Pos.End, a.Pos.File)})
+				}
+			}
 		}
 	}
 }

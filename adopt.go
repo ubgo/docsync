@@ -174,8 +174,11 @@ func (s *System) Adopt(_ context.Context, res scan.Result) (AdoptResult, error) 
 				if tgt.Line > 0 {
 					located, err = extract.Enclosing(file, src, tgt.Line)
 				} else {
+					// A symbol is resolved by the tier that scans the file, as
+					// `ds def path#Name` resolves it, so a link adopt accepts
+					// names what the ledger will record.
 					tgt.Prefix = s.cfg.Prefix
-					located, err = extract.Locate(file, src, tgt)
+					located, err = s.locateSymbol(file, src, tgt)
 				}
 				if err != nil {
 					out.Unresolved = append(out.Unresolved, Unresolved{Doc: doc, Line: i + 1, Target: target, Reason: err.Error()})
@@ -190,7 +193,7 @@ func (s *System) Adopt(_ context.Context, res scan.Result) (AdoptResult, error) 
 					}
 					label := id.Slug(located.Symbol)
 					if label == "" {
-						label = id.Slug(strings.TrimSuffix(baseName(file), extract.Ext(file)))
+						label = fileLabel(file)
 					}
 					blockID, err = id.New(s.idcfg, label)
 					if err != nil {

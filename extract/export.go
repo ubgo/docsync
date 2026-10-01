@@ -100,6 +100,12 @@ func SpanEnd(lines []string, start, want int, carriers map[int]bool) int {
 	return spanEnd(lines, start, want, carriers)
 }
 
+// ParseSpan reads a directive's `span=+N`: N, whether the key is present,
+// and ErrBadSpan when it is present but not `+N`. Every tier reads the key
+// through it, so `span=` cannot mean "accepted and ignored" in one tier
+// while it widens the block in another.
+func ParseSpan(d directive.Directive) (int, bool, error) { return parseSpan(d) }
+
 // Carriers returns the lines of p holding a standalone directive carrier —
 // every def and cite that occupies a line by itself — for HashedJoin. A path
 // with no known comment style has none.
