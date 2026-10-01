@@ -25,12 +25,7 @@ var (
 // entry must still be unread here: an entry whose field is now read fails
 // the test as stale, so the list shrinks to nothing as those changes land
 // instead of quietly exempting a key forever.
-var pendingElsewhere = map[string]string{
-	"Agents.MCP":         "agents.mcp, wired by ds init --agents",
-	"Agents.SessionHook": "agents.session_hook, wired by ds init --agents",
-	"Index":              "workspace.index, wired by the cross-repo change",
-	"StaleAfterCommits":  "workspace.stale_after_commits, wired by the cross-repo change",
-}
+var pendingElsewhere = map[string]string{}
 
 // acceptedAndIgnored are top-level tables the parser accepts on purpose and
 // nothing reads. [performance] holds targets for the project's own

@@ -1,9 +1,21 @@
-{{- /* docsync status partial: emits one hidden element per cited reference so a small script (or CSS on data-ds-severity: none, warning, error) can paint green, amber, red dots beside cited sentences, with the ack note in data-ds-note for a hover. Data comes from status.json written by `ds export hugo`. */ -}}
+{{- /* docsync status partial: emits one hidden element per reference cited on the current page, so a small script (or CSS on data-ds-severity: none, warning, error) can paint green, amber, red dots beside cited sentences, with the ack note in data-ds-note for a hover. Data comes from status.json written by `ds export hugo`.
+
+Each ref's doc is a path from the repository root; a page's file is a path from the content directory. A ref belongs to the page when the doc is the content directory joined with the page's path, with the content directory taken from site param docsync.contentDir (for example "site/content"); without that param, when the doc ends in "/" plus the page's path, or equals it. A page with no file (a taxonomy or a generated list) cites nothing. It used to list every reference in the repository on every page, so a script painting dots had to filter by itself, and every page carried the whole site's status. */ -}}
 {{- $docsync := index site.Data "docsync" | default dict -}}
+{{- $dir := "" -}}
+{{- with site.Params.docsync }}{{ $dir = .contentDir | default "" }}{{ end -}}
 {{- with $docsync.status -}}
-<div class="docsync-status" hidden data-ds-commit="{{ .commit }}">
-{{- range .refs }}
+{{- $status := . -}}
+<div class="docsync-status" hidden data-ds-commit="{{ $status.commit }}">
+{{- with $.File -}}
+{{- $page := .Path | replaceRE `\\` "/" -}}
+{{- $want := "" -}}
+{{- with $dir }}{{ $want = path.Join . $page }}{{ end -}}
+{{- range $status.refs }}
+{{- if or (and $want (eq .doc $want)) (and (not $want) (or (eq .doc $page) (strings.HasSuffix .doc (printf "/%s" $page)))) }}
 <span data-ds-doc="{{ .doc }}" data-ds-line="{{ .line }}" data-ds-id="{{ .id }}" data-ds-state="{{ .state }}" data-ds-severity="{{ .severity }}"{{ with .note }} data-ds-note="{{ . }}"{{ end }}{{ with .acked_by }} data-ds-acked-by="{{ . }}"{{ end }}{{ with .acked_at }} data-ds-acked-at="{{ . }}"{{ end }}></span>
+{{- end }}
+{{- end }}
 {{- end }}
 </div>
 {{- end -}}

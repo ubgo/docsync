@@ -127,7 +127,7 @@ Some pull requests change behaviour and its documentation together, and every fi
 Two things to know:
 
 - Only the act of applying the label acks. A push made afterwards is checked again, and the run says `label docs-acked is on the pull request, but it acks only when it is applied: re-apply it to accept these findings`.
-- The shipped action writes the acks into the runner's checkout and does not commit them. Either the author records the same acks locally (`ds ack <id> --doc <doc> --line <n> --note '…'`) and pushes `.ds/acks.tsv`, or you add your own commit step after the action.
+- The shipped action then commits `.ds/acks.tsv` to the pull request branch, crediting the reviewer in the message. That push needs `contents: write` and a checkout of the pull request head (`ref: ${{ github.event.pull_request.head.sha }}`), both of which `docsync-pr.yml` sets; set the action's `commit-acks` input to `false` to commit them yourself. A fork's branch is never pushed to: there the author records the same acks locally (`ds ack <id> --doc <doc> --line <n> --note '…'`) and pushes `.ds/acks.tsv`.
 
 ### Previewing the comment
 
@@ -162,7 +162,7 @@ The token is required even for `--dry-run`, though nothing is sent.
 | File | When | What it runs |
 |---|---|---|
 | `docsync-pr.yml` | pull requests | the action above |
-| `docsync-publish.yml` | default branch, after merge | `ds publish`, which writes this repository's ledger into the workspace index (see [Cross-repo](cross-repo.md)) |
+| `docsync-publish.yml` | default branch, after merge | the Go tests through `gotestsum`, which writes a JUnit report, then `ds publish --tests` with it, which writes this repository's ledger and test outcomes into the workspace index (see [Cross-repo](cross-repo.md)); in another language, swap the test step for your runner's JUnit output |
 | `docsync-nightly.yml` | on a schedule | `ds check --run --resolve` with credentials, then `ds notify`; each flag acts only where the repository consents in `.ds/config.toml` (`[run] enabled = true`, `[resolve] enabled = true`) |
 
 All three ship with `on: workflow_dispatch:` only, so they run when started from the Actions tab and never spend minutes on their own. Each file's header comment carries the trigger lines to paste back (`pull_request`, `push` to `main`, or a `schedule`) once you want them automatic.

@@ -160,6 +160,14 @@ func (f *fence) step(line string) bool {
 	return true
 }
 
+// Region is region for other packages: render replaces an existing
+// repo-mode copy with its fresh rendering by the same rule the scanner
+// finds it by, so the two can never disagree about where a copy ends. from
+// is the 1-based line after the directive.
+func Region(lines []string, from int, prefix string) *block.Region {
+	return region(lines, from, prefix)
+}
+
 // region finds a repo-mode fence after a block-position directive: the
 // lines from the directive up to a closer comment, with no other directive
 // in between. Absent closer means build mode.

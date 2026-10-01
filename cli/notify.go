@@ -316,10 +316,10 @@ func formatDigest(d *digest, people []string) string {
 	}
 	b.WriteString("\n")
 	for _, f := range d.Findings {
-		fmt.Fprintf(&b, "  %s:%d  %s  %s\n", f.Doc, f.Line, f.State, f.Message)
+		fmt.Fprintf(&b, "  %s  %s  %s\n", docAt(f), f.State, f.Message)
 	}
 	for _, f := range d.Escalate {
-		fmt.Fprintf(&b, "  ESCALATED %s:%d  %s  still open\n", f.Doc, f.Line, f.State)
+		fmt.Fprintf(&b, "  ESCALATED %s  %s  still open\n", docAt(f), f.State)
 	}
 	return b.String()
 }

@@ -56,6 +56,12 @@ type Options struct {
 	// Link replaces Permalink entirely; the one escape hatch for hosts whose
 	// URLs the template cannot express.
 	Link func(b block.Block) string
+	// ForeignLink is the URL of a block another repository in the workspace
+	// defines (block.KeyRepo set): its path is relative to that repository,
+	// so the Permalink template, which describes this one, cannot build it.
+	// ok=false, or a nil hook, renders the location unlinked with the
+	// repository named. Link, when set, still wins.
+	ForeignLink func(b block.Block) (url string, ok bool)
 	// Snapshot returns the block's content at a commit, for `at=`.
 	Snapshot func(id, sha string) (string, bool)
 	// SnapshotBlock returns the whole block at a commit, for `at=`: its
@@ -259,6 +265,14 @@ func RenderNodes(in Input, opts Options) ([]Node, []Note) {
 				out = append(out, Node{Kind: NodeBlock, Line: n, Text: rendered})
 			}
 			i += consumed - 1
+			// A repo-mode copy under a rendered block is replaced by the
+			// rendering, closer included. Leaving it printed every copy
+			// twice and left the closer comment in the page (bug 105).
+			if !keep && d.Verb == extract.VerbBlock {
+				if reg := extract.Region(lines, i+2, opts.Prefix); reg != nil {
+					i = reg.End - 1
+				}
+			}
 			continue
 		}
 		out = append(out, Node{Kind: NodeProse, Line: n, Text: r.inline(n, l, carrier[i], head)})
@@ -414,7 +428,7 @@ func (r *renderer) inlineVerb(n int, d directive.Directive, text, orig string) s
 				b.Pos = old.Pos
 			}
 		}
-		return "[" + text + "](" + r.link(b, d.Args[keyAt]) + ")"
+		return r.anchor(text, b, d.Args[keyAt])
 	case extract.VerbCfg:
 		if id == "" {
 			r.note(n, "cfg query= is not built yet; link text kept")
@@ -553,7 +567,7 @@ func (r *renderer) blockCode(n int, d directive.Directive, id string) (string, b
 	if title == "" {
 		title = id
 	}
-	caption := "**" + title + "** · [`" + location(b) + "`](" + r.link(b, sha) + ")" + badge
+	caption := "**" + title + "** · " + r.anchor("`"+location(b)+"`", b, sha) + badge
 	if content == "" {
 		return caption, false
 	}
@@ -601,7 +615,7 @@ func (r *renderer) chain(n int, id, env string) (string, bool) {
 		if v != "" {
 			item += " `" + v + "`"
 		}
-		item += " — [" + location(b) + "](" + r.link(b, "") + ")"
+		item += " — " + r.anchor(location(b), b, "")
 		if s := b.Args[block.KeySync]; s != "" {
 			item += " · synced by `" + s + "`"
 		}
@@ -708,20 +722,36 @@ func (r *renderer) table(n int, d directive.Directive) (string, bool) {
 	return sb.String(), false
 }
 
-// link builds the permalink for a block, at sha when given.
+// anchor is text linked to b's permalink, or text with the defining
+// repository named when b has no link (see link).
+func (r *renderer) anchor(text string, b block.Block, sha string) string {
+	url := r.link(b, sha)
+	if url == "" {
+		return text + " (in " + b.Args[block.KeyRepo] + ")"
+	}
+	return "[" + text + "](" + url + ")"
+}
+
+// link builds the permalink for a block, at sha when given. A block another
+// repository defines takes ForeignLink's URL; without one it has no link
+// at all, because the path is the other repository's, and a link relative
+// to this one named a file that is not here (bug 105).
 func (r *renderer) link(b block.Block, sha string) string {
 	if r.opts.Link != nil {
 		return r.opts.Link(b)
 	}
+	if b.Args[block.KeyRepo] != "" {
+		if r.opts.ForeignLink != nil {
+			if url, ok := r.opts.ForeignLink(b); ok {
+				return url
+			}
+		}
+		return ""
+	}
 	if sha == "" {
 		sha = r.opts.Commit
 	}
-	// A block merged from another repository has no path relative to this
-	// page; its file stays as published.
-	rel := b.Pos.File
-	if b.Args[block.KeyRepo] == "" {
-		rel = relativeTo(r.doc, b.Pos.File)
-	}
+	rel := relativeTo(r.doc, b.Pos.File)
 	rep := strings.NewReplacer("{sha}", sha, "{file}", b.Pos.File, "{rel}", rel, "{start}", strconv.Itoa(b.Pos.Start), "{end}", strconv.Itoa(b.Pos.End))
 	return rep.Replace(r.opts.Permalink)
 }
@@ -910,6 +940,11 @@ func rawComment(l string) (string, bool) {
 // never commit-pinned, so a new commit does not make every copy tampered.
 // ok is false when the reference cannot render (missing def, secret, out of
 // range); notes carry why.
+//
+// A copy of another repository's block names that repository and carries
+// no link (bug 105): its URL comes from the workspace file, which a frozen
+// check does not read, so a linked copy written by refresh would read as
+// tampered in CI.
 func Fragment(b block.Block, ref block.Reference, prefix string, maxLines int) (text string, ok bool, notes []Note) {
 	r := &renderer{opts: Options{Prefix: prefix, MaxLines: maxLines, Permalink: DefaultPermalink}, doc: ref.Pos.File, defs: map[string][]block.Block{b.ID: {b}}}
 	if r.opts.MaxLines <= 0 {

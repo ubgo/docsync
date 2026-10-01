@@ -28,5 +28,15 @@ jobs:
         with:
           go-version: "1.26"
       - run: GOBIN="$RUNNER_TEMP" go install github.com/ubgo/docsync/cli/cmd/ds@latest && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - run: go test ./... -json > /dev/null 2>&1 || true
-      - run: ds publish --tests junit.xml || ds publish
+      # Test outcomes for assert= citations (spec §9.2): gotestsum runs the
+      # suite and writes JUnit XML. A failing test still publishes; the
+      # failure is the outcome being recorded. Replace this step with your
+      # own runner's JUnit output for a non-Go repository.
+      - run: go run gotest.tools/gotestsum@v1.13.0 --junitfile "$RUNNER_TEMP/junit.xml" ./... || true
+      - run: |
+          if [ -s "$RUNNER_TEMP/junit.xml" ]; then
+            ds publish --tests "$RUNNER_TEMP/junit.xml"
+          else
+            echo "::warning::no JUnit report was written, so no test outcomes are published for assert= citations"
+            ds publish
+          fi

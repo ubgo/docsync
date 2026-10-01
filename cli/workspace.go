@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/ubgo/docsync"
+	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/config"
 	"github.com/ubgo/docsync/ledger"
@@ -117,8 +118,13 @@ func (a *App) syncIndex(cfg config.Config, fetch bool) (indexState, error) {
 	}
 	dir, managed := a.indexPath(cfg)
 	st.Dir = dir
-	if managed && fetch {
-		if _, err := os.Stat(dir); err != nil {
+	_, statErr := os.Stat(dir)
+	// A managed index with no clone yet is cloned by whichever command
+	// first needs it, fetching or not (bug 104): requiring `ds sync` first
+	// made `ds def` and `ds scan` in a fresh checkout stop with "index
+	// unreachable", which is about a cache nobody had been told to build.
+	if managed && (fetch || statErr != nil) {
+		if statErr != nil {
 			if err := a.vcs.Clone(cfg.Workspace, dir); err != nil {
 				return st, fmt.Errorf("%w: %v", ErrIndexOffline, err)
 			}
@@ -155,7 +161,84 @@ func (a *App) syncIndex(cfg config.Config, fetch bool) (indexState, error) {
 			st.Warnings = append(st.Warnings, fmt.Sprintf("index for %s is %d days old", repo, int(age.Hours()/24)))
 		}
 	}
+	if w := a.indexMismatch(cfg, st.WS, managed); w != "" {
+		st.Warnings = append(st.Warnings, w)
+	}
+	if w := a.commitsBehind(cfg, st); w != "" {
+		st.Warnings = append(st.Warnings, w)
+	}
 	return st, nil
+}
+
+// indexMismatch wires the workspace file's `index` key (bug 101): it names
+// the canonical index, so a repository whose own `workspace` URL is a
+// different repository is reading -- and would publish into -- the wrong
+// one. Only a git-URL index is compared: a local directory is whatever
+// checkout the person keeps, and its path says nothing about which
+// repository it is a copy of.
+func (a *App) indexMismatch(cfg config.Config, ws config.Workspace, managed bool) string {
+	if ws.Index == "" || !managed || config.CanonicalURL(ws.Index) == config.CanonicalURL(cfg.Workspace) {
+		return ""
+	}
+	return fmt.Sprintf("%s names the index %s, but .ds/config.toml points workspace at %s", config.WorkspaceFile, ws.Index, cfg.Workspace)
+}
+
+// foreignLinkFormat is the permalink of another repository's block:
+// https://<host/path>/blob/<commit>/<file>#L<start>-L<end>, the form GitHub
+// serves and GitLab and Gitea redirect. The commit is the one that
+// repository published, so the link shows the lines the block had then.
+const foreignLinkFormat = "https://%s/blob/%s/%s#L%d-L%d"
+
+// foreignLink links a rendered block of another repository into that
+// repository (bug 105), using the URL the workspace file lists for it and
+// the commit it published from the block's branch. A repository the file
+// does not list, or one with no published commit, gets no link, and the
+// renderer names the repository instead.
+func foreignLink(st indexState) func(b block.Block) (string, bool) {
+	return func(b block.Block) (string, bool) {
+		owner := b.Args[block.KeyRepo]
+		pub := st.Merged.Published[owner]
+		if branch := b.Args[block.KeyBranch]; branch != "" {
+			pub = st.Merged.BranchPublished[workspace.BranchKey(owner, branch)]
+		}
+		for _, url := range st.WS.Repos {
+			if config.RepoName(url) == owner && pub.Commit != "" {
+				return fmt.Sprintf(foreignLinkFormat, config.CanonicalURL(url), pub.Commit, b.Pos.File, b.Pos.Start, b.Pos.End), true
+			}
+		}
+		return "", false
+	}
+}
+
+// CommitCounter is the optional VCS upgrade behind
+// `workspace.stale_after_commits` (bug 101): how many commits `to` is ahead
+// of `from`. A VCS without it gets no commit-distance warning, never a
+// guessed one.
+type CommitCounter interface {
+	CommitsBetween(from, to string) (int, error)
+}
+
+// commitsBehind is the "index for api is 14 commits behind" warning (§21).
+// Only the repository that published can count it: commit distance needs
+// that repository's history, which no consumer has, so a consumer still
+// warns by age alone. The publishing repository hears it from every command
+// that loads the workspace, which is where the fix -- `ds publish` -- runs.
+func (a *App) commitsBehind(cfg config.Config, st indexState) string {
+	limit := st.WS.StaleAfterCommits
+	counter, ok := a.vcs.(CommitCounter)
+	if limit == 0 || !ok {
+		return ""
+	}
+	repo := a.repoName(cfg)
+	pub, published := st.Merged.Published[repo]
+	if !published {
+		return ""
+	}
+	n, err := counter.CommitsBetween(pub.Commit, st.defaultBranch())
+	if err != nil || n <= limit {
+		return ""
+	}
+	return fmt.Sprintf("index for %s is %d commits behind %s (workspace.stale_after_commits = %d); run `%s publish` on %s", repo, n, st.defaultBranch(), limit, a.name, st.defaultBranch())
 }
 
 // repoName is this repository's name in the workspace: the remote's last
@@ -187,7 +270,7 @@ func (a *App) workspaceOptions(cfg config.Config, repo string, fetch bool) ([]do
 		return nil, nil, err
 	}
 	defs, refs := st.Merged.Others(repo)
-	opts := []docsync.Option{docsync.WithMerged(defs...), docsync.WithMergedRefs(refs...)}
+	opts := []docsync.Option{docsync.WithMerged(defs...), docsync.WithMergedRefs(refs...), docsync.WithForeignLink(foreignLink(st))}
 	// The snapshot records where each cited foreign block was at the last
 	// sync, which is the only previous position a citing repo has for it.
 	// `check` never rewrites it, so this stays a comparison against
@@ -358,6 +441,17 @@ func (a *App) publishCmd() *cobra.Command {
 					return err
 				}
 				fmt.Fprintln(out, "pushed")
+			} else if c, ok := a.vcs.(IndexCommitter); ok {
+				// A local index that is its own git repository gets a
+				// commit, never a push: the directory is the user's, and
+				// where it is shared from is theirs to decide (bug 100).
+				committed, err := c.CommitIndex(st.Dir, fmt.Sprintf(publishMessage, repo, l.Header.Commit))
+				if err != nil {
+					return err
+				}
+				if committed {
+					fmt.Fprintf(out, "committed in %s\n", st.Dir)
+				}
 			}
 			for _, w := range st.Warnings {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)

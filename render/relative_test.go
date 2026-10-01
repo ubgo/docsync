@@ -51,11 +51,12 @@ func TestRelativeTo(t *testing.T) {
 	if string(out) != "[s](../internal/store/write.go#L12-L15)" {
 		t.Errorf("default link from docs/ = %q", out)
 	}
-	// A block merged from another repository keeps its published path.
+	// A block merged from another repository has no path in this one: with
+	// no ForeignLink it is named, not linked (bug 105).
 	foreign := save
 	foreign.Args = map[string]string{block.KeyRepo: "api"}
 	out, _ = Render(Input{Doc: "docs/x.md", Src: src, Defs: []block.Block{foreign}}, Options{})
-	if string(out) != "[s](internal/store/write.go#L12-L15)" {
+	if string(out) != "s (in api)" {
 		t.Errorf("foreign link from docs/ = %q", out)
 	}
 	// {file} stays root-relative, for templates that build an absolute URL.

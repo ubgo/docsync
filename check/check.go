@@ -890,8 +890,15 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 			r.emit(f)
 			return
 		}
-		expected, ok, _ := render.Fragment(def, ref, r.in.Prefix, r.in.Opts.MaxLines)
-		if ok && textnorm.NormalizeString(expected) != textnorm.NormalizeString(ref.Region.Text) && legacyCopy(def, ref, r.in.Prefix, r.in.Opts.MaxLines) {
+		filled := WithPublishedBody(def, r.in.Opts.BodyAt)
+		expected, ok, _ := render.Fragment(filled, ref, r.in.Prefix, r.in.Opts.MaxLines)
+		// Another repository's block whose body this run cannot read (not
+		// published, or pruned) cannot say what refresh wrote, and calling
+		// the copy tampered would be a guess.
+		if filled.Content == "" && filled.Args[block.KeyRepo] != "" {
+			ok = false
+		}
+		if ok && textnorm.NormalizeString(expected) != textnorm.NormalizeString(ref.Region.Text) && legacyCopy(filled, ref, r.in.Prefix, r.in.Opts.MaxLines) {
 			// Written by a build whose links were relative to the
 			// repository root (bug 64): nobody edited it, so it is not
 			// tampered; refresh rewrites it with links that resolve.
@@ -1224,6 +1231,22 @@ func legacyCopy(def block.Block, ref block.Reference, prefix string, maxLines in
 	ref.Pos.File = ""
 	legacy, ok, _ := render.Fragment(def, ref, prefix, maxLines)
 	return ok && textnorm.NormalizeString(legacy) == textnorm.NormalizeString(ref.Region.Text)
+}
+
+// WithPublishedBody returns b with its content filled from the body store
+// when b is another repository's block (block.KeyRepo set) and arrived
+// without one, as every merged def does: the index carries ledger rows, and
+// bodies separately by hash. A copy or a render of such a block was its
+// title and a link only (bug 105). A secret or local block publishes no
+// body, so it stays empty, and so does any miss.
+func WithPublishedBody(b block.Block, bodyAt func(hash string) (string, bool)) block.Block {
+	if b.Content != "" || b.Args[block.KeyRepo] == "" || bodyAt == nil {
+		return b
+	}
+	if body, ok := bodyAt(b.Hash); ok {
+		b.Content = body
+	}
+	return b
 }
 
 func orMissing(s string) string {

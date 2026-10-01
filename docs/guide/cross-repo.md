@@ -36,7 +36,7 @@ repos = ["github.com/org/docs", "github.com/org/api"]
 default_branch = "main"
 ```
 
-The keys are `name` and `repos` (both required), `default_branch` (the only branch `publish` runs from; `main` when unset), and `[workspace.id]` and `[workspace.env]` tables. `index` and `stale_after_commits` are accepted but change nothing in this build: each repository finds the index through its own `workspace` key, and the only staleness warning is by age (`index for docs is N days old` after seven days without a publish). A repository's name in the index is the last segment of its URL, so two listed repositories with the same last segment are refused when the file loads. Without a git remote, a repository's name is its directory name, and `publish` requires that name to be listed.
+The keys are `name` and `repos` (both required), `default_branch` (the only branch `publish` runs from; `main` when unset), `index`, and `stale_after_commits`. Each repository finds the index through its own `workspace` key; `index` names the canonical one, and a repository whose `workspace` is a different git URL is warned that it is reading the wrong index (a local directory is not compared, since its path says nothing about which repository it is a copy of). `stale_after_commits = N` warns a repository that published, from every command that loads the workspace, once its default branch is more than N commits past what it published, with `index for docs is 14 commits behind main (workspace.stale_after_commits = 10)` and the `ds publish` that fixes it. Only that repository has the history to count commits, so other repositories hear about an old publish by age alone (`index for docs is N days old`, after seven days without a publish). The `[workspace.id]` and `[workspace.env]` tables are refused as not implemented yet. A repository's name in the index is the last segment of its URL, so two listed repositories with the same last segment are refused when the file loads. Without a git remote, a repository's name is its directory name, and `publish` requires that name to be listed.
 
 Each repository then points at the index from its own config. The key is top-level, so it goes above the first `[table]`. This is the config `ds init` wrote in the docs repository, with that one line added:
 
@@ -104,7 +104,7 @@ $ find ../index -type f | sort
 ../index/repos/docs/refs.tsv
 ```
 
-Publish after committing: the published ledger records the commit it was scanned at, and permalinks resolve against it. Block bodies go into `repos/<name>/blocks/` so another repository can show a diff for a change it never scanned; secret and local blocks publish a hash and no body.
+Publish after committing: the published ledger records the commit it was scanned at, and permalinks resolve against it. When the index directory is the top of its own git repository, `publish` also commits there (`committed in ../index`) and never pushes; a plain directory, like this one, is only written. Block bodies go into `repos/<name>/blocks/` so another repository can show a diff for a change it never scanned; secret and local blocks publish a hash and no body.
 
 ## Cite it from the code repository
 
@@ -158,7 +158,7 @@ An author edits the spec in the docs repository. Before committing, `ds impact` 
 $ cd ../docs
 $ perl -pi -e 's/at most 5 times/at most 3 times/' spec/retries.md
 $ ds impact
-retry/retry.go (1)
+retry/retry.go (in the api repository) (1)
   3  unacked  backoff-zztatnzq
 owner (none): 1
 ```
@@ -167,16 +167,24 @@ owner (none): 1
 
 ```console
 $ ds check
-retry/retry.go
+retry/retry.go (in the api repository)
   3	error    unacked            backoff-zztatnzq changed (body) since this sentence was first cited
       | -A failed call is retried at most 5 times, doubling the wait each time.
       | +A failed call is retried at most 3 times, doubling the wait each time.
-      still true: ds ack backoff-zztatnzq --doc retry/retry.go --line 3 --note '…'
-      otherwise:  edit the sentence at retry/retry.go:3, then ack
+      still true: in api: ds ack backoff-zztatnzq --doc retry/retry.go --line 3 --note '…'
+      otherwise:  in api: edit the sentence at retry/retry.go:3, then ack
 1 error
 ```
 
-`retry/retry.go` is a file in the `api` repository, not this one. The text output does not say so; `ds check --json` does, with `"doc_repo": "api"` on the finding. The ack has to be recorded in the repository that holds the citation; run in the docs repository it is refused with `no reference at that doc line`. So the docs author's choices are to coordinate with the citing repository, or to publish and let the citing repository review the change on its own schedule, which is what the snapshot is for.
+`retry/retry.go` is a file in the `api` repository, not this one, and every remedy says it runs there: an ack is recorded in the repository that holds the citation. `ds check --json` keeps the bare command in `remedy` and names the repository in `"doc_repo": "api"`. So the docs author's choices are to coordinate with the citing repository, or to publish and let the citing repository review the change on its own schedule, which is what the snapshot is for.
+
+`ds why` lists the other repository's citations beside this one's:
+
+```console
+$ ds why backoff-zztatnzq
+backoff-zztatnzq  section  spec/retries.md:4-6
+  retry/retry.go:3 (in the api repository)  ds:block
+```
 
 The docs repository commits and publishes:
 
@@ -291,7 +299,7 @@ Both are fixed the same way: `ds sync`, then commit `.ds/foreign.tsv`. CI never 
 
 ## A git-hosted index
 
-Point `workspace` at a git URL instead of a directory and `ds` clones it into `.ds/index/` (machine-local and ignored), pulls before syncing, and commits and pushes after publishing:
+Point `workspace` at a git URL instead of a directory and `ds` clones it into `.ds/index/` (machine-local and ignored) the first time a command needs it, pulls before syncing, and commits and pushes after publishing:
 
 ```toml
 workspace = "https://github.com/org/ds-index"
@@ -328,7 +336,7 @@ published handbook: 1 defs, 0 refs, 0 test outcomes into .ds/index
 pushed
 ```
 
-Run `ds sync` once in a fresh checkout before anything else. Until the clone exists, commands that load the workspace, such as `ds def` and `ds scan`, stop with `workspace index unreachable and no cached copy`. After that, a failed fetch is a warning and the cached copy is used. A local directory needs no clone and no push. Private index repositories use your existing git credentials.
+`ds sync` cloned the index here because it ran first; `ds def` or `ds scan` would have done the same. Only a clone that fails stops a command, with `workspace index unreachable and no cached copy` and git's reason. After that, a failed fetch is a warning and the cached copy is used. A local directory needs no clone and no push. Private index repositories use your existing git credentials.
 
 ## Release branches
 
@@ -475,7 +483,9 @@ docs/limits.md
 1 error
 ```
 
-`ds refresh --dry-run` reports moved blocks and writes nothing. Two limits seen in testing: a copy of a block from another repository is written as its title and a link only, with no body, and the link is relative to the defining repository, so it does not resolve inside the citing one; and `ds render` on a page that already holds copies prints each block twice. Use repo mode for blocks in the same repository, and keep build-time rendering for cross-repo pages.
+`ds refresh --dry-run` lists the pages whose copies would be rewritten and the moved blocks, and writes nothing. `ds render` on a page that holds copies replaces each copy with its fresh rendering, so a page is never shown twice.
+
+A copy of a block from another repository carries the body that repository published to the index, and names the repository instead of linking: its location is a path in the other repository, and a committed link to it would have to come from the workspace file, which a frozen check does not read. `ds render` and the site integrations link such a block into its repository, at the commit it was published from, using the URL the workspace file lists for it. A copy whose body this run cannot read (never published, or pruned) is not judged `tampered`, since there is nothing to compare it with.
 
 ## What to commit
 

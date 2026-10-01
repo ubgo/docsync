@@ -130,7 +130,7 @@ Include the status partial in a base template:
 {{ partial "docsync/status.html" . }}
 ```
 
-It emits a hidden element with one `<span>` per cited reference in the repository, each carrying `data-ds-doc`, `data-ds-line`, `data-ds-id`, `data-ds-state`, `data-ds-severity` (`none`, `warning`, `error`) and, when the citation was acked, `data-ds-note`, `data-ds-acked-by`, `data-ds-acked-at`:
+It emits a hidden element with one `<span>` per reference cited on the current page, each carrying `data-ds-doc`, `data-ds-line`, `data-ds-id`, `data-ds-state`, `data-ds-severity` (`none`, `warning`, `error`) and, when the citation was acked, `data-ds-note`, `data-ds-acked-by`, `data-ds-acked-at`:
 
 ```html
 <div class="docsync-status" hidden data-ds-commit="8fcbb8a">
@@ -139,7 +139,14 @@ It emits a hidden element with one `<span>` per cited reference in the repositor
 </div>
 ```
 
-The partial lists every reference, not only the current page's; filter on `data-ds-doc` in the script or CSS that paints the green, amber, and red dots.
+A reference belongs to a page when its doc, a path from the repository root, ends in `/` plus the page's path in the content directory, so `docs/sessions.md` belongs to the page built from `content/docs/sessions.md`. When two directories hold files of the same name, set the content directory's path from the repository root and the match becomes exact:
+
+```toml
+[params.docsync]
+contentDir = "site/content"
+```
+
+A page with no file, such as a taxonomy list, gets the element with no references.
 
 ## Docusaurus
 
@@ -173,9 +180,6 @@ const config = {
   // .md pages are parsed as CommonMark, so <!-- ds:… --> comments are allowed.
   markdown: { format: 'detect' },
 
-  // Rendered block captions link to the source file (see below).
-  onBrokenLinks: 'warn',
-
   plugins: [[docsync, { cwd: repoRoot }]],
 
   presets: [
@@ -184,7 +188,7 @@ const config = {
       {
         docs: {
           sidebarPath: './sidebars.js',
-          beforeDefaultRemarkPlugins: [[docsync.remark, { cwd: repoRoot }]],
+          beforeDefaultRemarkPlugins: [[docsync.remark, { cwd: repoRoot, sourceUrl: 'https://github.com/org/repo/blob/main/' }]],
         },
       },
     ],
@@ -194,17 +198,17 @@ const config = {
 export default config;
 ```
 
-Three settings in that file are there because the build fails without them:
+Two settings in that file are there because the build fails without them, and the third decides where source links go:
 
-- **`beforeDefaultRemarkPlugins`, not `remarkPlugins`.** The transformer replaces the page's whole tree with the rendered one. Registered under `remarkPlugins`, which run after Docusaurus's own remark plugins, every page then fails to render with `Cannot read properties of undefined (reading 'length')`. Running it before the defaults lets Docusaurus process the rendered page as if it had been written that way.
+- **`beforeDefaultRemarkPlugins`, not `remarkPlugins`.** The transformer replaces the page's whole tree with the rendered one. Registered under `remarkPlugins`, which run after Docusaurus's own remark plugins, it would discard what they added, the page's table of contents among it, so it stops the build there with `remarkDocsync runs after Docusaurus's default remark plugins and would discard the page's table of contents; list it under beforeDefaultRemarkPlugins, not remarkPlugins`. Running it before the defaults lets Docusaurus process the rendered page as if it had been written that way.
 - **`markdown: { format: 'detect' }`.** Docusaurus parses `.md` files as MDX by default, and MDX rejects HTML comments, so a page with a block-form directive such as `<!-- ds:block id=sess-save -->` fails to parse before the plugin ever sees it. With `detect`, `.md` files are CommonMark and `.mdx` files stay MDX. Link-form directives (`[30](ds:cfg?id=sess-ttl)`) parse either way.
-- **`onBrokenLinks: 'warn'`.** A rendered block carries a caption linking to its source, such as `../store/session.go#L7-L9`, a path relative to the page that resolves in the repository but not in the site, which holds only the docs. With the default `throw`, Docusaurus stops the build on it.
+- **`sourceUrl`.** A rendered block carries a caption linking to its source, such as `store/session.go#L7-L9`, a path in the repository that is not a page of the site, and Docusaurus's broken-link check (`onBrokenLinks: 'throw'`, the default) would stop the build on it. The plugin makes each such link `sourceUrl` plus the file's repository path; without `sourceUrl` it keeps the link text and drops the link, so the default broken-link check still passes. A `[check] permalink` template in `.ds/config.toml` makes `ds render` write absolute links instead, and the plugin leaves those alone.
 
 `cwd` must be the repository root, because the plugin passes each page's path relative to it to `ds render`. Pages are rendered from the file on disk, so the docs must live inside that repository.
 
 ### Options
 
-Both parts accept `command` (the `ds` binary, default `ds`), `args` (extra arguments placed before the subcommand), and `cwd` (default the process's working directory). The remark plugin also accepts `onError`: the default `"throw"` fails the build when a page cannot be rendered, because a doc that cannot be rendered cannot be trusted; `"keep"` leaves that page as written and prints a warning instead.
+Both parts accept `command` (the `ds` binary, default `ds`), `args` (extra arguments placed before the subcommand), and `cwd` (default the process's working directory). The remark plugin also accepts `onError`: the default `"throw"` fails the build when a page cannot be rendered, because a doc that cannot be rendered cannot be trusted; `"keep"` leaves that page as written and prints a warning instead. And it accepts `sourceUrl`, the base URL the repository's files are served from, described above.
 
 ### Freshness data in a component
 

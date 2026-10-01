@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -180,18 +182,76 @@ func (g Git) Pull(dir string) error {
 // Push commits everything under dir and pushes. A clean tree is not an
 // error: publishing the same ledger twice is a no-op.
 func (g Git) Push(dir, message string) error {
-	in := Git{Dir: dir}
-	if _, err := in.run("add", "-A"); err != nil {
+	committed, err := commitAll(Git{Dir: dir}, message)
+	if err != nil || !committed {
 		return err
 	}
-	if out, err := in.run("status", "--porcelain"); err != nil || strings.TrimSpace(string(out)) == "" {
-		return err
-	}
-	if _, err := in.run("commit", "--quiet", "-m", message); err != nil {
-		return err
-	}
-	_, err := in.run("push", "--quiet")
+	_, err = Git{Dir: dir}.run("push", "--quiet")
 	return err
+}
+
+// IndexCommitter is the optional VCS upgrade `publish` uses for an index
+// that is a local directory rather than a managed clone (bug 100). Writing
+// the files and stopping left them untracked in an index that is itself a
+// git repository, so every later publish piled onto one uncommitted change
+// and nothing recorded which repository wrote what, at which commit. A VCS
+// that does not implement it is left alone: the files are written and
+// nothing else happens.
+type IndexCommitter interface {
+	// CommitIndex commits everything under dir when dir is the top of its
+	// own git work tree, and reports whether it made a commit. A directory
+	// that is not a work tree's top -- a plain directory, or one nested
+	// inside an unrelated repository -- is not committed and is not an
+	// error: committing there would sweep up the enclosing repository's
+	// unrelated changes.
+	CommitIndex(dir, message string) (bool, error)
+}
+
+// CommitIndex implements IndexCommitter.
+func (g Git) CommitIndex(dir, message string) (bool, error) {
+	in := Git{Dir: dir}
+	out, err := in.run("rev-parse", "--show-toplevel")
+	if err != nil {
+		return false, nil
+	}
+	top, err1 := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+	here, err2 := filepath.Abs(dir)
+	if err2 == nil {
+		here, err2 = filepath.EvalSymlinks(here)
+	}
+	if err1 != nil || err2 != nil || top != here {
+		return false, nil
+	}
+	return commitAll(in, message)
+}
+
+// CommitsBetween implements CommitCounter: the number of commits reachable
+// from to and not from from. An unknown commit -- one this clone never
+// fetched -- is an error, so the caller says nothing rather than guess.
+func (g Git) CommitsBetween(from, to string) (int, error) {
+	out, err := g.run("rev-list", "--count", endOfOptions, from+".."+to)
+	if err != nil {
+		return 0, err
+	}
+	// rev-list --count prints one integer; anything else reads as 0, which
+	// is "not behind" and so never a false warning.
+	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return n, nil
+}
+
+// commitAll stages and commits everything in g's tree; a clean tree commits
+// nothing and is not an error.
+func commitAll(g Git, message string) (bool, error) {
+	if _, err := g.run("add", "-A"); err != nil {
+		return false, err
+	}
+	if out, err := g.run("status", "--porcelain"); err != nil || strings.TrimSpace(string(out)) == "" {
+		return false, err
+	}
+	if _, err := g.run("commit", "--quiet", "-m", message); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Staged lists paths staged for the next commit.

@@ -47,7 +47,10 @@ const (
 	DefaultSuffixLength   = 8
 	DefaultSuffixAlphabet = "23456789abcdefghjkmnpqrstuvwxyz"
 	DefaultMaxDefsPerRun  = 20
-	DefaultEscalateAfter  = "7d"
+	// DefaultSessionHook is what `ds init --agents` installs as the
+	// session-start hook (§26.10); an empty agents.session_hook installs none.
+	DefaultSessionHook   = "ds map --budget 2000"
+	DefaultEscalateAfter = "7d"
 )
 
 // Closed-set values.
@@ -356,7 +359,7 @@ func Default() Config {
 				OnDeleted:   DefaultOnDeleted,
 			},
 		},
-		Agents: AgentsConfig{MaxDefsPerRun: DefaultMaxDefsPerRun, MCP: true},
+		Agents: AgentsConfig{MaxDefsPerRun: DefaultMaxDefsPerRun, MCP: true, SessionHook: DefaultSessionHook},
 		ID:     IDConfig{SuffixAlphabet: DefaultSuffixAlphabet, SuffixLength: DefaultSuffixLength},
 	}
 }

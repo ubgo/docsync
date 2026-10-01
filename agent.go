@@ -110,6 +110,21 @@ type Why struct {
 	// Copies are defs whose from= is this id.
 	Copies  []block.Block `json:"copies"`
 	History []ledger.Ack  `json:"history"`
+	// RemoteRefs are citations of the id that other repositories in the
+	// workspace published (WithMergedRefs). Refs holds only this
+	// repository's scan, so a block cited from another repository read as
+	// cited by nobody, the one question `why` exists to answer (bug 103).
+	RemoteRefs []RemoteCiter `json:"remote_refs,omitempty"`
+}
+
+// RemoteCiter is one citation published by another repository: where it
+// is, and the verb it cites with. The sentence itself is not published,
+// so it is not here.
+type RemoteCiter struct {
+	Repo string `json:"repo"`
+	Doc  string `json:"doc"`
+	Line int    `json:"line"`
+	Verb string `json:"verb"`
 }
 
 // Why answers `ds why <id>` from a scan and the ack log.
@@ -126,6 +141,11 @@ func (s *System) Why(res scan.Result, target string) (Why, error) {
 	for _, r := range res.Refs {
 		if r.ID == target || contains(r.Directive().List("about"), target) {
 			w.Refs = append(w.Refs, r)
+		}
+	}
+	for _, row := range s.mergedRefs {
+		if row.ID == target || contains(row.ToReference().Directive().List("about"), target) {
+			w.RemoteRefs = append(w.RemoteRefs, RemoteCiter{Repo: row.Repo, Doc: row.Doc, Line: row.Line, Verb: row.Verb})
 		}
 	}
 	for _, doc := range sortedPages(res) {
@@ -827,6 +847,21 @@ func (req AckRequest) matches(r *block.Reference) bool {
 	return req.ID == "" || r.ID == req.ID
 }
 
+// isOwnerPerson reports whether name is a person listed under some team in
+// [owners]. §26.7 lets an agent ack only when "a human named in [owners]
+// delegated": any non-empty delegated_by used to pass, so an agent could
+// name anyone, or itself, and approve its own work (bug 106).
+func (s *System) isOwnerPerson(name string) bool {
+	for _, people := range s.cfg.Owners {
+		for _, p := range people {
+			if p == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Ack builds the ack row for a reference against the block's current hash
 // and the sentence's current hash. The caller appends it to the log. An
 // agent actor must name who delegated; the library refuses otherwise so no
@@ -837,6 +872,9 @@ func (s *System) Ack(res scan.Result, req AckRequest) (ledger.Ack, error) {
 	}
 	if req.ActorKind == ledger.ActorAgent && req.DelegatedBy == "" {
 		return ledger.Ack{}, ErrDelegationRequired
+	}
+	if req.ActorKind == ledger.ActorAgent && !s.isOwnerPerson(req.DelegatedBy) {
+		return ledger.Ack{}, fmt.Errorf("%w: %q", ErrDelegateNotOwner, req.DelegatedBy)
 	}
 	if req.Page {
 		if res.Pages[req.Doc].ReviewEvery == "" {

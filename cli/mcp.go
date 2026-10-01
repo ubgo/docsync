@@ -29,7 +29,8 @@ const (
 	jsonrpcVersion     = "2.0"
 	// dataDelimiter precedes every tool payload.
 	dataDelimiter = "data:\n"
-	// mcpActor is the default actor name for agent acks over MCP.
+	// mcpActor is the actor name for agent acks over MCP when the client
+	// did not say who it is in initialize (clientInfo.name).
 	mcpActor = "mcp"
 
 	rpcParseError     = -32700
@@ -119,6 +120,19 @@ type mcpCallResult struct {
 type mcpServer struct {
 	app  *App
 	defs int
+	// client is clientInfo.name from initialize: the tool an ack is
+	// recorded under, which §26.7 requires ("the model or tool name").
+	// Every MCP ack was recorded as "mcp", which says how it arrived and
+	// not who judged (bug 106).
+	client string
+}
+
+// actor is the name an agent ack over MCP is recorded under.
+func (m *mcpServer) actor() string {
+	if m.client == "" {
+		return mcpActor
+	}
+	return m.client
 }
 
 func schema(props map[string]any, required ...string) map[string]any {
@@ -144,9 +158,9 @@ func (m *mcpServer) tools() []mcpTool {
 		{ToolWhy, "Every reference to or cover of an id, its chain, and its ack history." + dataNote, schema(map[string]any{"id": str("block id")}, "id")},
 		{ToolContext, "A page with every block it cites, or a block with every sentence about it, ranked and budgeted." + dataNote, schema(map[string]any{"target": str("doc path or block id"), "budget": num("token budget"), "since": str("ack, or a commit"), "mode": str("auto|full|diff|value")}, "target")},
 		{ToolCheck, "Findings for the working tree: the complete work list." + dataNote, schema(map[string]any{"strict": map[string]any{"type": "boolean"}, "env": str("environment")})},
-		{ToolImpact, "What the working tree's changes will flag, grouped by doc, owner, and repo." + dataNote, schema(map[string]any{})},
+		{ToolImpact, "What the working tree's changes will flag, grouped by doc, owner, and repo; staged limits it to the changes staged for the next commit, as a pre-commit check would see them." + dataNote, schema(map[string]any{"staged": map[string]any{"type": "boolean", "description": "only findings caused by staged files"}})},
 		{ToolDef, "Mint or return the id for file#Symbol or file:line and insert the directive; capped per session by agents.max_defs_per_run.", schema(map[string]any{"target": str("path#Symbol or path:line"), "owner": str("owner="), "stability": str("stability="), "desc": str("desc=")}, "target")},
-		{ToolAck, "Record that a citing sentence is still true. Only as delegated: delegated_by must name the human who authorised this run.", schema(map[string]any{"id": str("block id"), "doc": str("citing document"), "line": num("citing line"), "note": str("why it is still true"), "delegated_by": str("the human who delegated")}, "id", "doc", "line", "delegated_by")},
+		{ToolAck, "Record that a citing sentence is still true. Only as delegated: delegated_by must name the human who authorised this run, a person listed in the repository's [owners].", schema(map[string]any{"id": str("block id"), "doc": str("citing document"), "line": num("citing line"), "note": str("why it is still true"), "delegated_by": str("the human who delegated")}, "id", "doc", "line", "delegated_by")},
 	}
 }
 
@@ -201,6 +215,14 @@ func (m *mcpServer) handle(req rpcRequest) (rpcResponse, bool) {
 	}
 	switch req.Method {
 	case "initialize":
+		var p struct {
+			ClientInfo struct {
+				Name string `json:"name"`
+			} `json:"clientInfo"`
+		}
+		// Malformed params leave the name unset; initialize still answers.
+		_ = json.Unmarshal(req.Params, &p)
+		m.client = strings.TrimSpace(p.ClientInfo.Name)
 		resp.Result = map[string]any{
 			"protocolVersion": mcpProtocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
@@ -259,6 +281,7 @@ func (m *mcpServer) call(name string, raw json.RawMessage) (mcpCallResult, error
 		Since       string `json:"since"`
 		Mode        string `json:"mode"`
 		Strict      bool   `json:"strict"`
+		Staged      bool   `json:"staged"`
 		Env         string `json:"env"`
 		Owner       string `json:"owner"`
 		Stability   string `json:"stability"`
@@ -338,7 +361,18 @@ func (m *mcpServer) call(name string, raw json.RawMessage) (mcpCallResult, error
 	case ToolCheck:
 		payload, err = sys.Check(ctx, docsync.CheckOptions{Strict: args.Strict, Env: args.Env})
 	case ToolImpact:
-		payload, err = sys.Impact(ctx)
+		var imp docsync.ImpactResult
+		imp, err = sys.Impact(ctx)
+		if err == nil && args.Staged {
+			// The same filter as `ds impact --staged` (bug 107): the tool
+			// took no arguments, so an agent preparing a commit saw every
+			// unstaged change's findings too.
+			var files []string
+			if files, err = a.vcs.Staged(); err == nil {
+				imp = filterImpact(imp, files)
+			}
+		}
+		payload = imp
 	case ToolDef:
 		var res docsync.DefineResult
 		res, err = sys.Define(ctx, args.Target, docsync.DefineOptions{Owner: args.Owner, Stability: args.Stability, Desc: args.Desc})
@@ -362,7 +396,7 @@ func (m *mcpServer) call(name string, raw json.RawMessage) (mcpCallResult, error
 			return mcpCallResult{}, serr
 		}
 		var rows []ledger.Ack
-		rows, err = a.recordAcks(ld, res, []docsync.AckRequest{{ID: args.ID, Doc: args.Doc, Line: args.Line, Actor: mcpActor, ActorKind: ledger.ActorAgent, DelegatedBy: args.DelegatedBy, Note: args.Note}}, false)
+		rows, err = a.recordAcks(ld, res, []docsync.AckRequest{{ID: args.ID, Doc: args.Doc, Line: args.Line, Actor: m.actor(), ActorKind: ledger.ActorAgent, DelegatedBy: args.DelegatedBy, Note: args.Note}}, false)
 		payload = rows
 	}
 	if err != nil {

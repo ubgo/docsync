@@ -406,6 +406,11 @@ func TestDefScanCheckAck(t *testing.T) {
 	if r.code != 0 || !strings.Contains(r.out, "acked sess-save-k7m2p4xq at docs/sessions.md:1 (human)") {
 		t.Fatalf("ack = %+v", r)
 	}
+	// An agent ack's delegate must be a person [owners] lists (bug 106).
+	if r := run(t, dir, v, "ack", "sess-save-k7m2p4xq", "--all", "--agent", "--delegated-by", "khanakia"); r.code != ExitError || !strings.Contains(r.err, "listed in [owners]") {
+		t.Errorf("delegate nobody lists = %+v", r)
+	}
+	addOwners(t, dir, "khanakia")
 	r = run(t, dir, v, "ack", "sess-save-k7m2p4xq", "--all", "--agent", "--delegated-by", "khanakia")
 	if r.code != 0 || strings.Count(r.out, "(agent)") != 2 {
 		t.Errorf("ack all = %+v", r)
