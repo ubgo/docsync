@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/pelletier/go-toml/v2 v2.4.3
-	github.com/ubgo/docsync v0.1.0
+	github.com/ubgo/docsync v0.1.3
 	gopkg.in/yaml.v3 v3.0.1
 )
 

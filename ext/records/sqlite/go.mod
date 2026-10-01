@@ -3,7 +3,7 @@ module github.com/ubgo/docsync/ext/records/sqlite
 go 1.26
 
 require (
-	github.com/ubgo/docsync v0.1.0
+	github.com/ubgo/docsync v0.1.3
 	modernc.org/sqlite v1.58.0
 )
 
