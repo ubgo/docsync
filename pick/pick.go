@@ -474,6 +474,10 @@ func pickJSON(arg, content string) (Result, error) {
 	}
 	path := strings.TrimPrefix(strings.TrimPrefix(arg, "$"), ".")
 	cur := doc
+	// sc follows the same path through the text, so the result carries the
+	// lines the value is written on rather than line 1 (bug 45).
+	sc := &jsonScan{s: content}
+	sc.ws()
 	if path != "" {
 		for _, seg := range strings.Split(path, ".") {
 			key, idx, hasIdx, err := splitIndex(seg)
@@ -497,19 +501,131 @@ func pickJSON(arg, content string) (Result, error) {
 				}
 				cur = arr[idx]
 			}
+			sc.step(key, idx, hasIdx)
 		}
 	}
+	start, end := sc.lines()
 	switch v := cur.(type) {
 	case map[string]any, []any:
+		// The text stays the pretty form, as it always was, because it is
+		// what the block hashes; only the position is the source's.
 		b, _ := json.MarshalIndent(v, "", "  ")
 		ls := splitLines(string(b))
-		return rangeResult(ls, 1, len(ls)), nil
+		r := rangeResult(ls, 1, len(ls))
+		r.Start, r.End = start, end
+		return r, nil
 	case string:
-		return valueResult(v, 1)
+		return valueResult(v, start)
 	default:
 		b, _ := json.Marshal(v)
-		return valueResult(string(b), 1)
+		return valueResult(string(b), start)
 	}
+}
+
+// jsonScan walks the text of a JSON document already known to be valid, to
+// find where a value is written. Unmarshal answers what the value is and
+// keeps no positions, so the remote def of a JSON key used to be recorded at
+// line 1 whatever line the key was on: `ds locate`, permalinks and the
+// ledger all pointed at the top of the file.
+type jsonScan struct {
+	s string
+	i int
+}
+
+// ws skips whitespace.
+func (p *jsonScan) ws() {
+	for p.i < len(p.s) && strings.IndexByte(" \t\r\n", p.s[p.i]) >= 0 {
+		p.i++
+	}
+}
+
+// str skips a string token and returns its decoded text.
+func (p *jsonScan) str() string {
+	start := p.i
+	for p.i++; p.i < len(p.s) && p.s[p.i] != '"'; p.i++ {
+		if p.s[p.i] == '\\' {
+			p.i++
+		}
+	}
+	p.i++
+	var out string
+	// The document parsed, so every string token in it decodes.
+	_ = json.Unmarshal([]byte(p.s[start:p.i]), &out)
+	return out
+}
+
+// skip moves past one value of any kind.
+func (p *jsonScan) skip() {
+	switch c := p.s[p.i]; c {
+	case '"':
+		p.str()
+	case '{', '[':
+		depth := 0
+		for ; p.i < len(p.s); p.i++ {
+			switch p.s[p.i] {
+			case '"':
+				p.str()
+				p.i--
+			case '{', '[':
+				depth++
+			case '}', ']':
+				depth--
+				if depth == 0 {
+					p.i++
+					return
+				}
+			}
+		}
+	default:
+		for p.i < len(p.s) && strings.IndexByte(",}] \t\r\n", p.s[p.i]) < 0 {
+			p.i++
+		}
+	}
+}
+
+// step moves from the value at p.i to its member key (the last one written,
+// which is the one Unmarshal keeps) and then to element idx. pickJSON has
+// already walked the same path through the decoded value, so every step
+// exists.
+func (p *jsonScan) step(key string, idx int, hasIdx bool) {
+	if key != "" {
+		at := p.i
+		p.i++ // {
+		for p.ws(); p.s[p.i] != '}'; p.ws() {
+			k := p.str()
+			p.ws()
+			p.i++ // :
+			p.ws()
+			if k == key {
+				at = p.i
+			}
+			p.skip()
+			p.ws()
+			if p.s[p.i] == ',' {
+				p.i++
+				p.ws()
+			}
+		}
+		p.i = at
+	}
+	if hasIdx {
+		p.i++ // [
+		p.ws()
+		for n := 0; n < idx; n++ {
+			p.skip()
+			p.ws()
+			p.i++ // ,
+			p.ws()
+		}
+	}
+}
+
+// lines returns the first and last line of the value at p.i.
+func (p *jsonScan) lines() (int, int) {
+	start := 1 + strings.Count(p.s[:p.i], "\n")
+	from := p.i
+	p.skip()
+	return start, start + strings.Count(p.s[from:p.i], "\n")
 }
 
 // splitIndex parses `key`, `key[2]`, or `[2]`.

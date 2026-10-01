@@ -25,6 +25,20 @@ type Position struct {
 	End   int    `json:"end"`
 }
 
+// Crosses reports two extents in one file that overlap without either one
+// containing the other. Nesting is legitimate -- a method in a class, a
+// subsection in a section -- but crossing blocks each hold part of the other,
+// so an edit that concerns one flags both. A position with no extent (Start
+// 0: remote, local, unbound) crosses nothing.
+func Crosses(a, b Position) bool {
+	if a.File != b.File || a.Start == 0 || b.Start == 0 {
+		return false
+	}
+	overlap := a.Start <= b.End && b.Start <= a.End
+	nested := a.Start <= b.Start && b.End <= a.End || b.Start <= a.Start && a.End <= b.End
+	return overlap && !nested
+}
+
 // Block is one defined unit: the target of a `ds:def`. Everything the ledger
 // stores about a definition is here; verbs read their own keys from Args.
 type Block struct {

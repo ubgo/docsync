@@ -402,7 +402,7 @@ func TestPathArgumentsFromASubdirectory(t *testing.T) {
 		}
 	}
 	// A target of neither shape reaches Define, which says what it wants.
-	if r := run(t, sub, v, "def", "nonsense", "--dry-run"); r.code != ExitError || !strings.Contains(r.err, "path#Symbol or path:line") {
+	if r := run(t, sub, v, "def", "nonsense", "--dry-run"); r.code != ExitError || !strings.Contains(r.err, "path#Symbol, path:line or path:start-end") {
 		t.Errorf("malformed target = %+v", r)
 	}
 	whole := run(t, sub, v, "find", "--file", "..")

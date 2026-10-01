@@ -207,8 +207,8 @@ const (
 	// remedyRunFailed names the command, so it can be run by hand to see
 	// why, and the sentence whose claim it was checking.
 	remedyRunFailed   = "run `%s` by hand to see why; fix the command, or the sentence at %s:%d if it no longer holds"
+	remedyCfgQuery    = "query sources are not built yet (SPEC §38); put the value in a def and cite it with %s:cfg?id=…, or leave the link text as the last known value"
 	remedyTable       = "register a record source in [records] to render %s:table"
-	remedyQuery       = "%s:cfg query= is not built yet (SPEC section 38); cite a def with id= instead"
 	remedyOrphan      = "the page %s covers %s, which is not defined; remove it from covers or restore the def"
 	remedyUncovered   = "%s is defined but nothing cites or covers it; cite it from a page or remove the def"
 	remedyUnknownVerb = "%s is not a registered verb; register a handler or fix the directive at %s:%d"

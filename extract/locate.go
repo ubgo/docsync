@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ubgo/docsync/block"
@@ -22,6 +23,13 @@ var (
 type Target struct {
 	Symbol string
 	Line   int
+	// End is the last line of a `path:start-end` target, 0 for a single line.
+	// Locate binds from Line as it always does; the caller decides whether
+	// the tier can bind exactly Line..End (docsync.Define widens with span=
+	// and refuses when no span gives that range). It is carried rather than
+	// dropped because a range read as its first line, silently, defined a
+	// block the author never asked for.
+	End int
 	// Prefix is the configured directive prefix. Locate needs it to see
 	// which lines are directive carriers, so the extent it reports is the
 	// one the scanner will compute for the same block; empty means the
@@ -29,18 +37,46 @@ type Target struct {
 	Prefix string
 }
 
-// ParseTarget reads `path#Symbol` or `path:line`.
+// ErrBadTarget is a `ds def` target that is not `path#Symbol`, `path:line`
+// or `path:start-end`.
+var ErrBadTarget = errors.New("extract: target must be path#Symbol, path:line or path:start-end")
+
+// ParseTarget reads `path#Symbol`, `path:line` or `path:start-end`.
+//
+// The line part must be all digits: it used to be read with Sscanf, which
+// takes the leading number and ignores the rest, so `path:3-5` quietly meant
+// `path:3` and `path:3x` meant it too (bug 43).
 func ParseTarget(s string) (path string, t Target, err error) {
 	if p, sym, ok := strings.Cut(s, "#"); ok && sym != "" {
 		return p, Target{Symbol: sym}, nil
 	}
 	if i := strings.LastIndex(s, ":"); i > 0 {
-		var n int
-		if _, err := fmt.Sscanf(s[i+1:], "%d", &n); err == nil && n > 0 {
-			return s[:i], Target{Line: n}, nil
+		from, to, isRange := strings.Cut(s[i+1:], "-")
+		a, errA := strconv.Atoi(from)
+		b, errB := strconv.Atoi(to)
+		switch {
+		case !isRange && errA == nil && a > 0 && digitsOnly(from):
+			return s[:i], Target{Line: a}, nil
+		case isRange && errA == nil && errB == nil && a > 0 && b >= a && digitsOnly(from) && digitsOnly(to):
+			t := Target{Line: a}
+			if b > a {
+				t.End = b
+			}
+			return s[:i], t, nil
 		}
 	}
-	return "", Target{}, fmt.Errorf("extract: target %q must be path#Symbol or path:line", s)
+	return "", Target{}, fmt.Errorf("%w: %q", ErrBadTarget, s)
+}
+
+// digitsOnly reports a non-empty run of ASCII digits; Atoi alone accepts a
+// sign, which no line number carries.
+func digitsOnly(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // Locate binds a target in src with the same rules the def binder uses for
@@ -56,6 +92,9 @@ func Locate(p string, src []byte, t Target) (block.Block, error) {
 	lines := splitLines(src)
 	if t.Symbol == "" && (t.Line < 1 || t.Line > len(lines)) {
 		return block.Block{}, fmt.Errorf("%w: %d of %d", ErrLineOutOfRange, t.Line, len(lines))
+	}
+	if t.Symbol == "" && t.End > len(lines) {
+		return block.Block{}, fmt.Errorf("%w: %d-%d of %d", ErrLineOutOfRange, t.Line, t.End, len(lines))
 	}
 	st, _ := StyleFor(p)
 	ext := Ext(p)

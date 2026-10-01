@@ -99,6 +99,20 @@ func bindEntries(lines []string, entries []entry, prefix string, markers []strin
 			i += consumed - 1
 			continue
 		}
+		n, hasSpan, err := extract.ParseSpan(d)
+		if err != nil {
+			f.Problems = append(f.Problems, extract.Problem{Pos: pos, Err: err})
+			i += consumed - 1
+			continue
+		}
+		if hasSpan {
+			// span=+N is the bound line plus N, as in the line-mode config
+			// tier these formats fall back to without this module. It was
+			// accepted and ignored here, so the same def bound different
+			// lines depending on which build scanned it (bug 49). The end
+			// is set once every carrier is known, below.
+			e.span, e.hasSpan = n, true
+		}
 		defs = append(defs, bound{d: d, id: id, e: e, pos: pos})
 		i += consumed - 1
 	}
@@ -106,6 +120,12 @@ func bindEntries(lines []string, entries []entry, prefix string, markers []strin
 		if b.remote {
 			f.Defs = append(f.Defs, extract.Def{Directive: b.d, Remote: true, Block: block.Block{ID: b.id, DirectivePos: b.pos, Carrier: block.CarrierComment, Args: b.d.Args}})
 			continue
+		}
+		if end := extract.SpanEnd(lines, b.e.start, b.e.span+1, carriers); b.e.hasSpan && end != b.e.end {
+			// A span that changes the extent makes the block those lines; one
+			// that does not leaves a scalar its value.
+			b.e.end = end
+			b.e.isScalar = false
 		}
 		f.Defs = append(f.Defs, def(b.d, b.id, b.e, b.pos, lines, carriers))
 	}

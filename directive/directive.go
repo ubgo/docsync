@@ -277,7 +277,11 @@ func ParseLink(prefix, target string) (Directive, error) {
 	// Parse pairs by hand rather than url.ParseQuery so that order is kept and
 	// a bare token (no '=') is rejected as positional, matching the comment form.
 	col := len(head) + len(verb) + 1
-	for _, pair := range strings.Split(query, "&") {
+	pairs, err := splitPairs(query)
+	if err != nil {
+		return Directive{}, &ParseError{Column: col, Err: err}
+	}
+	for _, pair := range pairs {
 		if pair == "" {
 			return Directive{}, &ParseError{Column: col, Err: ErrBadLink}
 		}
@@ -288,7 +292,7 @@ func ParseLink(prefix, target string) (Directive, error) {
 		if !hasEq {
 			return Directive{}, &ParseError{Column: col, Err: ErrPositional}
 		}
-		val, err := url.QueryUnescape(rawVal)
+		val, err := linkValue(rawVal)
 		if err != nil {
 			return Directive{}, &ParseError{Column: col, Err: fmt.Errorf("%w: %v", ErrBadLink, err)}
 		}
@@ -300,6 +304,42 @@ func ParseLink(prefix, target string) (Directive, error) {
 		col += len(pair) + 1
 	}
 	return d, nil
+}
+
+// splitPairs splits a link query on `&`, except inside a quoted value: a
+// value whose first character is `"` or `'` runs to the matching quote, which
+// must end the pair. An unclosed quote is ErrUnterminatedQuote, as in Parse.
+func splitPairs(query string) ([]string, error) {
+	var out []string
+	start := 0
+	for i := 0; i <= len(query); i++ {
+		if i == len(query) || query[i] == '&' {
+			out = append(out, query[start:i])
+			start = i + 1
+			continue
+		}
+		if q := query[i]; (q == '"' || q == '\'') && i > start && query[i-1] == '=' && !strings.Contains(query[start:i-1], "=") {
+			end := strings.IndexByte(query[i+1:], q)
+			if end < 0 {
+				return nil, ErrUnterminatedQuote
+			}
+			i += end + 1
+		}
+	}
+	return out, nil
+}
+
+// linkValue decodes one link value. A value in quotes is taken as written,
+// quotes removed and nothing decoded, which is how the comment form reads
+// one: `title="TOAST"` is TOAST, where it used to keep its quotes and never
+// equal a page title (bug 52), and a quoted value may hold `&`. Any other
+// value is percent-decoded, as a query string is; FormatLink encodes a
+// leading quote as %22, so its output never reads as quoted.
+func linkValue(raw string) (string, error) {
+	if len(raw) >= 2 && (raw[0] == '"' || raw[0] == '\'') && raw[len(raw)-1] == raw[0] {
+		return raw[1 : len(raw)-1], nil
+	}
+	return url.QueryUnescape(raw)
 }
 
 // Fold merges continuation lines into a directive's text before parsing. A

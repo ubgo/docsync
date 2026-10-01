@@ -142,10 +142,13 @@ type DefineOptions struct {
 
 // DefineResult is what Define returns.
 type DefineResult struct {
-	ID       string      `json:"id"`
-	Existing bool        `json:"existing"`
-	Block    block.Block `json:"block"`
-	Edit     Edit        `json:"edit"`
+	ID       string `json:"id"`
+	Existing bool   `json:"existing"`
+	// Block is the block as the scanning tier binds it. For a new def its
+	// Pos is in the file as it was read, before Edit; DirectivePos is the
+	// line Edit writes the directive at.
+	Block block.Block `json:"block"`
+	Edit  Edit        `json:"edit"`
 }
 
 // Define returns the id for `path#Symbol` or `path:line`, minting one and
@@ -164,19 +167,35 @@ func (s *System) Define(_ context.Context, target string, opts DefineOptions) (D
 		return DefineResult{}, err
 	}
 	tgt.Prefix = s.cfg.Prefix
-	located, err := extract.Locate(path, src, tgt)
-	if err != nil {
-		return DefineResult{}, err
-	}
-	located.Pos.File = path
 	ex, err := s.registry.For(path)
 	if err != nil {
 		return DefineResult{}, err
 	}
-	for _, d := range ex.Extract(path, src, s.cfg.Prefix).Defs {
-		if d.Block.Pos.Start == located.Pos.Start && d.Block.Env() == opts.Env {
-			d.Block.Pos.File, d.Block.DirectivePos.File = path, path
-			return DefineResult{ID: d.Block.ID, Existing: true, Block: d.Block}, nil
+	existing := ex.Extract(path, src, s.cfg.Prefix).Defs
+	// A line that is itself a def's directive names that def. Without this,
+	// `ds def notes.txt:1` on a bare `ds:def` line located the directive line
+	// as a block of its own and wrote a second directive above the first
+	// (bug 58).
+	if tgt.Symbol == "" {
+		for _, d := range existing {
+			if !d.Remote && d.Block.DirectivePos.Start <= tgt.Line && tgt.Line <= d.Block.DirectivePos.End && d.Block.Env() == opts.Env {
+				return existingResult(d, path), nil
+			}
+		}
+	}
+	located, err := locateTarget(ex, path, src, tgt)
+	if err != nil {
+		return DefineResult{}, err
+	}
+	located.Pos.File = path
+	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
+	span, err := rangeSpan(ex, path, src, lines, located, tgt, s.cfg.Prefix)
+	if err != nil {
+		return DefineResult{}, err
+	}
+	for _, d := range existing {
+		if d.Block.Pos.Start == located.Pos.Start && d.Block.Env() == opts.Env && (tgt.End == 0 || d.Block.Pos.End == tgt.End) {
+			return existingResult(d, path), nil
 		}
 	}
 	if err := s.refuseGenerated(path); err != nil {
@@ -191,10 +210,12 @@ func (s *System) Define(_ context.Context, target string, opts DefineOptions) (D
 		// scan the file: an object-literal property, a member reached by line
 		// number. Ask that tier, so the id reads `server-port-…` rather than
 		// the file name -- an id is how a reader greps for the block.
-		label = id.Slug(scanSymbol(ex, path, src, located, s.cfg.Prefix))
+		if b, ok := probeAt(ex, path, src, lines, located, s.cfg.Prefix, ""); ok {
+			label = id.Slug(b.Symbol)
+		}
 	}
 	if label == "" {
-		label = id.Slug(strings.TrimSuffix(baseName(path), extract.Ext(path)))
+		label = fileLabel(path)
 	}
 	newID, err := s.mintFor(label, path, located.Pos.Start, src, opts.Env)
 	if err != nil {
@@ -213,21 +234,39 @@ func (s *System) Define(_ context.Context, target string, opts DefineOptions) (D
 	add(block.KeyTags, opts.Tags)
 	add(block.KeyEnv, opts.Env)
 	add(block.KeyDesc, opts.Desc)
+	add(block.KeySpan, span)
 	text, err := directive.Format(s.cfg.Prefix, d)
 	if err != nil {
 		return DefineResult{}, err
 	}
-	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
 	edit, err := directiveEdit(path, lines, located, text)
 	if err != nil {
 		return DefineResult{}, err
 	}
-	if err := verifyBinds(ex, path, src, edit, newID, s.cfg.Prefix); err != nil {
+	bound, err := verifyBinds(ex, path, src, edit, newID, s.cfg.Prefix)
+	if err != nil {
 		return DefineResult{}, err
 	}
-	located.ID = newID
-	located.Args = d.Args
-	return DefineResult{ID: newID, Block: located, Edit: edit}, nil
+	bound.Pos.File, bound.DirectivePos.File = path, path
+	return DefineResult{ID: newID, Block: bound, Edit: edit}, nil
+}
+
+// existingResult is Define's answer for a block that already has a def.
+func existingResult(d extract.Def, path string) DefineResult {
+	d.Block.Pos.File, d.Block.DirectivePos.File = path, path
+	return DefineResult{ID: d.Block.ID, Existing: true, Block: d.Block}
+}
+
+// fileLabel is the id label a block with no symbol takes from its file: the
+// base name without its extension, or the whole base name when that leaves
+// nothing. A dotfile is all extension to Ext -- `.gitignore` -- and used to
+// leave an empty label, so `ds def .gitignore:1` failed to mint at all until
+// given --label (bug 57).
+func fileLabel(p string) string {
+	if l := id.Slug(strings.TrimSuffix(baseName(p), extract.Ext(p))); l != "" {
+		return l
+	}
+	return id.Slug(baseName(p))
 }
 
 // applyInMemory applies an edit that directiveEdit built from these same bytes.
@@ -246,28 +285,221 @@ func applyInMemory(edit Edit, src []byte) []byte {
 // a block; it never reaches a file. Every symbol is from the suffix alphabet.
 const probeID = "probe-23456789"
 
-// scanSymbol returns the symbol the scanning tier gives the block at located,
-// by writing a directive with probeID in memory and extracting the result. ""
-// when it names nothing or cannot bind there, in which case Define falls back
-// to the file name and verifyBinds decides whether to refuse.
-func scanSymbol(ex extract.Extractor, path string, src []byte, located block.Block, prefix string) string {
+// probeAt returns the block the scanning tier binds when a def is written for
+// located, by writing a directive with probeID (and span, when not "") in
+// memory and extracting the result. Positions are mapped back to src, so they
+// can be compared with lines the caller read there. false when there is no
+// carrier or the probe binds nothing.
+//
+// It is how Define asks the tier that will scan the file rather than guessing
+// for it: what a symbol is called, where a block ends, and whether a span
+// gives the range the caller asked for are all the tier's answers, and every
+// line-matching guess in this module disagreed with some tier somewhere.
+func probeAt(ex extract.Extractor, path string, src []byte, lines []string, located block.Block, prefix, span string) (block.Block, bool) {
 	d := directive.Directive{Verb: extract.VerbDef, Args: map[string]string{block.KeyID: probeID}, Keys: []string{block.KeyID}}
+	if span != "" {
+		d.Args[block.KeySpan] = span
+		d.Keys = append(d.Keys, block.KeySpan)
+	}
 	// Format fails only on a malformed directive; this one is a constant with
 	// a well-formed id under the configured prefix, which New validated.
 	text, _ := directive.Format(prefix, d)
-	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
 	edit, err := directiveEdit(path, lines, located, text)
 	if err != nil {
 		// No carrier: there is nothing to ask. Define's own call returns the
-		// refusal; here the label simply falls back to the file name.
-		return ""
+		// refusal; here the caller falls back.
+		return block.Block{}, false
 	}
 	for _, def := range ex.Extract(path, applyInMemory(edit, src), prefix).Defs {
-		if def.Block.ID == probeID {
-			return def.Block.Symbol
+		if def.Block.ID == probeID && def.Block.Pos.Start > 0 {
+			return unshift(def.Block, edit), true
 		}
 	}
-	return ""
+	return block.Block{}, false
+}
+
+// unshift maps a block extracted from src-with-edit back to src's lines: an
+// inserted directive pushed every line from edit.Line down by one. A trailing
+// directive replaced a line in place and moved nothing.
+func unshift(b block.Block, edit Edit) block.Block {
+	if edit.Old != "" {
+		return b
+	}
+	at := func(n int) int {
+		if n >= edit.Line {
+			return n - 1
+		}
+		return n
+	}
+	b.Pos.Start, b.Pos.End = at(b.Pos.Start), at(b.Pos.End)
+	b.DirectivePos = block.Position{File: b.DirectivePos.File, Start: edit.Line, End: edit.Line}
+	return b
+}
+
+// symbolMatch ranks how well a tier's symbol answers the name a caller asked
+// for. Exact wins; then a member asked for by its own name (`MinLength` for
+// `Limits.MinLength`), which is how findDeclaration has always matched; then
+// the same path with its quoting removed, so `db.port` finds the properties
+// key the config tier spells `"db.port"` because the key itself holds a dot.
+type symbolMatch int
+
+const (
+	matchNone symbolMatch = iota
+	matchUnquoted
+	matchSuffix
+	matchExact
+)
+
+func matchSymbol(got, want string) symbolMatch {
+	unq := func(s string) string { return strings.ReplaceAll(s, `"`, "") }
+	switch {
+	case got == "":
+		return matchNone
+	case got == want:
+		return matchExact
+	case strings.HasSuffix(got, "."+want):
+		return matchSuffix
+	case unq(got) == unq(want):
+		return matchUnquoted
+	}
+	return matchNone
+}
+
+// locateTarget resolves a target to the block a def written for it binds,
+// asking the extractor that scans the file (bugs 41, 42 and 48).
+//
+// A line target binds from that line as it always has. A symbol is looked up
+// in steps. The line matcher's answer is put to the scanning tier first: a
+// directive is written above it in memory and the tier says what the block
+// there is called. Unless that is the name exactly, each other line that
+// mentions the symbol's last segment is tried the same way (a def already
+// there is found too: the probe goes below its directive and binds the same
+// block), and a line replaces the
+// answer only by matching better -- exact, then member-by-name, then
+// unquoted -- so the earliest best match wins. Last, the line matcher's
+// answer is kept when no tier name matches at all (a markdown heading found
+// without regard to case), because verifyBinds still refuses it if the tier
+// cannot bind there.
+//
+// Why: `path#Name` used to be resolved by a line matcher in this module, while
+// the scan binds with tree-sitter or a real parser. `Config.retries` in Python,
+// `server.port` in a TypeScript object, `variable.region` in HCL, a TOML
+// table and a POSIX shell function were all recorded in the ledger under those
+// names and none of them could be defined by name. The probe makes the name a
+// scan records the name `ds def` accepts, for every tier, present and future.
+func locateTarget(ex extract.Extractor, path string, src []byte, tgt extract.Target) (block.Block, error) {
+	heuristic, herr := extract.Locate(path, src, tgt)
+	if tgt.Symbol == "" {
+		return heuristic, herr
+	}
+	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
+	segs := strings.Split(strings.ReplaceAll(tgt.Symbol, `"`, ""), ".")
+	last := segs[len(segs)-1]
+	var best block.Block
+	rank := matchNone
+	seen := map[int]bool{}
+	// The line matcher's own answer goes first, and a later line replaces it
+	// only by matching better: a member asked for by its bare name (`Check`)
+	// keeps resolving to the declaration it always did rather than to
+	// whichever same-named member comes first in the file.
+	if herr == nil {
+		if p, ok := probeAt(ex, path, src, lines, heuristic, tgt.Prefix, ""); ok {
+			if rank = matchSymbol(p.Symbol, tgt.Symbol); rank != matchNone {
+				// The block keeps the line matcher's name for its label, as
+				// it always has, so ids minted for names that already worked
+				// read as they did. (Define asks the tier for a label only
+				// when a block has no name at all.)
+				best = heuristic
+			}
+		}
+		seen[heuristic.Pos.Start] = true
+	}
+	for i := 0; i < len(lines) && rank != matchExact; i++ {
+		l := lines[i]
+		if !mentions(l, last) {
+			continue
+		}
+		b, err := extract.Locate(path, src, extract.Target{Line: i + 1, Prefix: tgt.Prefix})
+		if err != nil || seen[b.Pos.Start] {
+			continue
+		}
+		seen[b.Pos.Start] = true
+		p, ok := probeAt(ex, path, src, lines, b, tgt.Prefix, "")
+		if !ok {
+			continue
+		}
+		if r := matchSymbol(p.Symbol, tgt.Symbol); r > rank {
+			b.Symbol = p.Symbol
+			best, rank = b, r
+		}
+	}
+	if rank != matchNone {
+		return best, nil
+	}
+	if herr != nil {
+		return block.Block{}, fmt.Errorf("%w (the %s tier names no block %q in %s)", herr, ex.Name(), tgt.Symbol, path)
+	}
+	return heuristic, nil
+}
+
+// locateSymbol is locateTarget for a caller that has not looked up the tier:
+// adopt resolving a `path#Name` link.
+func (s *System) locateSymbol(path string, src []byte, tgt extract.Target) (block.Block, error) {
+	ex, err := s.registry.For(path)
+	if err != nil {
+		return block.Block{}, err
+	}
+	return locateTarget(ex, path, src, tgt)
+}
+
+// mentions reports whether line holds name as a whole word: not inside a
+// longer identifier. It only picks the lines worth asking the tier about, so
+// it errs towards yes; a phrase (a markdown heading) is matched as text.
+func mentions(line, name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; ; {
+		j := strings.Index(line[i:], name)
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		end := at + len(name)
+		if (at == 0 || !identByte(line[at-1])) && (end == len(line) || !identByte(line[end])) {
+			return true
+		}
+		i = at + 1
+	}
+}
+
+func identByte(c byte) bool {
+	return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+// rangeSpan returns the `span=` a def needs to bind exactly the lines of a
+// `path:start-end` target, "" for any other target or when the block already
+// ends there, and an error when no span makes the tier bind that range.
+//
+// A span means different things in different tiers -- lines after the
+// directive in plain text, lines after the bound line elsewhere -- so the
+// value is found by asking the tier, smallest first, never computed here. The
+// range used to be read as its first line, silently (bug 43).
+func rangeSpan(ex extract.Extractor, path string, src []byte, lines []string, located block.Block, tgt extract.Target, prefix string) (string, error) {
+	if tgt.End == 0 {
+		return "", nil
+	}
+	want := block.Position{Start: tgt.Line, End: tgt.End}
+	if b, ok := probeAt(ex, path, src, lines, located, prefix, ""); ok && b.Pos.Start == want.Start && b.Pos.End == want.End {
+		return "", nil
+	}
+	for n := 0; n <= want.End-want.Start+1; n++ {
+		span := "+" + strconv.Itoa(n)
+		if b, ok := probeAt(ex, path, src, lines, located, prefix, span); ok && b.Pos.Start == want.Start && b.Pos.End == want.End {
+			return span, nil
+		}
+	}
+	return "", fmt.Errorf("%w: the %s tier cannot bind exactly lines %d-%d of %s (a def there starts at line %d); use %s:%d, or a range that starts where a block does", ErrRange, ex.Name(), want.Start, want.End, path, located.Pos.Start, path, located.Pos.Start)
 }
 
 // verifyBinds applies the edit in memory and extracts the result with the same
@@ -285,22 +517,36 @@ func scanSymbol(ex extract.Extractor, path string, src []byte, located block.Blo
 // It is tier-independent on purpose: whatever construct the next grammar gap
 // is, the answer is a refusal naming the extractor's own reason, never a
 // directive that cannot bind.
-func verifyBinds(ex extract.Extractor, path string, src []byte, edit Edit, newID, prefix string) error {
+//
+// It also refuses a block that would cross another def's block without one
+// containing the other (bug 58): nesting is how a method sits in a class and a
+// subsection in a section, but two blocks that each hold part of the other
+// change together for edits that concern only one of them.
+//
+// It returns the block as the tier bound it, positioned in src.
+func verifyBinds(ex extract.Extractor, path string, src []byte, edit Edit, newID, prefix string) (block.Block, error) {
 	found := ex.Extract(path, applyInMemory(edit, src), prefix)
 	// A problem on the directive's own line is the extractor explaining why it
 	// could not bind; that reason is more useful than any this function could
 	// write, so it is passed through.
 	for _, pr := range found.Problems {
 		if pr.Pos.Start <= edit.Line && edit.Line <= pr.Pos.End {
-			return fmt.Errorf("%w: %v", ErrWouldNotBind, pr.Err)
+			return block.Block{}, fmt.Errorf("%w: %v", ErrWouldNotBind, pr.Err)
 		}
 	}
 	for _, d := range found.Defs {
-		if d.Block.ID == newID {
-			return nil
+		if d.Block.ID != newID {
+			continue
 		}
+		for _, o := range found.Defs {
+			if o.Block.ID != newID && block.Crosses(d.Block.Pos, o.Block.Pos) {
+				n, b := unshift(d.Block, edit).Pos, unshift(o.Block, edit).Pos
+				return block.Block{}, fmt.Errorf("%w: lines %d-%d would overlap %s at %d-%d without either containing the other", ErrWouldNotBind, n.Start, n.End, o.Block.ID, b.Start, b.End)
+			}
+		}
+		return unshift(d.Block, edit), nil
 	}
-	return fmt.Errorf("%w: %s reads no directive at %s:%d", ErrWouldNotBind, ex.Name(), path, edit.Line)
+	return block.Block{}, fmt.Errorf("%w: %s reads no directive at %s:%d", ErrWouldNotBind, ex.Name(), path, edit.Line)
 }
 
 // directiveEdit places the directive in the host's comment style: trailing on
@@ -343,10 +589,15 @@ func directiveEdit(p string, lines []string, b block.Block, text string) (Edit, 
 	// the end of the switch so there is no path that falls through to writing
 	// a bare line -- that fall-through is the bug this exists to remove.
 	if !ok || (len(st.Line) == 0 && st.BlockOpen == "" && !st.Bare) {
-		return Edit{}, fmt.Errorf("%w: %s has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=%s pick=…`), or add the type to [scan] if it does have comments", ErrNoCarrier, carrierName(p), p)
+		// No setting adds a comment syntax: the carrier table is built in, so
+		// the remedy must not point at one. It used to name a [scan] key that
+		// does not exist (bug 56).
+		return Edit{}, fmt.Errorf("%w: %s has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=%s pick=…`). The comment syntaxes are built in, not configured: if this type does take comments, it needs an entry in docsync's carrier table", ErrNoCarrier, carrierName(p), p)
 	}
 	switch {
-	case b.Kind == block.KindKey && len(st.Line) > 0:
+	case b.Kind == block.KindKey && len(st.Line) > 0 && st.Trailing:
+		// Only where the format's own parser reads a trailing comment as one
+		// (bug 40); everywhere else the key's directive goes above it.
 		return Edit{File: p, Line: b.Pos.Start, Old: first, New: strings.TrimRight(first, " \t") + "   " + st.Line[0] + " " + text}, nil
 	case len(st.Line) > 0:
 		return Edit{File: p, Line: b.Pos.Start, New: indent + st.Line[0] + " " + text}, nil

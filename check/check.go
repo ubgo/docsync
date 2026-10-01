@@ -806,8 +806,11 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 		if ref.Verb == extract.VerbCfg && ref.Args[keyQuery] != "" {
 			f := base
 			f.State = StateUnverifiable
+			// Its own remedy: it used to borrow ds:table's, which told the
+			// reader to register a record source -- something no cfg query
+			// reads (bug 56).
 			f.Message = "cfg query= is not built yet"
-			f.Remedy.Fix = fmt.Sprintf(remedyQuery, r.in.Prefix)
+			f.Remedy.Fix = fmt.Sprintf(remedyCfgQuery, r.in.Prefix)
 			r.emit(f)
 			return
 		}

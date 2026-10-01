@@ -81,8 +81,17 @@ var (
 	// sees, not a binding to whatever came next.
 	ErrSkippedCode = errors.New("extract: ds:def cannot bind the declaration below it")
 	ErrBadSpan     = errors.New("extract: span= must be +N with N >= 0")
-	ErrDefOnImage  = errors.New("extract: ds:def on an image link defines nothing; use a text link")
-	ErrNoExtractor = errors.New("extract: no extractor matches this path")
+	// ErrUnclosedComment is a block comment that opens with a directive and
+	// never closes. Reported rather than skipped, since a skipped directive
+	// is a def that silently does not exist.
+	ErrUnclosedComment = errors.New("extract: directive comment is never closed")
+	// ErrLinkDestination is a `[text](ds:…)` that markdown does not read as
+	// a link, so it renders as raw text. A destination holding a space is
+	// the usual cause: write it as `[text](<ds:…>)` or encode the space as
+	// %20.
+	ErrLinkDestination = errors.New("extract: directive link is not a markdown link; a destination with spaces must be written <ds:…> or use %20")
+	ErrDefOnImage      = errors.New("extract: ds:def on an image link defines nothing; use a text link")
+	ErrNoExtractor     = errors.New("extract: no extractor matches this path")
 )
 
 // Found is everything one extractor produced for one file.

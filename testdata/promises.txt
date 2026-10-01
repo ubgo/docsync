@@ -35,7 +35,10 @@ local-never-committed	test	**never committed**, excluded by the `.ds/.gitignore`
 local-never-committed	test	which is machine-local and never committed (section 6)
 datastore-not-directive	test	`// ds is the datastore` must never parse as a directive
 source-only	test	never `public/` or `dist/`; the template a shortcode lives in, never its expansion
-rename-identity	test	`ds rename` changes labels, never identity
+rename-identity	test	`ds rename` changes labels, never suffixes
+type-secret-unchecked	test	a secret's value is not checked, so it never appears in a message
+def-refuses-crossing	test	`ds def` refuses to write a def whose block would cross another.
+def-range-exact	test	A range binds exactly those lines, adding the `span=` the tier needs, or is refused
 local-unverifiable	test	elsewhere `unverifiable`, never `broken`
 secret-block-refused	test	`block` refuses, value never stored
 at-frozen	test	a snapshot, frozen on purpose, never refreshed

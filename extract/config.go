@@ -45,10 +45,9 @@ func (Config) Match(p string) bool {
 func (Config) Extract(p string, src []byte, prefix string) Found {
 	var f Found
 	lines := splitLines(src)
-	st, ok := StyleFor(p)
-	if !ok {
-		st = Style{Line: []string{"#"}}
-	}
+	// Every type this tier claims has a style (TestEveryClaimedTypeHasAStyle),
+	// `.env.*` names included, so what is read here is what `ds def` writes.
+	st, _ := StyleFor(p)
 	yaml := isYAMLPath(p)
 	occs := scanComments(lines, st, prefix, &f)
 	carriers := carrierLines(occs)

@@ -250,7 +250,7 @@ $ ds check
 docs/limits.md
   5	error    pick failed        scan: remote def pick failed: config.json: pick: nothing matched: json path "$.port": no key "port"
       fix: fix the def's file= or pick= at docs/limits.md:5
-  7	error    broken             api-port-h3v8n2wd was deleted (last seen config.json:1)
+  7	error    broken             api-port-h3v8n2wd was deleted (last seen config.json:2)
       fix: the id api-port-h3v8n2wd is not defined; fix the id in docs/limits.md:7 or re-add the ds:def on the block it meant
   9	none     moved              moved from internal/limits.go:8-10
 2 error, 2 ok
@@ -457,7 +457,7 @@ That is by design. `ds scan` records where blocks are; it never approves anythin
 
 ```console
 $ ds def config.json:2
-ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config.json pick=…`), or add the type to [scan] if it does have comments
+ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config.json pick=…`). The comment syntaxes are built in, not configured: if this type does take comments, it needs an entry in docsync's carrier table
 ```
 
 The remote def goes in any file that can hold a comment, usually the doc itself, as `docs/limits.md` above does:

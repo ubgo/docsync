@@ -34,6 +34,17 @@ type Style struct {
 	// and JSON, go.work and Pkl each proved that in the field. A type absent
 	// from this table is refused, not written bare.
 	Bare bool
+	// Trailing marks a format whose own parser reads a comment after a value
+	// on the same line as a comment, so `ds def` may write a key's directive
+	// there. Everywhere else a key's directive goes on the line above it.
+	//
+	// Opt-in because the failure is silent data corruption: Java properties,
+	// Python's configparser, EditorConfig and `docker run --env-file` read
+	// `port=8080   # ds:def id=…` as the value "8080   # ds:def id=…", and
+	// `ds def` used to write exactly that into every key-value format.
+	// Reading is unaffected: a trailing directive a person wrote is still
+	// found, since that is their choice to make about their parser.
+	Trailing bool
 }
 
 // Styles keyed by the lowercase base name first, then by Ext(path), so a file
@@ -53,6 +64,9 @@ var Styles = map[string]Style{
 	".js":    {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
 	".jsx":   {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
 	".mjs":   {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
+	".cjs":   {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
+	".mts":   {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
+	".cts":   {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
 	".rs":    {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
 	".c":     {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
 	".h":     {Line: []string{"//"}, BlockOpen: "/*", BlockClose: "*/"},
@@ -81,6 +95,7 @@ var Styles = map[string]Style{
 	".lua":          {Line: []string{"--"}},
 	".hs":           {Line: []string{"--"}},
 	".py":           {Line: []string{"#"}},
+	".pyi":          {Line: []string{"#"}},
 	".rb":           {Line: []string{"#"}},
 	".sh":           {Line: []string{"#"}},
 	".bash":         {Line: []string{"#"}},
@@ -92,9 +107,10 @@ var Styles = map[string]Style{
 	".nix":          {Line: []string{"#"}},
 	".tf":           {Line: []string{"#", "//"}, BlockOpen: "/*", BlockClose: "*/"},
 	".hcl":          {Line: []string{"#", "//"}, BlockOpen: "/*", BlockClose: "*/"},
-	".yaml":         {Line: []string{"#"}},
-	".yml":          {Line: []string{"#"}},
-	".toml":         {Line: []string{"#"}},
+	".tfvars":       {Line: []string{"#", "//"}, BlockOpen: "/*", BlockClose: "*/"},
+	".yaml":         {Line: []string{"#"}, Trailing: true},
+	".yml":          {Line: []string{"#"}, Trailing: true},
+	".toml":         {Line: []string{"#"}, Trailing: true},
 	".ini":          {Line: []string{"#", ";"}},
 	".cfg":          {Line: []string{"#", ";"}},
 	".conf":         {Line: []string{"#"}},
@@ -106,11 +122,12 @@ var Styles = map[string]Style{
 	".dockerignore": {Line: []string{"#"}},
 	"dockerfile":    {Line: []string{"#"}},
 	"makefile":      {Line: []string{"#"}},
-	"taskfile.yml":  {Line: []string{"#"}},
+	"taskfile.yml":  {Line: []string{"#"}, Trailing: true},
 	".adoc":         {Line: []string{"//"}, NoStrings: true},
 	".asciidoc":     {Line: []string{"//"}, NoStrings: true},
 	".rst":          {Line: []string{".."}, NoStrings: true},
 	".md":           {BlockOpen: "<!--", BlockClose: "-->", NoStrings: true},
+	".markdown":     {BlockOpen: "<!--", BlockClose: "-->", NoStrings: true},
 	".mdx":          {BlockOpen: "{/*", BlockClose: "*/}", AltOpen: "<!--", AltClose: "-->", NoStrings: true},
 	".html":         {BlockOpen: "<!--", BlockClose: "-->", NoStrings: true},
 	".htm":          {BlockOpen: "<!--", BlockClose: "-->", NoStrings: true},
@@ -151,10 +168,17 @@ func HasNoComments(p string) bool {
 // the base-name keys with a dot in them were unreachable, because Ext returns
 // an extension whenever the name has one.
 func StyleFor(p string) (Style, bool) {
-	if s, ok := Styles[strings.ToLower(path.Base(p))]; ok {
+	base := strings.ToLower(path.Base(p))
+	if s, ok := Styles[base]; ok {
 		return s, true
 	}
 	s, ok := Styles[Ext(p)]
+	if !ok && strings.HasPrefix(base, ".env") {
+		// `.env.example`, `.env.prod`: the config tier reads them by this
+		// prefix, so they write the way they are read. Without it they were
+		// scanned with `#` comments while `ds def` refused them (bug 46).
+		return Styles[".env"], true
+	}
 	return s, ok
 }
 
@@ -273,7 +297,23 @@ func scanComments(lines []string, st Style, prefix string, f *Found) []occurrenc
 	head := prefix + directive.Separator
 	for i := 0; i < len(lines); i++ {
 		cl := classify(i+1, lines[i], st)
-		if cl.body == "" || !strings.HasPrefix(strings.TrimSpace(cl.body), head) {
+		if cl.body == "" {
+			if text, last, ok := MultiLineDirective(lines, i, st, head); ok {
+				pos := block.Position{Start: i + 1, End: last + 1}
+				d, err := directive.Parse(prefix, text)
+				switch {
+				case text == "":
+					f.Problems = append(f.Problems, Problem{Pos: pos, Err: ErrUnclosedComment})
+				case err != nil:
+					f.Problems = append(f.Problems, Problem{Pos: pos, Err: err})
+				default:
+					out = append(out, occurrence{dir: d, pos: pos, carrier: block.CarrierComment})
+				}
+				i = last
+			}
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(cl.body), head) {
 			continue
 		}
 		bodies := []string{cl.body}
@@ -304,6 +344,45 @@ func scanComments(lines []string, st Style, prefix string, f *Found) []occurrenc
 		i = last
 	}
 	return out
+}
+
+// MultiLineDirective reads a directive in a block comment that opens at the
+// start of line i and closes on a later line:
+//
+//	<!-- ds:def id=sess-policy-h2n8wq4t
+//	     owner=@auth -->
+//
+// It returns the comment's text with the delimiters removed and its lines
+// joined by spaces, and the 0-based line the comment closes on. ok is false
+// when line i opens no such comment. A comment that never closes comes back
+// ok with empty text and last at the end of the file, for the caller to
+// report.
+//
+// Why: a markdown author breaks a long directive over lines the way any HTML
+// comment is broken, and that comment was skipped without a word -- the def
+// did not exist and nothing said so (bug 50). Everything inside the comment is
+// the directive, so no continuation rule is needed to decide which lines
+// belong to it.
+func MultiLineDirective(lines []string, i int, st Style, head string) (text string, last int, ok bool) {
+	t := strings.TrimLeft(lines[i], " \t")
+	for _, d := range [][2]string{{st.BlockOpen, st.BlockClose}, {st.AltOpen, st.AltClose}} {
+		if d[0] == "" || !strings.HasPrefix(t, d[0]) {
+			continue
+		}
+		first := strings.TrimSpace(t[len(d[0]):])
+		if !strings.HasPrefix(first, head) || strings.Contains(first, d[1]) {
+			return "", 0, false
+		}
+		parts := []string{first}
+		for j := i + 1; j < len(lines); j++ {
+			if k := strings.Index(lines[j], d[1]); k >= 0 {
+				return strings.Join(append(parts, strings.TrimSpace(lines[j][:k])), " "), j, true
+			}
+			parts = append(parts, strings.TrimSpace(lines[j]))
+		}
+		return "", len(lines) - 1, true
+	}
+	return "", 0, false
 }
 
 // withBareDefs adds any bare `ds:def` line in a code file to occs.

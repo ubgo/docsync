@@ -111,7 +111,8 @@ ds:<verb> key=value key=value …
 | verb | `[a-z][a-z0-9_]*`; resolved through a handler registry |
 | arguments | `key=value` only, no positionals; keys `[a-z][a-z0-9_]*`; a repeated key is an error |
 | values | bare up to whitespace; `"…"` when containing spaces; `'…'` when containing double quotes; a value needing both goes on a continuation line as raw text; lists are comma separated inside one value; there is no escape character |
-| continuation | a comment line directly below starting with whitespace and `key=value` folds into the directive above |
+| continuation | a comment line directly below starting with whitespace and `key=value` folds into the directive above; a block comment that opens with the directive (`<!-- ds:def id=…`, `/* ds:def id=…`) may also run over several lines, and everything inside it is the directive |
+| link form | the same pairs as a query string: a value is percent-decoded, or taken as written when it is quoted (`title="TOAST"` is `TOAST`, and a quoted value may hold `&`); a destination holding a space must be written `[text](<ds:…>)`, as CommonMark requires, or use `%20` |
 | unknowns | an unknown verb or key is one warning and is otherwise ignored, so older tools read newer files; `--strict` makes it an error |
 | required keys | each verb declares them; a missing one is an error naming it |
 
@@ -127,7 +128,7 @@ The same text, byte for byte, inside whatever the host already treats as a comme
 | Python, shell | `# ds:def id=…` | the next declaration; the directive may sit anywhere inside the leading comment or docstring block |
 | SQL, Lua | `-- ds:def id=…` | the next statement |
 | CSS, C block comments | `/* ds:def id=… */` | the next rule or symbol |
-| YAML, TOML, INI, env, properties, HCL | `# ds:def id=…` on or above the line | that key's value; `span=+N` widens |
+| YAML, TOML, INI, env, properties, HCL | `# ds:def id=…` on or above the line; `ds def` writes it on the line only in YAML and TOML, whose parsers read a trailing comment as one, and above the key everywhere else, because Java properties, Python's configparser, EditorConfig and `docker run --env-file` read `port=8080   # ds:def id=…` as the value | that key's value; `span=+N` widens |
 | Markdown | `<!-- ds:def id=… -->` above a heading or paragraph | a heading binds its section until the next heading of the same or higher level; a paragraph binds that paragraph; `span=+N` overrides |
 | MDX | `{/* ds:def id=… */}` | as markdown; MDX has no HTML comments |
 | HTML, XML, SVG | `<!-- ds:def id=… -->` | the next element |
@@ -149,9 +150,9 @@ Rules that apply to every carrier:
 |---|---|---|
 | prefix | human slug, lowercase, dashes, two to four words | so `grep sess-save` finds it |
 | suffix | eight characters from `23456789abcdefghjkmnpqrstuvwxyz`, generated; a writer (`def`, `adopt`, `def --fix`) derives it from the repository, the file, the line and the file's content, so a dry run prints the id the real run writes | about 10^12 values; four was too few, collisions appear in the low thousands |
-| identity | **the suffix is the identity, the prefix is a label** | `sess-save-k7m2p4xq` and `session-persist-k7m2p4xq` are one block; `ds rename` changes labels, never identity |
+| identity | **the suffix is what makes an id unique; the prefix is a label** | `ds rename` changes labels, never suffixes, and rewrites the def and every citation in the repository in one write. A citation must carry the current id: `session-persist-k7m2p4xq` cited after the def became `sess-save-k7m2p4xq` is `broken`, and the finding names the id it meant (`did you mean sess-save-k7m2p4xq`), so a stale label is corrected where it is written instead of being followed silently |
 | uniqueness | across the whole workspace; minting consults the merged index and re-rolls on collision | |
-| characters | lowercase ASCII only | |
+| characters | lowercase ASCII letters and digits in words joined by single dashes, at least two words; a scan reports a def id outside that rule (`Foo_Bar` is a problem). The suffix length and alphabet are how ids are minted, not a rule for reading them, so a hand-written id such as `sess-ttl` is accepted | |
 
 ### 9. Verbs
 
@@ -207,9 +208,9 @@ Week 38  someone
 | `owner` | | a person, or a team `@auth` resolved through `[owners]` in config; notified when a citing sentence goes unacked |
 | `tags` | | comma list, filterable in reports and tables |
 | `stability` | | which change classes flag prose, section 20: `frozen`, `stable` (default), `api`, `volatile` |
-| `span` | | `+N` lines for grammarless files; `block` forces tree-sitter binding |
+| `span` | | `+N`: the block ends N lines below its anchor, section 10 |
 | `pick` | | how to extract one value or one range from the bound text, section 10; each host has a default |
-| `type` | | `url email int float percent semver date duration host opref`; validates the picked value, enables `format=` on cites |
+| `type` | | `url email int float percent semver date duration host opref`; a scan reports an unknown type, and a picked value that does not have the type's shape (`8081` is an int, `30 days` and `90d` are durations, `2026-09-06` is a date, `op://vault/item/field` is an opref); a secret's value is not checked, so it never appears in a message |
 | `file` | | remote def: the target lives in another file, repo-relative; for formats that cannot hold a comment, and for sidecar mode |
 | `local` | | `true`: the target exists only on some machines; elsewhere `unverifiable`, never `broken` |
 | `env` | | environment this definition belongs to; the same id may be defined once per environment |
@@ -258,6 +259,7 @@ Why the link is generated: a hand-written `#L40-L58` points at the wrong lines a
 ```markdown
 Auth listens on [8081](ds:cfg?id=auth-port-h3v8n2wd) in every environment.
 Deploy [this version](ds:cfg?id=api-version-c8t2m6qp&format=code) to [prod](ds:cfg?id=app-host-d4k8w2mn&format=host).
+We serve [1.2M](<ds:cfg?query="sql:select count(*) from users"&ttl=24h&format=compact>) users.
 ```
 
 `ds:cfg` is link form only: a value belongs inside a sentence. `<!-- ds:cfg id=… -->` on a line of its own is a scan problem, so `check` fails on the page that `render` would publish without its value.
@@ -265,7 +267,7 @@ Deploy [this version](ds:cfg?id=api-version-c8t2m6qp&format=code) to [prod](ds:c
 | Key | Meaning |
 |---|---|
 | `id` | a def whose pick yields one line |
-| `query` | not built yet (section 38): one value from a configured source instead of `id`. A `ds:cfg` with `query=` and no `id=` is reported `unverifiable`, and the `[sources.*]` table it would read is refused when the config loads |
+| `query` | instead of `id`: one value from a configured source, `sql:` or `http:`; rendered with an "as of" timestamp. Not evaluated by this build yet (section 38): such a citation is reported `unverifiable` and renders its link text. A query holds spaces, so its link is written `[text](<ds:cfg?query="…">)`, and the `[sources.*]` table it would read is refused when the config loads |
 | `ttl` | reuse window for `query`; not built yet |
 | `env` | which environment's definition; default from config |
 | `format` | `raw` (default) `code` `quote` `host` `link` `compact` |
@@ -359,7 +361,7 @@ For every file the scanner uses the strongest extractor available and falls back
 
 The table is keyed by the file's base name before its extension, so a name that decides its syntax (`go.mod`, `taskfile.yml`, `dockerfile`) is matched as itself rather than as some `.mod` or `.yml`. A bare directive line found in a type that does carry comments, or in a format with no comment syntax at all (JSON, CSV, `go.sum`), is reported as `directive is not inside a comment`, with its file and line, so a tree that was damaged before the refusal existed can find the places to fix and `ds repair` can comment them. The code tiers read such a line too, rather than only reading comments, so damage in a Pkl or Go file is not invisible. The same line in plain text is correct and is not reported.
 
-**A def binds the declaration below it, or reports.** Whatever the tier, the block a `ds:def` binds must begin on the first line below the directive that is not blank, a comment, or a decorator. A tier with a grammar walks forward looking for something it recognises, so a construct its tables miss would otherwise bind the *next* declaration it does recognise, arbitrarily far down, and the sentence citing the def would be measured against code its author never read. That is a finding, not a binding. Two ids that end up on the same lines are a finding for the same reason: both hash the same bytes, so a change flags both or neither, and the scanner cannot know which directive went astray — it names them all.
+**A def binds the declaration below it, or reports.** Whatever the tier, the block a `ds:def` binds must begin on the first line below the directive that is not blank, a comment, or a decorator. A tier with a grammar walks forward looking for something it recognises, so a construct its tables miss would otherwise bind the *next* declaration it does recognise, arbitrarily far down, and the sentence citing the def would be measured against code its author never read. That is a finding, not a binding. Two ids that end up on the same lines are a finding for the same reason: both hash the same bytes, so a change flags both or neither, and the scanner cannot know which directive went astray — it names them all. An inline fact's block is its link text, not its line, so several facts in one sentence are several blocks. Two blocks that overlap without one containing the other are a finding as well, naming both: nesting is how a method sits in its class and a subsection in its section, but crossing blocks each hold part of the other, so an edit that concerns one flags both. `ds def` refuses to write a def whose block would cross another.
 
 **Body members are declarations too.** The named members of a declaration's body are defs in their own right: a struct field, an interface method, an enum member, a TypeScript interface property or class field, a Python class attribute. A member binds itself and, where it has one, its own body — never the members below it and never the brace that closes the holder. Its symbol carries the holder, `Limits.MinLength`, which is how the language itself refers to it; an embedded field or interface is named by the type it embeds. An import is a member of its group and is asked for by its path with the quotes removed, or by its alias where it has one, because a doc naming a dependency names it the way a reader greps for it. A tier with no grammar binds each member to its own line but does not synthesise a name for it, since the leading identifier is the name in Go and TypeScript and a modifier in the C family — so `path#Name` finds members by comparing against the name the caller asked for, which can be right or absent but never wrong.
 
@@ -381,6 +383,8 @@ Defaults make `pick` rare: a yaml line picks its key's value, a markdown link pi
 
 **Object literals.** A property of an object literal binds, named by the keys that lead to it: `server.port` for `server: { port: 5173 }`. Configuration in the JavaScript ecosystem is an object, and a bare `port` is ambiguous in any config with more than one server. A computed key (`[k]: 1`) binds but has no name.
 
+**Spans.** `span=+N` ends a block N lines below its anchor, counting content lines only (a standalone carrier inside the span is skipped). In plain text, where a directive is a line of its own and binds nothing on it, the anchor is the directive: `span=+2` is the two lines after it, and `span=+0` is the directive line itself. In every other tier the anchor is the line the def binds: `span=+2` is that line and the two after it, and `span=+0` leaves a one-line block as it is. That holds in the YAML, TOML and HCL tiers too, which used to accept the key and ignore it. `ds def path:start-end` finds the span for a range by asking the tier, so nobody has to count.
+
 **The rule that keeps `pick` small:** it returns exactly one line (a value) or one contiguous range (a block). No transforms, arithmetic, or joins. Display formatting is `format=` on the cite, from a fixed list.
 
 **Remote defs.** JSON, plain CSV, and lock files cannot hold a comment. The def lives in any file that can and points with `file=`:
@@ -389,7 +393,7 @@ Defaults make `pick` rare: a yaml line picks its key's value, a markdown link pi
 <!-- ds:def id=api-port-h3v8n2wd file=config/app.json pick=json:$.server.port type=int -->
 ```
 
-Remote defs hash the extracted value, report `pick failed` when the key disappears, and do not follow a moved target. This is also sidecar mode for teams that will not put directives in source, with that same known weakness.
+Remote defs hash the extracted value, report `pick failed` when the key disappears, and do not follow a moved target. A remote def is recorded at the lines its value is written on in the target (a JSON key's own line, not line 1), and two remote defs picking different values from one line are two blocks. This is also sidecar mode for teams that will not put directives in source, with that same known weakness.
 
 **Custom extractors** are executables `ds-pick-<format>` that receive a file and a pick expression and print one value or one range.
 
@@ -716,7 +720,7 @@ Every command finds the repository root the way git finds `.git`: the nearest di
 | `ds read <id> [--lines a-b]` | the body of a block |
 | `ds locate <id>` | file and line range at the current commit |
 | `ds doctor` | checks the config (every load-time rule), globs that match nothing, the extractor tiers, the workspace (a `workspace` row on every run; with one configured, an `index` row: a local index that loads, or a remote that answers `git ls-remote` without prompting — `WARN` when it does not but a cached copy exists, `FAIL` when there is none), one `resolve <provider>` row per `resolve.providers` entry saying whether its `ds-resolve-<provider>` plugin is on PATH (a provider login cannot be tested without asking about a real address, so it is not), and whether this tool can read the ledger and which extraction rule it records; exits non-zero when any row is `FAIL`, so a setup step that runs it stops on a broken repo, while a `WARN` does not change the exit code |
-| `ds def <file>#<symbol>` \| `<file>:<line>` | returns the existing id for that block or mints one and inserts the directive; prints the id |
+| `ds def <file>#<symbol>` \| `<file>:<line>` \| `<file>:<start>-<end>` | returns the existing id for that block or mints one and inserts the directive; prints the id. A symbol is any name the tier that scans the file records -- `Limits.MinLength`, `Config.retries`, `server.port`, `variable.region`, a TOML table, a shell function -- or a member's own name (`MinLength`); the tier is asked directly, so a name in the ledger is a name `ds def` finds. A line on a def's own directive names that def. A range binds exactly those lines, adding the `span=` the tier needs, or is refused |
 | `ds adopt [--dry-run]` | converts existing `path#L10-L20` and `path#symbol` links in docs into defs and cites (a reversed `#L20-L10` is the same range, as on GitHub, and becomes a forward `lines=`); resolves a relative link against the directory of the page holding it, as the page renders, falling back to the repository root and treating a leading `/` as root-relative; leaves a named anchor into another page (`README.md#target`) alone and unreported, since that is navigation between pages rather than a reference to code; lists what it could not resolve; proposes chains from matching secret names for confirmation; the ids `--dry-run` prints are the ones the real run over the same tree writes |
 | `ds repair [--apply] [--json]` | finds directives an older build wrote as bare lines into files that cannot hold one and mends them: in a format with comments the line is commented in the file's own syntax, keeping its id so citations still resolve; in one without (JSON, CSV, `go.sum`) it is deleted. Prints by default and writes only with `--apply`. Every edit is journaled, a deletion together with the line that followed it, so `ds undo` restores the file byte for byte and refuses once the file has moved around the change |
 | `ds version [--json]` | the build that is running: version, the commit it was built from, and whether that checkout had uncommitted changes, read from what the Go toolchain stamped into the binary; a field it did not record reads `unknown` |
@@ -1466,6 +1470,7 @@ Open work, described in this document but not built. Configuration that would en
 - A rotation marking every runbook that cites the chain `unacked` (sections 12 and 30): an ack holds a block hash, and a rotation changes no block, so this needs acks that also record the truth's hash.
 - The commits-behind warning in consumers (§21). It needs the publishing repository's history, which a consumer does not have; today only the publishing repository counts commits, and consumers warn by age.
 - `docusaurus-plugin-docsync` on npm (step 8). It is installed from a checkout of this repository.
+- Names for C, C++, Java and C# functions and Makefile targets, which have no grammar tier: a def on one binds but records no symbol, so `ds def` reaches those blocks by `path:line`.
 
 ### 39. Glossary
 
