@@ -917,3 +917,41 @@ func TestSecretContentIsWithheld(t *testing.T) {
 		t.Error("a withheld secret must still change hash when its value changes")
 	}
 }
+
+// TestNestedCheckoutsAreNotScanned: a directory with its own .git (a git
+// worktree, a submodule, a cloned dependency) is another repository. Its
+// directives are not this repository's, and a nested copy of the same tree
+// made every one of its defs a duplicate id. A .git file counts as well as a
+// .git directory, since a worktree and a submodule each have a file. Pins the
+// nested-checkout fix.
+func TestNestedCheckoutsAreNotScanned(t *testing.T) {
+	t.Parallel()
+	fsys := tree()
+	fsys["docs/wt/.git"] = &fstest.MapFile{Data: []byte("gitdir: /elsewhere\n")}
+	fsys["docs/wt/copy.md"] = &fstest.MapFile{Data: []byte("<!-- ds:def id=copy-a2b6f8jk -->\nIn the nested checkout.\n")}
+	fsys["docs/sub/.git/HEAD"] = &fstest.MapFile{Data: []byte("ref: refs/heads/main\n")}
+	fsys["docs/sub/other.md"] = &fstest.MapFile{Data: []byte("<!-- ds:def id=other-b3c7g9kl -->\nIn a nested repository.\n")}
+	res, err := Scan(context.Background(), fsys, opts(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range res.Defs {
+		if strings.HasPrefix(b.Pos.File, "docs/wt/") || strings.HasPrefix(b.Pos.File, "docs/sub/") {
+			t.Errorf("scanned a nested checkout: %s in %s", b.ID, b.Pos.File)
+		}
+	}
+	if n, err := CountMatches(fsys, "docs/**"); err != nil || n != len(tree())-countOutside(tree(), "docs/") {
+		t.Errorf("CountMatches entered a nested checkout: %d %v", n, err)
+	}
+}
+
+// countOutside counts the files of m not under prefix.
+func countOutside(m fstest.MapFS, prefix string) int {
+	n := 0
+	for p := range m {
+		if !strings.HasPrefix(p, prefix) {
+			n++
+		}
+	}
+	return n
+}

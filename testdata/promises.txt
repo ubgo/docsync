@@ -151,3 +151,7 @@ agent-bounded	test	`ack` is refused unless it names the human who delegated the 
 agent-bounded	test	`run`, `resolve`, `undo`, `publish` and `adopt` are not exposed to agents at all
 url-offline-unverifiable	test	A request that gets no HTTP answer at all (offline, DNS, refused, timed out) is `unverifiable` and is not cached
 resolver-unreachable-unverifiable	test	A plugin that is missing, not logged in, or locked makes its hop `unverifiable`, never `resolve failed`
+config-unbuilt-refused	test	the `[sources.*]` table it would read is refused when the config loads
+config-unbuilt-refused	test	Keys this specification describes but the build does not act on yet are refused when the config loads
+config-unbuilt-refused	test	Configuration that would enable any of it is refused when the config loads rather than accepted and ignored
+env-known-closed	test	an `--env` passed to `check`, `render` or `def` that it does not list is refused, naming the list

@@ -205,7 +205,7 @@ func classList(cs []block.Class) string {
 // warning on stderr and nothing else: making age fail a frozen check would
 // make its result depend on the clock, which is the one property --frozen
 // exists to remove. Off unless [check] snapshot_max_age is set.
-func warnStaleSnapshot(w io.Writer, st *Store, cfg config.Config, now time.Time) {
+func warnStaleSnapshot(w io.Writer, st *Store, cfg config.Config, now time.Time, name string) {
 	if cfg.Check.SnapshotMaxAge == "" {
 		return
 	}
@@ -216,7 +216,7 @@ func warnStaleSnapshot(w io.Writer, st *Store, cfg config.Config, now time.Time)
 		return
 	}
 	if age := now.Sub(snap.Header.ScannedAt); age > max {
-		fmt.Fprintf(w, "warning: %s/%s was synced %s, older than check.snapshot_max_age (%s); run `ds sync`\n",
-			DirName, ledger.ForeignFile, ago(snap.Header.ScannedAt, now), cfg.Check.SnapshotMaxAge)
+		fmt.Fprintf(w, "warning: %s/%s was synced %s, older than check.snapshot_max_age (%s); run `%s sync`\n",
+			DirName, ledger.ForeignFile, ago(snap.Header.ScannedAt, now), cfg.Check.SnapshotMaxAge, name)
 	}
 }

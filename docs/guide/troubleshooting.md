@@ -60,6 +60,7 @@ gitignore       ok    machine-local state excluded
 gitattributes   ok    acks.tsv merges without conflicts
 blocks          ok    3 bodies, 3 live
 notify          ok    no state yet (first notify will create .ds/notified.json)
+workspace       ok    none; this repository is its own workspace
 ```
 
 It exits non-zero when any row is `FAIL`, so a setup script can run it as a gate; a `WARN` does not change the exit code.
@@ -150,7 +151,7 @@ This is every state in `check.StateValues`, with the severity and fix the code a
 | `translation stale` | error | the source paragraph of a `translates=true` citation changed | update the translation, then ack |
 | `unsourced` | warning | a secret def with no `from=` and no `truth=true` | declare where it comes from, or mark it the truth |
 | `chain broken` | error | a chain has zero or several `truth=true` defs, a `from=` names an undefined id, or a `from=` cycle | fix the chain |
-| `unverifiable` | warning | could not be checked here: a `local=true` def whose file is absent here, a `ds:url` without `--resolve` or whose request got no answer, a resolver plugin missing, not logged in, or failing, an `at=` snapshot with no git to look it up, a `ds:table` or `ds:cfg query=` with no record source | nothing required; run where it can be checked, or configure `[records]` |
+| `unverifiable` | warning | could not be checked here: a `local=true` def whose file is absent here, a `ds:url` without `--resolve` or whose request got no answer, a resolver plugin missing, not logged in, or failing, an `at=` snapshot with no git to look it up, a `ds:table` with no record source, a `ds:cfg query=` (not built yet) | nothing required; run where it can be checked, or configure `[records]` |
 | `skipped` | info | a `ds:run` not executed because `--run` was not given | pass `--run` where runs are enabled |
 | `orphan` | warning | a page's `covers` names an id that is not defined | remove it from `covers`, or restore the def |
 | `uncovered` | info | a def nothing cites or covers | cite it, or remove the def |

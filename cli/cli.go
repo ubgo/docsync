@@ -220,7 +220,9 @@ func Run(args []string, opts ...Option) int {
 		if errors.As(err, &ec) {
 			return int(ec)
 		}
-		fmt.Fprintf(a.stderr, "%s: %v\n", a.name, err)
+		// Errors name the commands that fix them; a custom build names
+		// itself there too (bug 126).
+		fmt.Fprintf(a.stderr, "%s: %s\n", a.name, a.cmdText(err.Error()))
 		return ExitError
 	}
 	return ExitOK
@@ -237,7 +239,7 @@ func (a *App) root() *cobra.Command {
 	var dir string
 	root := &cobra.Command{
 		Use:           a.name,
-		Version:       stamped(buildInfo(debug.ReadBuildInfo), releaseVersion).String(),
+		Version:       stamped(buildInfo(debug.ReadBuildInfo), releaseVersion).Line(a.name),
 		Short:         "keep docs bound to the code they describe",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -263,6 +265,10 @@ func (a *App) root() *cobra.Command {
 	)
 	return root
 }
+
+// cmdText rewrites the commands a message names from `ds` to this binary's
+// name (cli.WithName), the same rule the library applies to remedies.
+func (a *App) cmdText(s string) string { return check.CommandText(s, a.name) }
 
 // flagDir is the global --dir.
 const flagDir = "dir"
@@ -529,6 +535,7 @@ func (a *App) system() (loaded, error) {
 		}
 		opts = append(opts, docsync.WithRecords(httpRecords(client, cfg.Records.Path)))
 	}
+	opts = append(opts, docsync.WithCommandName(a.name))
 	sys, err := docsync.New(opts...)
 	sysRef = sys
 	if err != nil {

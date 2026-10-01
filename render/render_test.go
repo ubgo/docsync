@@ -363,6 +363,26 @@ func TestHelpers(t *testing.T) {
 	}
 }
 
+// TestSecretCfgSaysSecret pins bug 126's second half: a ds:cfg citing a
+// secret keeps its link text, as before, and the note says why -- it used to
+// say the value "yields more than one line; use ds:block", which is false
+// and points at a verb that refuses secrets as well.
+func TestSecretCfgSaysSecret(t *testing.T) {
+	t.Parallel()
+	blank := secret
+	blank.SetContent("")
+	out, notes := Render(Input{Src: []byte("Key [k](ds:cfg?id=" + secret.ID + ").\n"), Defs: []block.Block{blank}}, Options{})
+	if string(out) != "Key k.\n" || len(notes) != 1 || !strings.Contains(notes[0].Message, "is a secret") || strings.Contains(notes[0].Message, "more than one line") {
+		t.Errorf("secret cfg = %q %+v", out, notes)
+	}
+	// A secret that is an address, not a value, still renders: it is what
+	// the page means to show.
+	out, notes = Render(Input{Src: []byte("Reads [k](ds:cfg?id=" + appKey.ID + ").\n"), Defs: []block.Block{appKey}}, Options{})
+	if string(out) != "Reads STRIPE_KEY.\n" || len(notes) != 0 {
+		t.Errorf("address secret cfg = %q %+v", out, notes)
+	}
+}
+
 // promise:secret-block-refused
 func TestFragmentAndCloser(t *testing.T) {
 	t.Parallel()

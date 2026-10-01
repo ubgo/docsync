@@ -45,6 +45,9 @@ func TestEveryFixedBugIsPinned(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
+			if otherCheckout(p) {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
 			case ".git", "node_modules", "testdata", "bin", "coverage":
 				return filepath.SkipDir

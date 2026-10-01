@@ -333,7 +333,7 @@ func (a *App) snapshotMessages(ld loaded, cfg config.Config, state map[string]No
 	if s.Owner == "" {
 		people = citingOwners(cfg, local, send)
 	}
-	return append(out, formatSnapshotAlerts(send, people))
+	return append(out, a.cmdText(formatSnapshotAlerts(send, people)))
 }
 
 // lastTier finds the most serious tier already sent for this block, across

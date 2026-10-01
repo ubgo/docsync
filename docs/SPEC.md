@@ -139,7 +139,7 @@ The same text, byte for byte, inside whatever the host already treats as a comme
 Rules that apply to every carrier:
 - A directive inside a string literal, a code fence, an indented code block, or an inline code span is not a directive; in markdown these follow CommonMark (a span pairs backtick runs of equal length; indentation of four columns is code after a blank line or a heading, but inside a list it is a continuation of the item). `ds adopt` skips the same examples. Fixture: `code-examples-are-not-carriers`.
 - Only **source** files are scanned: the markdown or MDX a site is built from, never `public/` or `dist/`; the template a shortcode lives in, never its expansion.
-- `vendor/`, `node_modules/`, generated paths, and git submodules are skipped unless a submodule is a workspace member in its own right.
+- `vendor/`, `node_modules/`, generated paths, and git submodules are skipped unless a submodule is a workspace member in its own right. So is any other checkout nested in the repository, a directory with its own `.git` such as a git worktree or a cloned dependency: its directives belong to that repository, which is cited across a workspace (section 21) rather than scanned into.
 
 ### 8. Ids
 
@@ -258,14 +258,13 @@ Why the link is generated: a hand-written `#L40-L58` points at the wrong lines a
 ```markdown
 Auth listens on [8081](ds:cfg?id=auth-port-h3v8n2wd) in every environment.
 Deploy [this version](ds:cfg?id=api-version-c8t2m6qp&format=code) to [prod](ds:cfg?id=app-host-d4k8w2mn&format=host).
-We serve [1.2M](ds:cfg?query="sql:select count(*) from users"&ttl=24h&format=compact) users.
 ```
 
 | Key | Meaning |
 |---|---|
 | `id` | a def whose pick yields one line |
-| `query` | instead of `id`: one value from a configured source, `sql:` or `http:`; rendered with an "as of" timestamp |
-| `ttl` | reuse window for `query`; default from config |
+| `query` | not built yet (section 38): one value from a configured source instead of `id`. A `ds:cfg` with `query=` and no `id=` is reported `unverifiable`, and the `[sources.*]` table it would read is refused when the config loads |
+| `ttl` | reuse window for `query`; not built yet |
 | `env` | which environment's definition; default from config |
 | `format` | `raw` (default) `code` `quote` `host` `link` `compact` |
 
@@ -392,7 +391,7 @@ Remote defs hash the extracted value, report `pick failed` when the key disappea
 
 **Custom extractors** are executables `ds-pick-<format>` that receive a file and a pick expression and print one value or one range.
 
-**Normalization before hashing:** CRLF to LF, leading BOMs stripped, trailing whitespace removed. CRLF is read as LF before a `pick=` is evaluated too, including the raw target of a `file=` def, so a Windows checkout with `core.autocrlf` resolves every def and hash exactly as an LF checkout of the same commit does. Leading byte order marks are dropped when a file is read, before any parsing, not only before hashing: a mark left in front of line 1 would glue itself to the first key's symbol, hide a directive or front matter on line 1, and make a file saved by a Windows editor read as a different file. A source write puts the marks back where they were. Files above `scan.limits.max_file_kb`, binary files, and — in tiers that are not prose — files with a line longer than `scan.limits.max_line_chars` are not scanned; the line limit is a sign of minified code, and a paragraph written on one line is not that, so markdown, AsciiDoc, rst and plain text are exempt. `ds scan` names every such file on stderr, a file that held citations or blocks keeps its last recorded state, and `check` reports it as `unscanned` until it can be read again. Dropping it instead lost its citations' first-seen hashes, so when it came back an unreviewed change counted as new and passed.
+**Normalization before hashing:** CRLF to LF, leading BOMs stripped, trailing whitespace removed. CRLF is read as LF before a `pick=` is evaluated too, including the raw target of a `file=` def, so a Windows checkout with `core.autocrlf` resolves every def and hash exactly as an LF checkout of the same commit does. Leading byte order marks are dropped when a file is read, before any parsing, not only before hashing: a mark left in front of line 1 would glue itself to the first key's symbol, hide a directive or front matter on line 1, and make a file saved by a Windows editor read as a different file. A source write puts the marks back where they were. Files above `scan.limits.max_file_kb`, binary files, and — in tiers that are not prose — files with a line longer than `scan.limits.max_line_chars` are not scanned; the line limit is a sign of minified code, and a paragraph written on one line is not that, so markdown, AsciiDoc, rst and plain text are exempt. `ds scan` counts every such file in its summary line (`N skipped`) and names on stderr each one that held citations or blocks at the last scan; such a file keeps its last recorded state, and `check` reports it as `unscanned` until it can be read again. A file that held nothing at the last scan is counted but not named, because every directory on a Mac has a binary `.DS_Store`, and a warning that fires on junk teaches people to ignore the one that matters. Dropping it instead lost its citations' first-seen hashes, so when it came back an unreviewed change counted as new and passed.
 
 ### 11. Facts
 
@@ -496,7 +495,7 @@ ds:
 | show a block | `<!-- ds:block id=… lines=1-6 -->` |
 | freeze a block | `<!-- ds:block id=… at=sha -->` |
 | show a fact | `[8081](ds:cfg?id=…)` |
-| a live number | `[1.2M](ds:cfg?query="sql:…"&ttl=24h)` |
+| a live number (not built yet, section 38) | `[1.2M](ds:cfg?query="sql:…"&ttl=24h)` |
 | bind a sentence to a test | `[test](ds:block?id=…&assert=true)` |
 | a translated paragraph | `<!-- ds:block id=… translates=true -->` |
 | run something | `<!-- ds:run id=… expect=ok -->` |
@@ -599,15 +598,16 @@ Incremental by default: a file whose bytes did not change is not re-extracted, a
 | `out of sync` / `rotated` | with `--resolve`, copy differs from truth / truth changed since stored hash | error / warning | run the sync; ack runbooks |
 | `stale copy` | with `--resolve`, after a rotation, a copy still holds the truth's previous value | error | run the sync |
 | `resolve failed` | with `--resolve`, an address does not exist at its provider | error | fix the address |
-| `unverifiable` | a `local=true` def absent here, or a provider plugin missing, not logged in, or locked, or a link that got no answer | warning | none required |
+| `unverifiable` | cannot be checked here: a `local=true` def absent here, a resolver plugin missing, not logged in, or locked, a `ds:url` without `--resolve` or that got no answer, an `at=` with no history to look it up, a `ds:table` with no record source configured, a `ds:cfg query=` (not built yet) | warning | none required; run where it can be checked, or configure `[records]` |
+| `skipped` | a `ds:run` that was not executed: `check` ran without `--run`, or `run.enabled` is false | info | `ds check --run` with `[run] enabled = true` |
 | `dead` / `url moved` / `retitled` | `ds:url` outcomes: an error status or one other than `expect`, a redirect to another URL, a changed title | error / warning / warning | update the link |
 | `orphan` / `uncovered` | `covers` names a missing id / a def nobody cites | warning / info | tidy |
-| `undocumented export` | policy: an exported symbol under a required path has no def with a home | error | add a def and a page |
-| `unknown` | unknown verb or key | warning (`--strict`: error) | |
-| `undocumented` | an exported declaration under a `policy.require_doc` path with no `def` (section 23) | error | `ds def <file>#<symbol>` and cite it |
+| `undocumented export` | an exported declaration under a `policy.require_doc` path with no `def` (section 23) | error | `ds def <file>#<symbol>` and cite it |
+| `unknown` | an unknown verb or key, an `env=` that `env.known` does not list, or a def in a `scan.generated` path | warning (`--strict`: error) | fix the directive the remedy names |
+| `problem` | a directive that cannot be evaluated: a required key missing (`id=`, `href=`), an id defined more than once, a claim or `review_every` whose date or duration does not parse, a plugin's malformed reply | error | fix the directive; `ds def --fix` re-mints duplicated ids |
 | `unscanned` | a file that held citations or blocks at the last scan could not be read this time — too large, a line past the limit in a tier that is not prose, binary, or unreadable. Its last recorded state is kept, so an unreviewed change it carried is still reported once it is readable | error | make the file readable, or raise the `[scan.limits]` value the finding names |
 
-Exit code 1 on any error-severity finding. `--strict` promotes warnings to errors, except `moved` and `deprecated`, which never affect the exit code.
+The first column lists every state `check` can report, exactly as it is spelled in output and JSON; a test holds it to `check.StateValues`. Exit code 1 on any error-severity finding. `--strict` promotes warnings to errors, except `moved` and `deprecated`, which never affect the exit code.
 
 ### 18. What a reference binds to
 
@@ -667,11 +667,6 @@ A workspace is a set of repos whose blocks and docs refer to each other freely: 
 name  = "platform"
 repos = ["github.com/org/api", "github.com/org/web", "github.com/org/infra", "github.com/org/docs"]
 index = "github.com/org/ds-index"     # git repo; an https endpoint is an adapter
-[workspace.id]
-suffix_length = 8
-[workspace.env]
-default = "prod"
-known = ["prod", "staging", "dev"]
 ```
 
 - Ledgers flow **from** every repo that defines; refs flow **back** to every repo that is referred to. Both are two small files. Block bodies flow with the ledger, content-addressed under `repos/<name>/blocks/` (section 15.1), so a consumer can classify a citation whose baseline predates the published ledger; secret and local blocks publish a hash and no body.
@@ -708,13 +703,13 @@ Every command finds the repository root the way git finds `.git`: the nearest di
 
 | Command | Does |
 |---|---|
-| `ds init [--agents]` | writes `.ds/config.toml`, empty ledger, CI snippet; `--agents` also writes the agent rules fragment, registers `ds mcp`, and installs the session-start hook |
+| `ds init [--agents]` | writes `.ds/config.toml`, empty ledger, CI snippet. The config's `scan.code` is `["**"]`, and its `scan.docs` depends on the layout it finds: `["docs/**", "README.md"]` when a `docs/` directory exists at the root, `["**/*.md"]` when it does not, so a repository that keeps its pages beside the code is not started with nothing to check; `--agents` also writes the agent rules fragment, registers `ds mcp`, and installs the session-start hook |
 | `ds mcp` | serves the agent surface over MCP, section 26.1 |
 | `ds map [--budget N] [--json]` | token-bounded table of contents of a repo or workspace |
 | `ds find <query> \| --file path \| --tag t` | ids by symbol, text, file, or tag |
 | `ds read <id> [--lines a-b]` | the body of a block |
 | `ds locate <id>` | file and line range at the current commit |
-| `ds doctor` | checks grammars, resolver logins, index reachability, globs that match nothing, and whether this tool can read the ledger and which extraction rule it records; exits non-zero when any row is `FAIL`, so a setup step that runs it stops on a broken repo, while a `WARN` does not change the exit code |
+| `ds doctor` | checks the config (every load-time rule), globs that match nothing, the extractor tiers, the workspace (a `workspace` row on every run; with one configured, an `index` row: a local index that loads, or a remote that answers `git ls-remote` without prompting — `WARN` when it does not but a cached copy exists, `FAIL` when there is none), one `resolve <provider>` row per `resolve.providers` entry saying whether its `ds-resolve-<provider>` plugin is on PATH (a provider login cannot be tested without asking about a real address, so it is not), and whether this tool can read the ledger and which extraction rule it records; exits non-zero when any row is `FAIL`, so a setup step that runs it stops on a broken repo, while a `WARN` does not change the exit code |
 | `ds def <file>#<symbol>` \| `<file>:<line>` | returns the existing id for that block or mints one and inserts the directive; prints the id |
 | `ds adopt [--dry-run]` | converts existing `path#L10-L20` and `path#symbol` links in docs into defs and cites (a reversed `#L20-L10` is the same range, as on GitHub, and becomes a forward `lines=`); resolves a relative link against the directory of the page holding it, as the page renders, falling back to the repository root and treating a leading `/` as root-relative; leaves a named anchor into another page (`README.md#target`) alone and unreported, since that is navigation between pages rather than a reference to code; lists what it could not resolve; proposes chains from matching secret names for confirmation |
 | `ds repair [--apply] [--json]` | finds directives an older build wrote as bare lines into files that cannot hold one and mends them: in a format with comments the line is commented in the file's own syntax, keeping its id so citations still resolve; in one without (JSON, CSV, `go.sum`) it is deleted. Prints by default and writes only with `--apply`. Every edit is journaled, a deletion together with the line that followed it, so `ds undo` restores the file byte for byte and refuses once the file has moved around the change |
@@ -810,10 +805,6 @@ DATABASE_URL = "$STAGING_DATABASE_URL"
 ttl = "7d"
 rate_per_minute = 30
 
-[sources.sql]
-dsn = "$DOCS_READONLY_DSN"
-ttl = "24h"
-
 [records]
 source = "frontmatter"                       # frontmatter | sqlite | http
 path = "records/"
@@ -825,7 +816,6 @@ session_hook = "ds map --budget 2000"
 
 [notify]
 slack = "$DS_SLACK_WEBHOOK"
-github_issues = true
 escalate_after = "7d"
 
 [id]
@@ -837,7 +827,13 @@ suffix_length = 8
 
 `run.shell` names the program that `ds:run` commands and the `[review]` command run under: `<shell> -c <command>` for `cmd=`, `id=` and the review command, and `<shell> <file>` for `file=`. The default is `sh`, found on PATH; on Windows, Git for Windows provides it, and a team whose commands are written for another shell names that one (`shell = "pwsh"`). docsync never substitutes a shell by itself, because the same command text means different things to different shells. When a command is about to run and the shell is not on PATH, `ds check --run` and `ds review --ai` stop with an error naming the shell and this key; nothing is recorded as run, and a repository with nothing to run is not asked for a shell.
 
-Duration keys are checked when the config loads: `run.timeout` is a positive Go duration (`300ms`, `30s`, `2m`), and `url.ttl`, `sources.*.ttl`, `notify.escalate_after` and `notify.snapshot.digest_after` take a whole number with `m`, `h`, `d` or `w` (`90m`, `24h`, `7d`, `2w`). A value that does not parse stops the load with an error naming the key rather than falling back to the default, because a typo that runs with a setting nobody chose looks healthy. An empty value means the default.
+Duration keys are checked when the config loads: `run.timeout` is a positive Go duration (`300ms`, `30s`, `2m`), and `url.ttl`, `notify.escalate_after` and `notify.snapshot.digest_after` take a whole number with `m`, `h`, `d` or `w` (`90m`, `24h`, `7d`, `2w`). A value that does not parse stops the load with an error naming the key rather than falling back to the default, because a typo that runs with a setting nobody chose looks healthy. An empty value means the default.
+
+`env.known`, when it lists any names, is the closed set of environments. `env.default` and every `[run.env.<name>]` must be in it or the config does not load; an `--env` passed to `check`, `render` or `def` that it does not list is refused, naming the list; and an `env=` on a def or citation in this repository that it does not list is reported `unknown`. An empty list allows any name.
+
+`[id]` is checked when the config loads, as it is when an id is minted: `suffix_length` is from 6 to 32, and `suffix_alphabet` is at least 16 distinct lowercase ASCII letters and digits. `ds doctor` reports a bad value as `FAIL` on its config row.
+
+Keys this specification describes but the build does not act on yet are refused when the config loads, naming the key and what to use instead, rather than accepted and ignored: `notify.github_issues` and the `[sources.<name>]` tables that `ds:cfg query=` would read, and `[workspace.id]` and `[workspace.env]` in the workspace file (section 38). `[performance]` holds targets for the project's own performance suite and is accepted and ignored.
 
 ### 24. CI, hooks, editor
 
@@ -1181,7 +1177,7 @@ Someone rotates in 1Password and forgets the sync. Nightly `check --resolve` rep
 
 **Impact before commit.** `ds impact --staged` prints "12 sentences on 4 pages in 3 repos, owners @auth @sre @web" while the change is still in the developer's hands.
 
-**A live number.** `[1.2M](ds:cfg?query="sql:select count(*) from users"&ttl=24h)` renders "1.24M (as of 2026-09-06)" from the read-only source, cached a day.
+**A live number** (not built yet, section 38). `[1.2M](ds:cfg?query="sql:select count(*) from users"&ttl=24h)` renders "1.24M (as of 2026-09-06)" from the read-only source, cached a day.
 
 **A diagram that must match the code.** A remote def with `pick=file` on `arch.svg`; the paragraph explaining it cites it. Regenerate the diagram, the paragraph flags.
 
@@ -1299,62 +1295,66 @@ Modelled on `github.com/ubgo/dotenv`: a dependency-free root library where every
 
 | Module | Imports | Holds |
 |---|---|---|
-| `github.com/ubgo/docsync` | stdlib only | directive parser, id minting, ledger and refs model, matching, findings, change classes, sentence binding, acks, the text and markdown extractors, the process-plugin protocol, `Check`, `Scan`, `Context`, `Map` as functions over an `fs.FS` |
-| `github.com/ubgo/docsync/ext/treesitter` | tree-sitter bindings | the syntax tier for Go, TypeScript, Python, SQL, and any grammar the caller registers |
-| `github.com/ubgo/docsync/ext/structured` | yaml, toml, hcl parsers | the structured tier; json, ini, env, csv, properties need no dependency and live in the root |
-| `github.com/ubgo/docsync/ext/resolve/{github,onepassword,aws,gcp,vault}` | each provider's SDK or CLI | resolvers, one module per provider |
-| `github.com/ubgo/docsync/ext/records/{frontmatter,sqlite,http}` | per source | record sources for `table` |
-| `github.com/ubgo/docsync/cli` | cobra, the ext modules it enables | the `ds` binary; every subcommand is a thin call into a library function |
-| `github.com/ubgo/docsync/mcp` | an MCP server library | the agent surface over the same library functions |
+| `github.com/ubgo/docsync` | stdlib only | directive parser, id minting, ledger and refs model, matching, findings, change classes, sentence binding, acks, the text, markdown, config and code extractors, the frontmatter record source (`records`), the process-plugin protocol (`procplugin`), and `Scan`, `Check`, `Context`, `Map` and the rest as methods on a `System` built over an `fs.FS` |
+| `github.com/ubgo/docsync/ext/treesitter` | tree-sitter bindings (cgo) | the syntax tier for Go, TypeScript, TSX, JavaScript, Python and SQL, and any grammar the caller registers through `treesitter.New` |
+| `github.com/ubgo/docsync/ext/structured` | yaml, toml, hcl parsers | the structured tier and the `hcl` picker; json, ini, env, csv, properties need no dependency and live in the root |
+| `github.com/ubgo/docsync/ext/records/sqlite` | a pure-Go SQLite driver | the `sqlite` record source for `ds:table` |
+| `github.com/ubgo/docsync/cli` | cobra, the ext modules it enables | the `ds` binary and its commands, `ds mcp` (the agent surface) and `ds lsp` among them; the `http` record source; and the resolver plugins `ds-resolve-{github,onepassword,aws,gcp,vault}`, each a separate executable under `cli/cmd/` speaking the process-plugin protocol (37.4) |
 
-Rules: the root imports nothing outside the standard library and never will. Nothing in the root knows a vendor name, a git host, or a CI system. Anything that shells out (git, `gh`, `op`) lives in an `ext` module and documents the external program at the point of use. No package-level state, no cache directory, no `$HOME` reads in the library; every function takes its inputs and returns its outputs, and the CLI owns paths and config.
+Rules: the root imports nothing outside the standard library and never will. Nothing in the root knows a vendor name, a git host, or a CI system. Anything that shells out (git, `gh`, `op`) lives outside the root and documents the external program at the point of use. No package-level state, no cache directory, no `$HOME` reads in the library; every function takes its inputs and returns its outputs, and the CLI owns paths and config.
 
 #### 37.2 Library API shape
 
 ```go
-import "github.com/ubgo/docsync"
+import (
+    "github.com/ubgo/docsync"
+    "github.com/ubgo/docsync/ext/structured"
+    "github.com/ubgo/docsync/ext/treesitter"
+    "github.com/ubgo/docsync/records"
+)
 
+fsys := os.DirFS(repo)
 sys, err := docsync.New(
-    docsync.WithFS(os.DirFS(repo)),
-    docsync.WithConfig(cfg),                       // parsed by the caller; the library never reads files it was not given
+    docsync.WithFS(fsys),
+    docsync.WithConfig(cfg),                       // parsed by the caller (config.Parse); the library never reads files it was not given
     docsync.WithExtractor(treesitter.Go(), treesitter.TypeScript()),
     docsync.WithExtractor(structured.YAML(), structured.TOML()),
-    docsync.WithVerb(myorg.LinearTicketVerb{}),    // a custom verb
-    docsync.WithResolver(onepassword.New(opClient)),
-    docsync.WithRecordSource(frontmatter.Dir("records")),
-    docsync.WithPrevious(ledger, refs),            // the committed state to diff against; nil for a first run
+    docsync.WithVerbHandler(myorg.LinearTicketVerb{}), // a custom verb implementing docsync.Verb
+    docsync.WithResolver(myResolver),              // a check.Resolver: func(provider, addr string) check.ResolveResult
+    docsync.WithRecords(records.Frontmatter(fsys, "records")),
+    docsync.WithPrevious(prevLedger, prevRefs),    // the committed state to diff against; zero values for a first run
 )
 
 report, err := sys.Check(ctx, docsync.CheckOptions{Full: false, Resolve: false, Env: "prod"})
 for _, f := range report.Findings { … }          // the same struct the JSON contract serialises
 
-ctxBundle, err := sys.Context(ctx, "docs/sessions.md", docsync.ContextOptions{Budget: 8000, Since: docsync.SinceAck})
-id, edit, err := sys.Define(ctx, "internal/store/write.go", "Store.Persist", docsync.DefineOptions{Owner: "@auth"})
-// edit is a proposed change to the source file; the caller decides whether to apply it
+bundle, err := sys.Context(ctx, "docs/sessions.md", docsync.ContextOptions{Budget: 8000, Since: docsync.SinceAck})
+def, err := sys.Define(ctx, "internal/store/write.go#Store.Persist", docsync.DefineOptions{Owner: "@auth"})
+// def.ID is the id; def.Edit is a proposed change to the source file, which the caller decides whether to apply
 ```
 
-Functional options only. Every operation that would write to source returns an `Edit` value; the library never writes a file. `Check`, `Scan`, `Context`, `Map`, `Facts`, `Why`, `Impact`, `Triage`, `Render` are pure over the inputs given. The CLI applies edits, touches git, and prints.
+Functional options only. Every operation that would write to source returns an `Edit` value; the library never writes a file. `Check`, `Scan`, `Context`, `Map`, `Facts`, `Why`, `Impact`, `Render` are pure over the inputs given, and `docsync.Triage` groups a report. The CLI applies edits, touches git, and prints. `WithVerb` registers a verb name alone, for a verb that a process plugin implements, so references to it are not reported `unknown`.
 
 #### 37.3 Capability interfaces
 
 A plugin implements the smallest interface that fits; optional interfaces upgrade behaviour without configuration.
 
-| Interface | Method sketch | Used for |
-|---|---|---|
-| `Extractor` | `Match(path) bool; Blocks(src []byte) ([]Block, error)` | a new file format or language tier |
-| `Picker` | `Pick(block Block, expr string) (Value, error)` | a new `pick=` scheme |
-| `Verb` | `Name() string; Carriers() []Carrier; Keys() KeySpec; Check(ref Ref, st *State) []Finding; Render(ref Ref, st *State) (Node, error)` | a new directive verb |
-| `Classifier` | `Classify(old, new Block) []Class` | change classes for a language |
-| `Resolver` | `Provider() string; Exists(ctx, addr) (bool, error)` and optionally `Hash(ctx, addr) ([32]byte, error)` | secret address verification; `Hash` is the optional upgrade |
-| `RecordSource` | `Kinds() []string; Query(ctx, q Query) ([]Record, error)` | `table` and `cfg query=` |
-| `Renderer` | `Render(node Node) ([]byte, error)` | markdown, html, terminal, a site generator's AST |
-| `Store` | `Load(ctx) (Ledger, Refs, Acks, error); Save(ctx, …) error` | where state lives; default is the `.ds/` TSV files, alternatives are a database or the workspace index |
-| `Notifier` | `Notify(ctx, findings []Finding) error` | Slack, issues, email |
-| `Observer` | `OnFinding(Finding); OnAck(Ack)` | audit sinks and metrics |
+| Interface | Shape | Registered with | Used for |
+|---|---|---|---|
+| `extract.Extractor` | `Name() string; Match(path string) bool; Extract(path string, src []byte, prefix string) extract.Found` | `WithExtractor`, or `WithRegistry` to replace tier selection | a new file format or language tier |
+| `docsync.Picker` | `Scheme() string; Pick(arg, content string) (pick.Result, error)` | `WithPicker` | a new `pick=` scheme |
+| `docsync.Verb` | `Name() string; Carriers() []block.Carrier; Keys() KeySpec; Check(ref block.Reference, st *VerbState) []check.Finding; Render(ref block.Reference, st *VerbState, inline bool) (string, bool, error)` | `WithVerbHandler` | a new directive verb |
+| `docsync.Classifier` (`match.Classifier`) | `func(old, new block.Block, oldContent string) []block.Class` | `WithClassifier` | change classes for a language |
+| `check.Resolver` | `func(provider, addr string) check.ResolveResult`; the result carries existence and, where the provider can be read, a hash, but not the value | `WithResolver` | secret address verification under `--resolve`; the CLI's resolver calls the `ds-resolve-<provider>` plugins |
+| `records.Source` | `func(args map[string]string) ([]map[string]string, error)` | `WithRecords` | rows for `ds:table` |
+| `docsync.Renderer` | `Render(nodes []render.Node) ([]byte, error)` | `WithRenderer` | markdown, html, a site generator's AST |
+| `docsync.Store` | `Load(ctx) (ledger.Ledger, ledger.Refs, ledger.Acks, error); Save(ctx, l, r, a) error` | `WithStore` | where state lives; the CLI's default is the `.ds/` TSV files |
+| `docsync.Notifier` | `Notify(ctx, findings []check.Finding) error` | `WithNotifier` | delivering findings |
+| `docsync.Observer` | `OnFinding(check.Finding); OnAck(ledger.Ack)` | `WithObserver` | audit sinks and metrics |
 
-Every interface accepts and returns standard-library types where one exists: `context.Context`, `fs.FS`, `io.Reader`, `io.Writer`, `time.Time`. None invents a logger or a config type; the caller passes a `*slog.Logger` if it wants logs.
+Every interface accepts and returns standard-library types where one exists: `context.Context`, `fs.FS`, `io.Reader`, `io.Writer`, `time.Time`. None invents a logger or a config type.
 
-Each primitive has exactly one escape hatch, named, documented, and tested: `WithExtractor` replaces the tier selection entirely; `WithClassifier` replaces classification; `WithStore` replaces persistence. There is no second, quieter way to do any of those.
+Each primitive has exactly one escape hatch, named, documented, and tested: `WithRegistry` replaces the tier selection entirely; `WithClassifier` replaces classification; `WithStore` replaces persistence. There is no second, quieter way to do any of those.
 
 #### 37.4 Process plugins, for any language
 
@@ -1376,24 +1376,26 @@ package main
 
 import (
     "github.com/ubgo/docsync/cli"
+    "github.com/ubgo/docsync/config"
+    "github.com/ubgo/docsync/ext/structured"
     "github.com/ubgo/docsync/ext/treesitter"
-    "example.com/platform/docsync/linear"     // a private verb: ds:ticket id=… renders Linear state
-    "example.com/platform/docsync/vaultx"     // a private resolver for an internal secret store
+    "example.com/platform/docsync/kotlin"     // a private tier: treesitter.New with a Kotlin grammar
 )
 
 func main() {
     cli.Main(
         cli.WithName("pds"),
-        cli.WithDefaults(cli.Standard()),      // the built-in verbs, extractors, and commands
-        cli.WithExtractor(treesitter.Kotlin()),
-        cli.WithVerb(linear.Verb{}),
-        cli.WithResolver(vaultx.New()),
-        cli.WithConfigDefaults(platformDefaults),
+        cli.WithDefaults(cli.Standard()),      // the built-in commands and tiers
+        cli.WithExtractor(structured.All()...),
+        cli.WithExtractor(treesitter.All()...),
+        cli.WithExtractor(kotlin.Tier()),
+        cli.WithVerb("ticket"),                // ds:ticket, served by a ds-ticket process plugin on PATH
+        cli.WithConfigDefaults(func(c *config.Config) { c.Agents.MaxDefsPerRun = 7 }),
     )
 }
 ```
 
-`pds` reads the same directives, ledgers, and workspace index as `ds`; only its registry differs. Conformance fixtures run against any binary built this way, so a custom build is provably still docsync.
+`pds` reads the same directives, ledgers, and workspace index as `ds`; only its registry differs, and it names itself `pds` in help, `pds version`, and the commands its remedies print. A verb or resolver written in Go reaches the CLI as a process plugin (37.4): the CLI registers verbs by name and finds `ds-<verb>` and `ds-resolve-<provider>` on PATH, so it has no `WithResolver` or `WithVerbHandler` of its own. Conformance fixtures run against any binary built this way, so a custom build is provably still docsync.
 
 #### 37.6 Invariants pinned by tests
 
@@ -1414,14 +1416,17 @@ The Go API follows semver independently of the spec version and the `json_format
 2. `publish`, `sync`, git index, multi-repo `check`, `--tests`.
 3. GitHub action posting findings as PR comments.
 4. `run`, `table`, `claim`, `url`, `chain`; `env=`, `from=`, `truth=`; resolvers for GitHub and 1Password behind `--resolve`; scheduled job.
-5. Change classification with stability policies; `impact`, `triage`, `context`, `facts`, `status`, `graph`, `undo`, `render --at`, `adopt`, `report --metrics --literals`, `notify`, `audit`, `review --ai`; `translates=`, `assert=`, `deprecated=`, `sunset=`, `review_every`, `policy.require_doc`, asset hashing, `cfg query=`. Suite reaches full coverage of this document.
+5. Change classification with stability policies; `impact`, `triage`, `context`, `facts`, `status`, `graph`, `undo`, `render --at`, `adopt`, `report --metrics --literals`, `notify`, `audit`, `review --ai`; `translates=`, `assert=`, `deprecated=`, `sunset=`, `review_every`, `policy.require_doc`, asset hashing. Suite reaches full coverage of this document.
 6. Agent surface: `mcp`, `map`, `find`, `read`, `locate`, `context --budget --since`, `report --gaps`, `init --agents`, `why --history`, delegated acks, injection fixtures, `json_format = 1` frozen.
 7. LSP with code lens and hover; VS Code client.
 8. Hugo and Docusaurus plugins for build-time rendering; `ds render` as the generic fallback.
 9. AI rules shipped as a `CLAUDE.md` fragment and a skill, generated by `init --agents`.
 
-Specified above and not built yet:
+Open work, described in this document but not built. Configuration that would enable any of it is refused when the config loads rather than accepted and ignored (section 23):
 
+- `ds:cfg query=` and the `[sources.<name>]` tables (`dsn`, `url`, `ttl`) it would read: a live value from a SQL or HTTP source with an "as of" stamp. Until then a `query=` citation is `unverifiable`.
+- `notify.github_issues`: opening an issue per finding. Slack (`[notify] slack`) is the only channel.
+- `[workspace.id]` and `[workspace.env]` in `ds-workspace.toml`: one id shape and one set of environments for every repository in a workspace. Each repository's own `[id]` and `[env]` are what apply.
 - Hop-to-hop name agreement in a secret chain (section 12): which name a hop carries is not defined for every address shape (an `op://` reference or an ARN has none a variable can be compared with), and the common `STRIPE_KEY: ${{ secrets.STRIPE_SECRET }}` mapping renames on purpose, so a check needs a design that can tell the two apart and a way to accept a deliberate rename.
 - A rotation marking every runbook that cites the chain `unacked` (sections 12 and 30): an ack holds a block hash, and a rotation changes no block, so this needs acks that also record the truth's hash.
 

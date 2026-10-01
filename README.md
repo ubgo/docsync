@@ -134,7 +134,7 @@ This repository is the root library: `github.com/ubgo/docsync`, standard library
 ## Using the CLI
 
 ```sh
-ds init                   # .ds/config.toml, empty ledgers, a CI snippet
+ds init                   # .ds/config.toml, empty ledgers, a CI snippet; scan.docs is docs/** + README.md if docs/ exists, else **/*.md
 ds def internal/store/write.go#Store.Save --owner @auth   # prints the id; inserts the directive
 ds scan                   # writes .ds/ledger.tsv and .ds/refs.tsv; commit them
 ds check                  # exit 1 on unacked, broken, expired…; --json for machines

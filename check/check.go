@@ -221,6 +221,16 @@ type Options struct {
 	RequiredKeys map[string][]string
 	// Classify replaces the change classifier (§37.3 Classifier).
 	Classify match.Classifier
+	// KnownEnvs is [env] known. When it lists any, an env= on this repo's
+	// own defs and citations that it does not list is reported `unknown`:
+	// a misspelled environment otherwise reads as a missing definition, or
+	// as a def nobody can ever select. Empty disables the test.
+	KnownEnvs []string
+	// Command is the name of the binary a finding's message and remedy
+	// tell the reader to run ("pds ack …"). Empty means DefaultCommand. A
+	// custom build named itself in help and still told its users to run a
+	// `ds` they did not have.
+	Command string
 }
 
 // VerbHandler is a plugin verb's check. Findings it returns get the doc,
@@ -465,6 +475,7 @@ func Run(in Input) Report {
 	r.unscanned()
 	r.chains()
 	r.locals()
+	r.defEnvs()
 	r.pages()
 	r.uncovered()
 	for _, u := range in.Undocumented {
@@ -512,6 +523,12 @@ type runner struct {
 
 // emit applies the severity table, the unacked downgrade, and strict mode.
 func (r *runner) emit(f Finding) {
+	if name := r.in.Opts.Command; name != "" {
+		f.Message = CommandText(f.Message, name)
+		f.Remedy.Fix = CommandText(f.Remedy.Fix, name)
+		f.Remedy.IfStillTrue = CommandText(f.Remedy.IfStillTrue, name)
+		f.Remedy.IfNot = CommandText(f.Remedy.IfNot, name)
+	}
 	f.Severity = severityOf[f.State]
 	if f.State == StateUnacked && r.in.Opts.UnackedIsWarning {
 		f.Severity = SeverityWarning
@@ -562,6 +579,13 @@ func (r *runner) reference(ref block.Reference, docRepo string) {
 		f.State = StateUnknown
 		f.Message = fmt.Sprintf("unknown key(s) %s on ds:%s", strings.Join(unknown, ", "), ref.Verb)
 		f.Remedy.Fix = fmt.Sprintf(remedyUnknownKey, strings.Join(unknown, ", "), "ds:"+ref.Verb, ref.Pos.File, ref.Pos.Start)
+		r.emit(f)
+	}
+	if e := ref.Args[block.KeyEnv]; docRepo == "" && !r.knownEnv(e) {
+		f := base
+		f.State = StateUnknown
+		f.Message = fmt.Sprintf("env=%s is not in env.known", e)
+		f.Remedy.Fix = fmt.Sprintf(remedyUnknownEnv, e, ref.Pos.File, ref.Pos.Start, strings.Join(r.in.Opts.KnownEnvs, ", "))
 		r.emit(f)
 	}
 	if missing := r.missingKeys(ref); len(missing) > 0 {
@@ -712,8 +736,8 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 		if ref.Verb == extract.VerbCfg && ref.Args[keyQuery] != "" {
 			f := base
 			f.State = StateUnverifiable
-			f.Message = "cfg query= needs a configured source"
-			f.Remedy.Fix = fmt.Sprintf(remedyTable, r.in.Prefix)
+			f.Message = "cfg query= is not built yet"
+			f.Remedy.Fix = fmt.Sprintf(remedyQuery, r.in.Prefix)
 			r.emit(f)
 			return
 		}
@@ -1507,6 +1531,22 @@ func (r *runner) resolveChain(byID map[string]block.Block, members []string, roo
 			continue
 		}
 		r.emit(Finding{State: StateOutOfSync, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: id, File: b.Pos.File, Owner: b.Owner(), Message: fmt.Sprintf("%s differs from truth %s", id, root), Hash: HashPair{Acked: truthHash, Current: h}, Remedy: Remedy{Fix: fmt.Sprintf(remedyOutOfSync, id, root, sync)}})
+	}
+}
+
+// knownEnv applies Options.KnownEnvs to one env= value; no value, or no
+// list, is always known.
+func (r *runner) knownEnv(e string) bool {
+	return e == "" || len(r.in.Opts.KnownEnvs) == 0 || contains(r.in.Opts.KnownEnvs, e)
+}
+
+// defEnvs reports this repo's defs whose env= is not in env.known; such a
+// def can never be selected by a citation that names a listed environment.
+func (r *runner) defEnvs() {
+	for _, b := range r.in.Defs {
+		if e := b.Args[block.KeyEnv]; !r.knownEnv(e) {
+			r.emit(Finding{State: StateUnknown, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: b.ID, File: b.Pos.File, Message: fmt.Sprintf("env=%s is not in env.known", e), Remedy: Remedy{Fix: fmt.Sprintf(remedyUnknownEnv, e, b.DirectivePos.File, b.DirectivePos.Start, strings.Join(r.in.Opts.KnownEnvs, ", "))}})
+		}
 	}
 }
 

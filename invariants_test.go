@@ -69,6 +69,9 @@ func TestInvariantRootPurity(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
+			if otherCheckout(p) {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
 			case "cli", "ext", "testdata", ".git", "coverage", "bin":
 				return filepath.SkipDir
@@ -392,5 +395,17 @@ func TestInvariantFuzzAllListsEveryTarget(t *testing.T) {
 // module's code.
 func isModule(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, "go.mod"))
+	return err == nil
+}
+
+// otherCheckout reports whether dir is the root of another git checkout
+// nested in this one (a worktree, a vendored clone): it has its own .git
+// entry. Walks over this repository's source skip it, or every check here
+// runs over a second copy of the tree and reports its files as this one's.
+func otherCheckout(dir string) bool {
+	if dir == "." {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
 	return err == nil
 }

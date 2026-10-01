@@ -394,12 +394,12 @@ func TestStalenessInternals(t *testing.T) {
 	// warnStaleSnapshot: a malformed duration is ignored here (the config
 	// parser already refused it), and a missing snapshot says nothing.
 	var w strings.Builder
-	warnStaleSnapshot(&w, st, config.Config{Check: config.CheckConfig{SnapshotMaxAge: "soon"}}, clock)
+	warnStaleSnapshot(&w, st, config.Config{Check: config.CheckConfig{SnapshotMaxAge: "soon"}}, clock, DefaultName)
 	if w.Len() != 0 {
 		t.Errorf("a bad duration must not produce a warning here: %q", w.String())
 	}
 	empty := NewStore(t.TempDir())
-	warnStaleSnapshot(&w, empty, config.Config{Check: config.CheckConfig{SnapshotMaxAge: "1d"}}, clock)
+	warnStaleSnapshot(&w, empty, config.Config{Check: config.CheckConfig{SnapshotMaxAge: "1d"}}, clock, DefaultName)
 	if w.Len() != 0 {
 		t.Errorf("no snapshot = %q", w.String())
 	}

@@ -1,5 +1,5 @@
-// Package records is the first record source for `ds:table` and `ds:cfg
-// query=` (docs/SPEC.md §9.5): a directory of markdown files whose YAML
+// Package records is the first record source for `ds:table`
+// (docs/SPEC.md §9.5): a directory of markdown files whose YAML
 // frontmatter holds the fields. Every file is one record; its top-level
 // `key: value` pairs are the columns, plus `path` and `title` (the first
 // heading). SQLite and HTTP sources are adapters that return the same rows.

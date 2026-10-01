@@ -169,6 +169,9 @@ func promiseRefsInTests(t *testing.T) map[string]bool {
 			return err
 		}
 		if d.IsDir() {
+			if otherCheckout(p) {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
 			case ".git", "node_modules", "testdata", "bin", "coverage":
 				return filepath.SkipDir

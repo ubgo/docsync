@@ -49,6 +49,11 @@ printf '\000\001' > docs/.DS_Store
 junk=$(ds scan 2>&1 >/dev/null)
 if [ -z "$junk" ]; then echo "  PASS  a new minified file or binary junk is skipped without a warning"; pass=$((pass+1))
 else echo "  FAIL  junk was named: $junk"; fail=$((fail+1)); fi
+# bug 122: SPEC section 10 promises every unreadable file is accounted for;
+# a junk file is not named, but it is still counted in the summary line.
+skipped=$(ds scan 2>/dev/null | sed -n 's/.* \([0-9][0-9]*\) skipped$/\1/p')
+if [ "${skipped:-0}" -ge 2 ]; then echo "  PASS  unnamed junk is still counted in the summary ($skipped skipped)"; pass=$((pass+1))
+else echo "  FAIL  the summary does not count the skipped junk: '$skipped'"; fail=$((fail+1)); fi
 printf '// ds:def id=bee-h3v8n2wd\nfunction b() { return "%s"; }\n' "$(printf 'y%.0s' $(seq 1 10))" > b.js; ds scan >/dev/null
 printf '// ds:def id=bee-h3v8n2wd\nfunction b() { return "%s"; }\n' "$(printf 'y%.0s' $(seq 1 3000))" > b.js
 ck "a code file that held a block and turns minified is named" "b.js not scanned (long-line)" "$(ds scan 2>&1 >/dev/null)"

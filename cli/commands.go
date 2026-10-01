@@ -218,6 +218,10 @@ func (a *App) doctorCmd() *cobra.Command {
 			// value reached git history (§12). `init` writes it; only doctor
 			// can tell a repo that already exists.
 			rows = append(rows, st.gitignoreRow(), st.gitattributesRow(), a.blocksRow(st), a.notifyStateRow(st))
+			rows = append(append(rows, a.workspaceRows(cfg)...), a.resolverRows(cfg)...)
+			for _, row := range rows {
+				row[2] = a.cmdText(row[2])
+			}
 			table(out, rows)
 			for _, row := range rows {
 				if row[1] == doctorFail {
@@ -453,9 +457,9 @@ func (a *App) checkCmd() *cobra.Command {
 				return err
 			}
 			if frozen {
-				warnStaleSnapshot(cmd.ErrOrStderr(), ld.st, ld.cfg, a.now())
+				warnStaleSnapshot(cmd.ErrOrStderr(), ld.st, ld.cfg, a.now(), a.name)
 			}
-			noteOlderRule(cmd.ErrOrStderr(), docsync.CheckRule(ld.prev, ld.refs), "warning: %v; run `ds scan`")
+			noteOlderRule(cmd.ErrOrStderr(), docsync.CheckRule(ld.prev, ld.refs), "warning: %v; run `"+a.name+" scan`")
 			rep, err := ld.sys.Check(cmd.Context(), opts)
 			if err != nil {
 				return err

@@ -69,5 +69,21 @@ diff=$(ds check --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join
 ck "prod's change is diffed against prod's own old value (bug 16)" "-443 +8443" "$diff"
 case "$diff" in *8080*) echo "  FAIL  prod was diffed against dev's body: $diff"; fail=$((fail+1));; *) echo "  PASS  dev's body is never used for prod's diff"; pass=$((pass+1));; esac
 
+# env.known is the closed set of environments once it lists any (bug 120):
+# a typo in --env, in a citation's env=, or in a [run.env.<name>] table used
+# to run quietly against an environment nothing defines.
+cd "$W" || exit 1
+printf '\n[env]\nknown = ["dev", "prod"]\n' >> .ds/config.toml
+ck "a listed --env runs" "none" "$(ds check --env prod 2>&1 | tail -1)"
+ck "a misspelled --env is refused naming the list" "env.known is dev, prod" "$(ds check --env prdo 2>&1)"
+ck "render --env is held to the same list" "environment not in env.known" "$(ds render docs/d.md --env stage 2>&1)"
+printf '\nStage listens on [x](ds:cfg?id=port-k7m2p4xq&env=stage).\n' >> docs/d.md; ds scan >/dev/null 2>&1
+ck "a citation's env= outside the list is reported unknown" "env=stage is not in env.known" "$(ds check 2>&1)"
+printf '[run.env.stagng]\nX = "1"\n' >> .ds/config.toml
+ck "a [run.env] table outside the list stops the load" "run.env.stagng names an environment that is not in env.known" "$(ds check 2>&1)"
+# [id] is checked when the config loads, so doctor fails on it (bug 121).
+printf '[id]\nsuffix_length = 4\n' >> .ds/config.toml
+ck "doctor fails a suffix_length the minting rules refuse" "FAIL" "$(ds doctor 2>&1 | head -1)"
+
 echo; echo "  ---- $pass passed, $fail failed ----"
 [ "$fail" -eq 0 ]

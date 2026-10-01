@@ -1,5 +1,5 @@
-// Package sqlite is the SQLite record source for `ds:table` and `ds:cfg
-// query=` (docs/SPEC.md §9.5, §37.1): rows of a table become records with
+// Package sqlite is the SQLite record source for `ds:table`
+// (docs/SPEC.md §9.5, §37.1): rows of a table become records with
 // one field per column. Filtering, sorting, projection, and limits are
 // applied by the root records package, so every source answers the same
 // query language; the database only supplies rows.

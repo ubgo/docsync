@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"runtime"
 	"sort"
 	"strings"
@@ -44,6 +45,24 @@ const (
 const StateDir = ".ds"
 
 var skipDirs = map[string]bool{".git": true, ".hg": true, ".svn": true, "node_modules": true, "vendor": true, StateDir: true}
+
+// skipDir reports whether the walk leaves the directory at p (named name)
+// out: one of skipDirs, or the root of another checkout nested in this one
+// -- a git worktree, a submodule, a cloned dependency -- which has its own
+// .git entry. Git treats such a directory as a separate repository, and so
+// does docsync: its directives are that repository's, and reading them here
+// made every def in a nested copy of the same tree a duplicate id. Another
+// repository is cited across a workspace (§21), never by scanning into it.
+func skipDir(fsys fs.FS, p, name string) bool {
+	if p == "." {
+		return false
+	}
+	if skipDirs[name] {
+		return true
+	}
+	_, err := fs.Stat(fsys, path.Join(p, ".git"))
+	return err == nil
+}
 
 // SkipReason is why a file was not scanned; reported, never silent.
 type SkipReason string
@@ -223,7 +242,7 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 			return ctx.Err()
 		}
 		if d.IsDir() {
-			if p != "." && skipDirs[d.Name()] {
+			if skipDir(fsys, p, d.Name()) {
 				return fs.SkipDir
 			}
 			return nil
@@ -419,7 +438,7 @@ func CountMatches(fsys fs.FS, pattern string) (int, error) {
 			return err
 		}
 		if d.IsDir() {
-			if path != "." && skipDirs[d.Name()] {
+			if skipDir(fsys, path, d.Name()) {
 				return fs.SkipDir
 			}
 			return nil

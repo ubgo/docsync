@@ -138,6 +138,9 @@ type DefineResult struct {
 // proposing the directive insertion when the block has none (§22 `ds def`).
 // One def per block: an existing directive on that block is returned as is.
 func (s *System) Define(_ context.Context, target string, opts DefineOptions) (DefineResult, error) {
+	if _, err := s.envFor(opts.Env); err != nil {
+		return DefineResult{}, err
+	}
 	path, tgt, err := extract.ParseTarget(target)
 	if err != nil {
 		return DefineResult{}, err
