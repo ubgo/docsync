@@ -246,7 +246,7 @@ func commentBodies(rep docsync.Report, repoURL, sha string) map[string]string {
 				fmt.Fprintf(&b, "  - fix: %s\n", f.Remedy.Fix)
 			}
 			if f.Diff != "" {
-				fmt.Fprintf(&b, "\n  <details><summary>block diff</summary>\n\n  ```diff\n%s  ```\n  </details>\n", indent(f.Diff, "  "))
+				fmt.Fprintf(&b, "\n  <details><summary>block diff</summary>\n\n  ```diff\n%s\n  ```\n  </details>\n", indent(f.Diff, "  "))
 			}
 		}
 		out[doc] = b.String()

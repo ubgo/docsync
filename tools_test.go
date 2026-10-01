@@ -281,6 +281,15 @@ func TestReport(t *testing.T) {
 	if !exported || marked {
 		t.Errorf("unmarked symbols = %+v", r.Unmarked)
 	}
+	// The same view when a syntax tier, not the code tier, reads the .go files.
+	ss, srep := changedSystem(t, fsys, WithConfig(c), WithAcks(acks), WithExtractor(syntaxTier{}))
+	exported = false
+	for _, u := range ss.Report(srep, ReportOptions{}).Unmarked {
+		exported = exported || u.Symbol == "Exported"
+	}
+	if !exported {
+		t.Error("unmarked misses exported symbols in files a syntax tier read")
+	}
 	// sessions.md has cites never acked (only line 7 was), so both pages are
 	// never-acked and sort by name; acked.md is fully acked and sorts last.
 	if len(r.Stalest) != 4 || !r.Stalest[0].NeverAck || r.Stalest[0].Doc != "docs/sessions.md" || r.Stalest[1].Doc != "docs/typed.md" || r.Stalest[2].Doc != "docs/acked.md" || r.Stalest[3].Doc != "docs/acked2.md" || !r.Stalest[2].OldestAck.Equal(clock.Add(-72*time.Hour)) {

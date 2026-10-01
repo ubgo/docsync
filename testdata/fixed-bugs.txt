@@ -26,3 +26,5 @@
 17 acks under another rule rejected though their sentence was unchanged
 18 a const inside a const ( ... ) group bound a later declaration
 19 ds def missed a standalone typed Go constant
+20 policy.require_doc and the unmarked report skipped every file a syntax tier read
+21 ds github comment left each block diff fence open

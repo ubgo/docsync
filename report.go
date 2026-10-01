@@ -145,9 +145,10 @@ func (s *System) Report(rep Report, opts ReportOptions) ReportResult {
 		}
 		defLines[b.Pos.File][b.Pos.Start] = true
 	}
+	// By what the file is, not by which tier read it (see undocumented).
 	var codeFiles []string
-	for f, tier := range res.Tier {
-		if tier == (extract.Code{}).Name() {
+	for f := range res.Tier {
+		if (extract.Code{}).Match(f) {
 			codeFiles = append(codeFiles, f)
 		}
 	}

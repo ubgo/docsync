@@ -135,6 +135,14 @@ func TestGitHubComment(t *testing.T) {
 	if r.code != ExitFindings || !strings.Contains(r.out, "<!-- docsync:doc=docs/sessions.md -->") || !strings.Contains(r.out, "[line 1](https://github.com/org/api/blob/feedface/docs/sessions.md#L1) **unacked** `sess-save-k7m2p4xq`") || !strings.Contains(r.out, "```diff") || !strings.Contains(r.out, "still true: `ds ack") || !strings.Contains(r.out, "fix: the id nope") {
 		t.Errorf("dry = %+v", r)
 	}
+	// Every fence is a line of its own (bug 21): the indented diff carries no trailing
+	// newline, and a closing fence glued to its last line left the code block
+	// open, so the rest of the comment rendered inside it.
+	for _, l := range strings.Split(r.out, "\n") {
+		if f := strings.TrimSpace(l); strings.Contains(f, "```") && f != "```" && f != "```diff" {
+			t.Errorf("a fence shares its line with content: %q", l)
+		}
+	}
 	if len(gh.calls) != 0 {
 		t.Errorf("dry run must not call GitHub: %v", gh.calls)
 	}

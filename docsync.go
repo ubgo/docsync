@@ -597,9 +597,13 @@ func (s *System) undocumented(res scan.Result) ([]check.Undocumented, error) {
 		}
 		defLines[b.Pos.File][b.Pos.Start] = true
 	}
+	// A file counts by what it is, not by which tier read it: a syntax tier
+	// (Go, TypeScript, Python, ...) registered ahead of the heuristic code
+	// tier takes those files, and keying on the tier's name left the policy
+	// silently empty for every language that has one.
 	var files []string
-	for f, tier := range res.Tier {
-		if tier == (extract.Code{}).Name() && required.MatchAny(f) {
+	for f := range res.Tier {
+		if (extract.Code{}).Match(f) && required.MatchAny(f) {
 			files = append(files, f)
 		}
 	}

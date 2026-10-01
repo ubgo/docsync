@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- docsync is now licensed under the Apache License 2.0 instead of the GNU AGPL v3.0, for every module, the VS Code client and the Docusaurus plugin. Releases up to and including ds 0.1.3, cli 0.1.3 and the library 0.1.1 remain available under the AGPL terms they were published with.
+
+### Fixed
+
+- `policy.require_doc` and the unmarked view of `ds report` did nothing for Go, TypeScript, TSX, JavaScript, Python or SQL files: they only looked at files the heuristic code tier had read, and the standard `ds` reads those languages with their tree-sitter grammars. A file now counts by its extension, whichever tier read it.
+- `ds github comment`: the closing fence of each block diff was written on the diff's last line, so the code block never closed and everything after it in the comment rendered as code.
+
 ## [0.1.3] - 2026-10-01
 
 A release of the `ds` binary and the `cli` module (0.1.3), and of the library (0.1.1), which adds `run.shell` to the config. The end-to-end matrices now run on Linux and on Windows under Git Bash as well as on macOS.

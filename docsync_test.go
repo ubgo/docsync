@@ -722,6 +722,16 @@ func TestRequireDocPolicy(t *testing.T) {
 	if u, err := s.undocumented(res); err != nil || len(u) != 1 {
 		t.Errorf("vanished = %+v %v", u, err)
 	}
+	// A syntax tier ahead of the code tier takes the .go files (bug 20); the policy
+	// still covers them, because a file counts by what it is.
+	fsys["internal/gone.go"] = &fstest.MapFile{Data: []byte("package p\n\nfunc Exported() {}\n")}
+	rep, err = newSys(t, fsys, WithConfig(c), WithExtractor(syntaxTier{})).Check(context.Background(), CheckOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.States[check.StateUndocumented] != 2 {
+		t.Errorf("require_doc under a syntax tier = %v", rep.States)
+	}
 	c.Policy.RequireDoc = []string{"["}
 	if _, err := newSys(t, repo(false), WithConfig(c)).Check(context.Background(), CheckOptions{}); err == nil {
 		t.Error("bad policy glob must fail")
@@ -729,6 +739,16 @@ func TestRequireDocPolicy(t *testing.T) {
 	if _, err := newSys(t, repo(false), WithConfig(c)).Map(context.Background(), MapOptions{}); err == nil {
 		t.Error("map propagates the policy error")
 	}
+}
+
+// syntaxTier stands in for a grammar tier: it claims .go files ahead of the
+// heuristic code tier, under a name of its own, and extracts as that tier does.
+type syntaxTier struct{}
+
+func (syntaxTier) Name() string        { return "go-syntax" }
+func (syntaxTier) Match(p string) bool { return strings.HasSuffix(p, ".go") }
+func (syntaxTier) Extract(p string, src []byte, prefix string) extract.Found {
+	return extract.Code{}.Extract(p, src, prefix)
 }
 
 func TestFences(t *testing.T) {

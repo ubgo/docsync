@@ -109,6 +109,17 @@ func TestLSP(t *testing.T) {
 	if !strings.Contains(text(2), "**sess-save-k7m2p4xq**") || !strings.Contains(text(2), "unacked") || !strings.Contains(text(2), "```diff") {
 		t.Errorf("hover = %s", text(2))
 	}
+	var hover struct {
+		Contents struct{ Value string }
+	}
+	if err := json.Unmarshal([]byte(text(2)), &hover); err != nil {
+		t.Fatalf("hover: %v", err)
+	}
+	for _, l := range strings.Split(hover.Contents.Value, "\n") {
+		if f := strings.TrimSpace(l); strings.Contains(f, "```") && f != "```" && f != "```diff" {
+			t.Errorf("a hover fence shares its line with content: %q", l)
+		}
+	}
 	if text(3) != "null" {
 		t.Errorf("hover on a plain line = %s", text(3))
 	}
