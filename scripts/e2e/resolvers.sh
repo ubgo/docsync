@@ -22,8 +22,11 @@ S=$(mktemp -d)
 command -v cygpath >/dev/null 2>&1 && S=$(cygpath -m "$S")
 trap '/bin/rm -rf "$S"' EXIT
 pass=0; fail=0
-ck() { [ -n "$2" ] || { echo "  FAIL  $1 (an empty expectation matches anything)"; fail=$((fail+1)); return; }; case "$3" in *"$2"*) echo "  PASS  $1"; pass=$((pass+1));; *) echo "  FAIL  $1 (want $2, got: $3)"; fail=$((fail+1));; esac; }
-nk() { case "$3" in *"$2"*) echo "  FAIL  $1 (did not want $2, got: $3)"; fail=$((fail+1));; *) echo "  PASS  $1"; pass=$((pass+1));; esac; }
+# one prints output on a single line, so a failure shows all of it where
+# run.sh reports only the FAIL line (as on a CI runner).
+one() { printf '%s' "$1" | tr '\n' ' ' | cut -c1-1500; }
+ck() { [ -n "$2" ] || { echo "  FAIL  $1 (an empty expectation matches anything)"; fail=$((fail+1)); return; }; case "$3" in *"$2"*) echo "  PASS  $1"; pass=$((pass+1));; *) echo "  FAIL  $1 (want $2, got: $(one "$3"))"; fail=$((fail+1));; esac; }
+nk() { case "$3" in *"$2"*) echo "  FAIL  $1 (did not want $2, got: $(one "$3"))"; fail=$((fail+1));; *) echo "  PASS  $1"; pass=$((pass+1));; esac; }
 
 # Stand-in provider CLIs. `op read --no-newline <ref>` prints the value held
 # for <ref> in $S/secrets, or fails the way op does: signed out when
