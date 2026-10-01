@@ -672,11 +672,11 @@ known = ["prod", "staging", "dev"]
 
 - Ledgers flow **from** every repo that defines; refs flow **back** to every repo that is referred to. Both are two small files. Block bodies flow with the ledger, content-addressed under `repos/<name>/blocks/` (section 15.1), so a consumer can classify a citation whose baseline predates the published ledger; secret and local blocks publish a hash and no body.
 - A cross-repo citation is checked against its own baseline exactly as a local one is. The defining repo is not matched by the consumer's scan, so the consumer's change table says nothing about it; the `acked_hash`, or the `seen_hash` recorded when the citation was first scanned, is what decides coverage.
-- `ds publish` runs **only on the default branch after merge** and writes the repo's ledger, refs, commit, and optionally test outcomes (`--tests junit.xml`) into the index under `repos/<name>/`. Pull requests never publish; a PR's `check` compares its local scan against the last published ledger plus its own diff. The index records what shipped.
+- `ds publish` runs **only on the default branch after merge** and writes the repo's ledger, refs, commit, and optionally test outcomes (`--tests junit.xml`) into the index under `repos/<name>/`. A git-URL index is committed and pushed; a local directory that is the top of its own git repository is committed and never pushed; a plain directory is only written. Pull requests never publish; a PR's `check` compares its local scan against the last published ledger plus its own diff. The index records what shipped.
 - `ds check` runs `ds sync` first: fetch the index, merge into one id table and one reverse index. Ids are globally unique, so no `repo/` prefix appears in directives; the merged table records the owning repo.
 - Cross-repo references are ordinary references. The docs repo cites `sess-save-k7m2p4xq`; the permalink resolves to the api repo at its published commit; the api repo's `check` sees from merged refs that a docs page depends on the block it is about to delete.
 - Duplicate ids across repos are rejected at publish. Forks and mirrors cannot publish; only the canonical URL may: `publish` refuses a remote that is not in `workspace.repos`, comparing URLs in one canonical form (`git@github.com:org/api.git` is `https://github.com/org/api`), and without a remote requires the directory name to be a listed repository's. Each repo writes only its own directory, so concurrent publishes cannot collide. That needs each repository's directory name — the last segment of its URL — to be distinct, so a workspace listing two repos with the same last segment (`github.com/org/api`, `gitlab.com/partner/api`), or a URL with none, is refused when it loads.
-- A published ledger older than N commits behind its repo's default branch produces `index for api is 14 commits behind` in every consumer.
+- With `stale_after_commits = N` in the workspace file, a repository whose default branch is more than N commits past the commit it published hears `index for api is 14 commits behind main` from every command that loads the workspace. Commit distance needs that repository's history, so only it can count; other consumers warn by age, `index for api is 9 days old` after seven days without a publish. `index` in the workspace file names the canonical index, and a repository whose own `workspace` is a different git URL is warned that it reads the wrong one.
 - Network unavailable: `check` uses the last synced copy kept in `.ds/index/`, warns about its age, never fails on the network alone. `--strict` may fail closed.
 - A repo removed from the workspace makes references into it `broken: repo removed`, distinct from deleted code.
 - A workspace of one repo uses itself as the index; `sync` is a no-op; same code path.
@@ -837,7 +837,7 @@ Duration keys are checked when the config loads: `run.timeout` is a positive Go 
 
 | Where | What |
 |---|---|
-| pull request | `ds check --json`; one comment per doc with findings linked to the doc line and block diff; merge blocked on exit 1; applying a `docs-acked` label lets a reviewer `ack --all` (only the act of applying it acks; a later push needs it re-applied) for a PR that changed behaviour and docs together |
+| pull request | `ds check --json`; one comment per doc with findings linked to the doc line and block diff; merge blocked on exit 1; applying a `docs-acked` label lets a reviewer `ack --all` (only the act of applying it acks; a later push needs it re-applied) for a PR that changed behaviour and docs together, and the shipped action commits the resulting `.ds/acks.tsv` to the PR branch |
 | default branch, after merge | `ds publish --tests junit.xml` |
 | nightly | `ds check --run --resolve` where credentials exist; `ds notify`; a PR with findings for a reviewer or assistant |
 
@@ -914,7 +914,7 @@ An MCP server exposing the read tools and a bounded set of write tools, each wit
 | `check` | read | findings for the working tree |
 | `impact` | read | what a staged change will flag |
 | `def` | write | mint or return an id and insert the directive; scope-limited |
-| `ack` | write | only with `delegated_by`; recorded as such |
+| `ack` | write | only with `delegated_by` naming a person listed in `[owners]`; recorded under the client's `initialize` name as an agent ack |
 
 `run`, `resolve`, `undo`, `publish`, and `adopt` are not exposed over MCP. An agent that needs them asks a human to run them.
 
@@ -1013,7 +1013,7 @@ Proactive rather than reactive: the most-changed files with no defs, exported sy
 
 #### 26.10 `ds init --agents`
 
-Writes the `CLAUDE.md` and `AGENTS.md` fragment containing section 25, registers `ds mcp` in the editor and agent configs it can find, installs a session-start hook that loads `ds map --budget 2000`, and sets `agents.max_defs_per_run`. One command, same as for humans.
+Writes the `CLAUDE.md` and `AGENTS.md` fragment containing section 25, registers `ds mcp` in the editor and agent configs it can find (`.mcp.json` always; `.cursor/mcp.json`, `.vscode/mcp.json` and `.gemini/settings.json` where that client's directory exists, merged into an existing file) unless `agents.mcp = false`, installs a session-start hook running `agents.session_hook` (default `ds map --budget 2000`; empty installs none), and writes `agents.max_defs_per_run` into the config when it has no `[agents]` table. One command, same as for humans.
 
 #### 26.11 Measured savings
 
@@ -1413,6 +1413,11 @@ The Go API follows semver independently of the spec version and the `json_format
 7. LSP with code lens and hover; VS Code client.
 8. Hugo and Docusaurus plugins for build-time rendering; `ds render` as the generic fallback.
 9. AI rules shipped as a `CLAUDE.md` fragment and a skill, generated by `init --agents`.
+
+Not built yet, from the steps above:
+
+- The commits-behind warning in consumers (§21). It needs the publishing repository's history, which a consumer does not have; today only the publishing repository counts commits, and consumers warn by age.
+- `docusaurus-plugin-docsync` on npm (step 8). It is installed from a checkout of this repository.
 
 ### 39. Glossary
 

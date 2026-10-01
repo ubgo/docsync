@@ -275,6 +275,16 @@ func TestSecondRunUnackedThenAcked(t *testing.T) {
 	if _, err := second.Ack(rep.Scan, AckRequest{Doc: "docs/sessions.md", Line: 7, Actor: "bot", ActorKind: ledger.ActorAgent}); !errors.Is(err, ErrDelegationRequired) {
 		t.Errorf("agent without delegation: %v", err)
 	}
+	// ... by a person [owners] lists (bug 106): any name used to pass.
+	if _, err := second.Ack(rep.Scan, AckRequest{Doc: "docs/sessions.md", Line: 7, Actor: "bot", ActorKind: ledger.ActorAgent, DelegatedBy: "khanakia"}); !errors.Is(err, ErrDelegateNotOwner) {
+		t.Errorf("delegate nobody lists: %v", err)
+	}
+	owned := cfg()
+	owned.Owners = map[string][]string{"@auth": {"khanakia"}}
+	second = newSys(t, repo(true), WithPrevious(prev, prevRefs), WithOldContent(oldContent), WithConfig(owned))
+	if _, err := second.Ack(rep.Scan, AckRequest{Doc: "docs/sessions.md", Line: 7, Actor: "bot", ActorKind: ledger.ActorAgent, DelegatedBy: "@auth"}); !errors.Is(err, ErrDelegateNotOwner) {
+		t.Errorf("a team is not a human: %v", err)
+	}
 	if a, err := second.Ack(rep.Scan, AckRequest{Doc: "docs/sessions.md", Line: 7, Actor: "bot", ActorKind: ledger.ActorAgent, DelegatedBy: "khanakia"}); err != nil || a.DelegatedBy != "khanakia" || a.ID != "sess-save-k7m2p4xq" {
 		t.Errorf("delegated agent ack: %+v %v", a, err)
 	}
@@ -677,6 +687,26 @@ func TestMergedRefsFromWorkspace(t *testing.T) {
 	}
 }
 
+// TestWhyListsOtherRepositoriesCiters pins bug 103: `ds why` listed only
+// this repository's citations, so a block cited from another repository in
+// the workspace read as cited by nobody. Citations by about= count too.
+func TestWhyListsOtherRepositoriesCiters(t *testing.T) {
+	t.Parallel()
+	cite := ledger.RefRow{ID: "sess-save-k7m2p4xq", Repo: "docs", Doc: "runbooks/sessions.md", Line: 3, Verb: "block", Carrier: block.CarrierLink}
+	about := ledger.RefRow{ID: "other-a2b6f8jk", Repo: "web", Doc: "notes.md", Line: 9, Verb: "claim", Carrier: block.CarrierLink, Args: map[string]string{"id": "other-a2b6f8jk", "about": "sess-save-k7m2p4xq"}}
+	unrelated := ledger.RefRow{ID: "nope-a2b6f8jk", Repo: "web", Doc: "x.md", Line: 1, Verb: "block", Carrier: block.CarrierLink}
+	s := newSys(t, repo(false), WithMergedRefs(cite, about, unrelated))
+	res, _ := s.Scan(context.Background())
+	w, err := s.Why(res, "sess-save-k7m2p4xq")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RemoteCiter{{Repo: "docs", Doc: "runbooks/sessions.md", Line: 3, Verb: "block"}, {Repo: "web", Doc: "notes.md", Line: 9, Verb: "claim"}}
+	if !reflect.DeepEqual(w.RemoteRefs, want) {
+		t.Errorf("remote citers = %+v, want %+v", w.RemoteRefs, want)
+	}
+}
+
 func TestResolverOption(t *testing.T) {
 	t.Parallel()
 	calls := 0
@@ -749,6 +779,42 @@ func (syntaxTier) Name() string        { return "go-syntax" }
 func (syntaxTier) Match(p string) bool { return strings.HasSuffix(p, ".go") }
 func (syntaxTier) Extract(p string, src []byte, prefix string) extract.Found {
 	return extract.Code{}.Extract(p, src, prefix)
+}
+
+// TestForeignBlocksCopyAndRenderWithTheirBodies pins bug 105 through the
+// System: a merged def has no content, so a repo-mode copy of it and a
+// render of it were a title and a link relative to this repository. Both
+// now carry the published body, the render links where WithForeignLink
+// says, and the copy names the repository instead of linking.
+func TestForeignBlocksCopyAndRenderWithTheirBodies(t *testing.T) {
+	t.Parallel()
+	foreign := block.Block{ID: "ret-c4d8h2lm", Kind: block.KindSection, Symbol: "Backoff", Pos: block.Position{File: "spec/retries.md", Start: 4, End: 4}, Args: map[string]string{"id": "ret-c4d8h2lm", block.KeyRepo: "docs"}}
+	foreign.SetContent("five times")
+	body := foreign.Content
+	foreign.Content = ""
+	fsys := repo(false)
+	fsys["docs/repo.md"] = &fstest.MapFile{Data: []byte("# R\n\n<!-- ds:block id=ret-c4d8h2lm -->\n\nAfter.\n")}
+	bodies := WithBodyAt(func(h string) (string, bool) { return body, h == foreign.Hash })
+	link := WithForeignLink(func(b block.Block) (string, bool) {
+		return "https://example/" + b.Args[block.KeyRepo] + "/" + b.Pos.File, true
+	})
+	s := newSys(t, fsys, WithMerged(foreign), bodies, link)
+	ctx := context.Background()
+	res, _ := s.Scan(ctx)
+	out, n := s.Fences(res, "docs/repo.md", fsys["docs/repo.md"].Data)
+	if n != 1 || !strings.Contains(string(out), "**Backoff** · `spec/retries.md:4` (in docs)\n\n```markdown\nfive times\n```\n<!-- /ds:block hash=") {
+		t.Fatalf("foreign copy (%d):\n%s", n, out)
+	}
+	fsys["docs/repo.md"] = &fstest.MapFile{Data: out}
+	s2 := newSys(t, fsys, WithMerged(foreign), bodies, link)
+	rendered, _, err := s2.Render(ctx, "docs/repo.md", RenderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(rendered)
+	if strings.Count(got, "five times") != 1 || !strings.Contains(got, "[`spec/retries.md:4`](https://example/docs/spec/retries.md)") || strings.Contains(got, "/ds:block") {
+		t.Errorf("render of a page holding a foreign copy:\n%s", got)
+	}
 }
 
 func TestFences(t *testing.T) {

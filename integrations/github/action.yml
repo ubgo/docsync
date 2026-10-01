@@ -17,6 +17,9 @@ inputs:
   ack-label:
     description: Pull request label under which every finding is acked for the reviewer who applied it (spec §24). Empty disables.
     default: docs-acked
+  commit-acks:
+    description: "When the ack label is applied, commit `.ds/acks.tsv` to the pull request branch, credited to the reviewer in the message. Needs `contents: write` and a checkout of the pull request head (actions/checkout with `ref` set to github.event.pull_request.head.sha); otherwise the step says why and skips. Set to `false` to commit the acks yourself."
+    default: "true"
   args:
     description: Extra arguments for `ds check` (for example `--full`).
     default: ""
@@ -48,6 +51,38 @@ runs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: ds github comment --report "$RUNNER_TEMP/docsync-report.json" --ack-label "${{ inputs.ack-label }}"
+    # The acks the label recorded live only in this runner's checkout until
+    # they are committed; without this step they vanished with the runner and
+    # the branch merged with every finding still unacked. A fork's branch is
+    # not this repository's to push to, so a fork's pull request is skipped.
+    - name: Commit acks recorded under the label
+      if: >-
+        !cancelled() && inputs.commit-acks == 'true' && inputs.ack-label != '' &&
+        github.event_name == 'pull_request' && github.event.action == 'labeled' &&
+        github.event.label.name == inputs.ack-label &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        REVIEWER: ${{ github.event.sender.login }}
+        LABEL: ${{ inputs.ack-label }}
+      run: |
+        set -euo pipefail
+        if git diff --quiet -- .ds/acks.tsv; then
+          echo "no acks to commit"
+          exit 0
+        fi
+        if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+          echo "::warning::the checkout is not the pull request head, so the acks cannot be pushed to it; set actions/checkout ref to github.event.pull_request.head.sha, or commit .ds/acks.tsv yourself"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add .ds/acks.tsv
+        git commit -q -m "docsync: ack findings under the $LABEL label for $REVIEWER"
+        git push -q origin "HEAD:refs/heads/$HEAD_REF"
+        echo "committed .ds/acks.tsv to $HEAD_REF"
     - name: Report (not a pull request)
       if: github.event_name != 'pull_request'
       shell: bash

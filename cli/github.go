@@ -235,15 +235,25 @@ func commentBodies(rep docsync.Report, repoURL, sha string) map[string]string {
 				fmt.Fprintf(&b, "\n…and %d more; run `ds check` for the full list.\n", len(fs)-i)
 				break
 			}
-			fmt.Fprintf(&b, "- [line %d](%s/blob/%s/%s#L%d) **%s**", f.Line, repoURL, sha, doc, f.Line, f.State)
+			if f.DocRepo == "" {
+				fmt.Fprintf(&b, "- [line %d](%s/blob/%s/%s#L%d) **%s**", f.Line, repoURL, sha, doc, f.Line, f.State)
+			} else {
+				// Another repository's citation: a link into this one
+				// would name a file that is not here (bug 102).
+				fmt.Fprintf(&b, "- line %d in the `%s` repository **%s**", f.Line, f.DocRepo, f.State)
+			}
 			if f.ID != "" {
 				fmt.Fprintf(&b, " `%s`", f.ID)
 			}
 			fmt.Fprintf(&b, ": %s\n", f.Message)
 			if f.Remedy.IfStillTrue != "" {
-				fmt.Fprintf(&b, "  - still true: `%s`; otherwise: %s\n", f.Remedy.IfStillTrue, f.Remedy.IfNot)
+				where := ""
+				if f.DocRepo != "" {
+					where = fmt.Sprintf(" (in `%s`)", f.DocRepo)
+				}
+				fmt.Fprintf(&b, "  - still true%s: `%s`; otherwise: %s\n", where, f.Remedy.IfStillTrue, remedyIn(f, f.Remedy.IfNot))
 			} else if f.Remedy.Fix != "" {
-				fmt.Fprintf(&b, "  - fix: %s\n", f.Remedy.Fix)
+				fmt.Fprintf(&b, "  - fix: %s\n", remedyIn(f, f.Remedy.Fix))
 			}
 			if f.Diff != "" {
 				fmt.Fprintf(&b, "\n  <details><summary>block diff</summary>\n\n  ```diff\n%s\n  ```\n  </details>\n", indent(f.Diff, "  "))

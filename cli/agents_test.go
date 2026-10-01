@@ -36,7 +36,7 @@ func TestInitAgents(t *testing.T) {
 	// Running again on an initialised repo is allowed without --force and
 	// changes nothing but the managed sections.
 	r = run(t, dir, v, "init", "--agents")
-	if r.code != 0 || !strings.Contains(r.out, "updated CLAUDE.md") || !strings.Contains(r.out, "updated AGENTS.md") || !strings.Contains(r.out, "kept .claude/settings.json") || !strings.Contains(r.out, ".mcp.json already exists") || strings.Contains(r.out, "next:") {
+	if r.code != 0 || !strings.Contains(r.out, "updated CLAUDE.md") || !strings.Contains(r.out, "updated AGENTS.md") || !strings.Contains(r.out, "kept .claude/settings.json") || !strings.Contains(r.out, "kept .mcp.json") || strings.Contains(r.out, "next:") {
 		t.Errorf("second run = %+v", r)
 	}
 	again, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))

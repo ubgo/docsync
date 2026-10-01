@@ -144,7 +144,7 @@ ds init [--agents] [--force]
 
 | Flag | Does |
 |---|---|
-| `--agents` | Also writes the docsync rules into `AGENTS.md` and a second agent rules file, adds an agent skill, registers `ds mcp` in `.mcp.json`, and installs a session-start hook that runs `ds map --budget 2000`. See [Agents](agents.md). |
+| `--agents` | Also writes the docsync rules into `AGENTS.md` and a second agent rules file, adds an agent skill, registers `ds mcp` with the MCP clients it finds (`.mcp.json` always; `.cursor/`, `.vscode/` and `.gemini/` when present) unless `agents.mcp = false`, installs a session-start hook running `agents.session_hook` (default `ds map --budget 2000`), and adds `[agents] max_defs_per_run` to the config when it has no `[agents]` table. See [Agents](agents.md). |
 | `--force` | Overwrite an existing config, or start a separate docsync root below one that already exists. |
 
 Exit `2` when a config already exists, or when a parent directory is already initialised.
@@ -612,14 +612,27 @@ would ack login-j3nq87mh at docs/api.md:3 (b127ed5) — "Call [Login](ds:block?i
 would ack login-j3nq87mh at docs/api.md:5 (b127ed5) — "Every request after [Login](ds:block?id=login-j3nq87mh) carries the token."
 ```
 
-An agent's ack must name a human:
+An agent's ack must name a human, and that human must be listed under a team in `[owners]`; here the config has `"@reviewers" = ["alice"]`:
+
+<!-- doctest
+cp .ds/config.toml config.toml.orig
+printf '\n[owners]\n"@reviewers" = ["alice"]\n' >> .ds/config.toml
+-->
 
 ```console
 $ ds ack login-j3nq87mh --agent --doc docs/api.md --line 3
 ds: docsync: an agent ack needs delegated_by (§26.7)
+$ ds ack login-j3nq87mh --agent --actor helper --delegated-by mallory --doc docs/api.md --line 3
+ds: docsync: delegated_by must name a person listed in [owners] (§26.7): "mallory"
 $ ds ack login-j3nq87mh --agent --actor helper --delegated-by alice --doc docs/api.md --line 3 --note "ctx is plumbing"
 acked login-j3nq87mh at docs/api.md:3 (agent)
 ```
+
+<!-- doctest
+mv config.toml.orig .ds/config.toml
+-->
+
+The rest of this page runs without an `[owners]` table.
 
 ### ds triage
 
@@ -1253,11 +1266,12 @@ would publish api: 1 defs, 0 refs, 0 test outcomes into …
 index would change: 1 defs added
 $ ds publish
 published api: 1 defs, 0 refs, 0 test outcomes into …
+committed in ../index
 $ git checkout -q -b release-1 && ds publish
 ds: publish runs only on the default branch (§21); pass --force to override: on "release-1", default is "main"
 ```
 
-When `workspace` names an existing local directory, `publish` writes into it and does not commit. Any other value is cloned into `.ds/index/`, and `publish` pushes to it.
+When `workspace` names an existing local directory, `publish` writes into it, and when that directory is the top of its own git repository, as `../index` is here, commits there too (never pushes; where the index is shared from is yours to decide). A plain directory, or one inside some other repository, is written and left alone. Any other value is cloned into `.ds/index/` by the first command that needs it, and `publish` commits and pushes to it.
 
 ### ds sync
 
@@ -1330,7 +1344,7 @@ Serves the agent tools over MCP on stdin/stdout.
 ds mcp
 ```
 
-No flags. The tools are `map`, `find`, `read`, `locate`, `facts`, `why`, `context`, `check`, `impact`, `def` and `ack`. `def` is capped per session by `[agents] max_defs_per_run`, `ack` requires `delegated_by`, and every payload is prefixed with `data:` so repository text is never read as an instruction. `ds init --agents` registers it. Details are in [Agents](agents.md).
+No flags. The tools are `map`, `find`, `read`, `locate`, `facts`, `why`, `context`, `check`, `impact`, `def` and `ack`. `def` is capped per session by `[agents] max_defs_per_run`, `ack` requires a `delegated_by` listed in `[owners]` and is recorded under the client's `initialize` name, `impact` takes `staged`, and every payload is prefixed with `data:` so repository text is never read as an instruction. `ds init --agents` registers it. Details are in [Agents](agents.md).
 
 ```console
 $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' | ds mcp

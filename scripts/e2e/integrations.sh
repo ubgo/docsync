@@ -43,6 +43,23 @@ if command -v node >/dev/null 2>&1; then
   ck "Docusaurus plugin loads status from the real ds" "ROW none checked" "$out"
   ck "Docusaurus remark renders the cfg value through the real ds" "The limit is 10." "$out"
   ck "Docusaurus remark expands the block" "func Alpha() int { return 1 }" "$out"
+  # bug 111: the source links ds render writes are repository paths, which a
+  # Docusaurus build's broken-link check rejects. A markdown-link parser
+  # stands in for remark's, so the transformer sees real link nodes.
+  links=$(cd "$S" && node -e '
+    const [dir, pkg] = process.argv.slice(1);
+    const docsync = require(pkg);
+    const LINK = /^\[([^\]]*)\]\(([^)]*)\)$/;
+    const parse = (s) => ({ children: [{ type: "paragraph", children: s.split(/(\[[^\]]*\]\([^)]*\))/).map((p) => { const m = LINK.exec(p); return m ? { type: "link", url: m[2], children: [{ type: "text", value: m[1] }] } : { type: "text", value: p }; }) }] });
+    const show = (n) => n.type === "link" ? "[" + n.children[0].value + "](" + n.url + ")" : n.value;
+    for (const sourceUrl of ["", "https://github.com/org/w/blob/main"]) {
+      const t = docsync.remark.call({ parse }, { cwd: dir, args: ["--dir", dir], sourceUrl });
+      const tree = t({ children: [] }, { path: dir + "/docs/d.md" });
+      console.log("LINKS[" + sourceUrl + "]", tree.children[0].children.map(show).join(""));
+    }
+  ' "$W" "$root/integrations/docusaurus" 2>&1)
+  ck "Docusaurus remark keeps a source link's text without sourceUrl" "Alpha returns one. The limit" "$links"
+  ck "Docusaurus remark links into the repository with sourceUrl" "[returns one](https://github.com/org/w/blob/main/internal/a.go#L4-L4)" "$links"
 else
   echo "  SKIP  node is not installed"
 fi
@@ -62,8 +79,25 @@ if command -v hugo >/dev/null 2>&1; then
   ck "Hugo renders the block's code as highlighted Go" 'data-lang="go"' "$page"
   ck "Hugo renders the block's caption from blocks.json" 'internal/a.go:4-4' "$page"
   ck "Hugo marks an id that was not exported" "nope-a2b6f8jk not exported" "$page"
-  ck "Hugo status partial carries severity" 'data-ds-severity="none"' "$page"
-  ck "Hugo status partial carries the ack note" 'data-ds-note="checked"' "$page"
+  # bug 112: the status partial listed every reference in the repository on
+  # every page. The cited page is content/d.md, matched to the repository's
+  # docs/d.md by its path; guide.md cites nothing.
+  printf -- '---\ntitle: D\n---\n\nAlpha.\n' > "$site/content/d.md"
+  build=$(hugo --source "$site" --quiet 2>&1) || echo "  hugo: $build"
+  dpage=$(cat "$site/public/d/index.html" 2>/dev/null)
+  page=$(cat "$site/public/guide/index.html" 2>/dev/null)
+  ck "Hugo status partial carries severity" 'data-ds-severity="none"' "$dpage"
+  ck "Hugo status partial carries the ack note" 'data-ds-note="checked"' "$dpage"
+  ck "Hugo status partial lists the page's own references" 'data-ds-doc="docs/d.md" data-ds-line="3"' "$dpage"
+  case "$page" in *'data-ds-doc='*) echo "  FAIL  Hugo status partial lists another page's references (got: $page)"; fail=$((fail+1));; *) echo "  PASS  Hugo status partial lists no references on a page that cites none"; pass=$((pass+1));; esac
+  # With docsync.contentDir set the match is exact: content/d.md is the
+  # repository's site/content/d.md, which cites nothing.
+  printf '[params.docsync]\ncontentDir = "site/content"\n' >> "$site/hugo.toml"
+  build=$(hugo --source "$site" --quiet 2>&1) || echo "  hugo: $build"
+  case "$(cat "$site/public/d/index.html" 2>/dev/null)" in *'data-ds-doc='*) echo "  FAIL  Hugo status partial honours docsync.contentDir"; fail=$((fail+1));; *'docsync-status'*) echo "  PASS  Hugo status partial honours docsync.contentDir"; pass=$((pass+1));; *) echo "  FAIL  Hugo status partial missing with docsync.contentDir"; fail=$((fail+1));; esac
+  sed -i.bak 's/^contentDir = "site\/content"$/contentDir = "docs"/' "$site/hugo.toml"
+  build=$(hugo --source "$site" --quiet 2>&1) || echo "  hugo: $build"
+  ck "Hugo status partial matches exactly under docsync.contentDir" 'data-ds-doc="docs/d.md"' "$(cat "$site/public/d/index.html" 2>/dev/null)"
 else
   echo "  SKIP  hugo is not installed"
 fi

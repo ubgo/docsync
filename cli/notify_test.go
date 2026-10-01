@@ -182,10 +182,10 @@ func TestImpactStagedAckFromCommitAndMCPRegistration(t *testing.T) {
 	if !strings.Contains(string(raw), `"command": "ds"`) || !strings.Contains(string(raw), `"mcp"`) {
 		t.Errorf(".mcp.json = %s", raw)
 	}
-	if r := run(t, fresh, v, "init", "--agents", "--force"); !strings.Contains(r.out, ".mcp.json already exists") {
+	if r := run(t, fresh, v, "init", "--agents", "--force"); !strings.Contains(r.out, "kept .mcp.json") {
 		t.Errorf("existing mcp config = %+v", r)
 	}
-	if ok, err := registerMCP(filepath.Join(fresh, "nope"), "ds"); err == nil || ok {
+	if line, err := registerMCP(filepath.Join(fresh, "nope"), MCPTargets[0], "ds"); err == nil || line != "" {
 		t.Error("unwritable location must fail")
 	}
 	// A dangling symlink where .mcp.json goes: absent to Stat, unwritable to

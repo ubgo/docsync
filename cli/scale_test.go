@@ -290,7 +290,9 @@ func TestPublishBranchAndRemovedRepo(t *testing.T) {
 	write(t, docs, "docs/runbook.md", "Main [s](ds:block?id=sess-save-k7m2p4xq). Release <!-- ds:block id=sess-save-k7m2p4xq branch=release-1 -->\n")
 	var out, errb bytes.Buffer
 	Run([]string{"render", "docs/runbook.md"}, WithDir(docs), WithIO(nil, &out, &errb), WithVCS(docsVCS), WithClock(func() time.Time { return clock }))
-	if got := out.String(); !strings.Contains(got, "Main [s](internal/store.go#L4-L6)") || !strings.Contains(got, "`internal/store.go:5-7`") {
+	// Each link goes into the api repository at the commit its branch
+	// published, not relative to docs (bug 105).
+	if got := out.String(); !strings.Contains(got, "Main [s](https://github.com/org/api/blob/a1/internal/store.go#L4-L6)") || !strings.Contains(got, "[`internal/store.go:5-7`](https://github.com/org/api/blob/r1/internal/store.go#L5-L7)") {
 		t.Errorf("branch render = %s %s", got, errb.String())
 	}
 	// A repo removed from the workspace: its ids report "repo removed".

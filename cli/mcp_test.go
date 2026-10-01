@@ -163,7 +163,7 @@ func TestMCPTools(t *testing.T) {
 		}
 	}
 	// def is capped per session; ack needs delegation and is labelled.
-	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[agents]\nmax_defs_per_run = 1\n")
+	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[agents]\nmax_defs_per_run = 1\n[owners]\n\"@auth\" = [\"human\"]\n")
 	resps, _ = rpc(t, dir, v,
 		call(ToolDef, `{"target":"internal/store/write.go#Persist","owner":"@auth"}`),
 		call(ToolDef, `{"target":"internal/store/write.go#Persist"}`),

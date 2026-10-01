@@ -149,3 +149,5 @@ prune-by-hash	test	a targeted `--hash … --force` for a value that should never
 ds-dir-not-scanned	test	The `.ds/` directory is never scanned
 agent-bounded	test	`ack` is refused unless it names the human who delegated the run
 agent-bounded	test	`run`, `resolve`, `undo`, `publish` and `adopt` are not exposed to agents at all
+local-index-never-pushed	test	a local directory that is the top of its own git repository is committed and never pushed
+init-agents-always-mcp	test	`.mcp.json` always; `.cursor/mcp.json`, `.vscode/mcp.json` and `.gemini/settings.json` where that client's directory exists

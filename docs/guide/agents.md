@@ -61,7 +61,7 @@ The other read commands an agent uses in place of grep and opening files: `ds fi
 This is the list `tools/list` returns. To see it yourself, keep the `initialize` request in a variable and pipe JSON-RPC lines into the server:
 
 ```console
-$ export INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}'
+$ export INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"review-bot","version":"0"}}}'
 $ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ds mcp | tail -1 | grep -o '"name":"[a-z]*"'
 "name":"map"
 "name":"find"
@@ -86,9 +86,9 @@ $ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ds mc
 | `why` | read | **`id`** | every reference to or cover of an id, its chain, its ack history |
 | `context` | read | **`target`**, `budget`, `mode`, `since` | a page or an id with its dependencies, ranked and budgeted |
 | `check` | read | `env`, `strict` | the findings for the working tree: the complete work list |
-| `impact` | read | none | what the working tree's changes will flag, by doc, owner, and repo |
+| `impact` | read | `staged` | what the working tree's changes will flag, by doc, owner, and repo; `staged: true` counts only staged files, as `ds impact --staged` does |
 | `def` | write | **`target`**, `desc`, `owner`, `stability` | mints or returns the id for `file#Symbol` or `file:line` and inserts the directive |
-| `ack` | write | **`id`**, **`doc`**, **`line`**, **`delegated_by`**, `note` | records that a citing sentence is still true, on a named human's behalf |
+| `ack` | write | **`id`**, **`doc`**, **`line`**, **`delegated_by`**, `note` | records that a citing sentence is still true, on behalf of a person listed in `[owners]` |
 
 `run`, `resolve`, `undo`, `publish`, and `adopt` are not exposed. An agent that needs them asks a person to run them.
 
@@ -116,15 +116,28 @@ $ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":
 {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"data:\ndocsync: an agent ack needs delegated_by (§26.7)"}],"isError":true}}
 ```
 
-With it, the ack is recorded with actor `mcp`, actor kind `agent`, and the delegating person, so the audit log always says who judged:
+The delegate has to be a person listed under a team in `[owners]`; any other name is refused, so an agent cannot approve its own work by naming someone nobody vouches for:
+
+```console
+$ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ack","arguments":{"id":"sess-ttl","doc":"docs/sessions.md","line":3,"delegated_by":"alice"}}}' | ds mcp | tail -1
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"data:\ndocsync: delegated_by must name a person listed in [owners] (§26.7): \"alice\""}],"isError":true}}
+```
+
+```toml file=.ds/config.toml append=true
+
+[owners]
+"@auth" = ["alice"]
+```
+
+With `alice` listed, the ack is recorded under the client's name from `initialize` (`clientInfo.name`, here `review-bot`; `mcp` when the client gives none), actor kind `agent`, and the delegating person, so the audit log always says who judged:
 
 ```console
 $ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ack","arguments":{"id":"sess-ttl","doc":"docs/sessions.md","line":3,"delegated_by":"alice","note":"45 is right"}}}' | ds mcp > /dev/null
 $ ds audit --actor-kind agent
-2026-10-01T03:32:16Z	mcp (agent, delegated by alice)	sess-ttl	docs/sessions.md:3	45 is right
+2026-10-01T03:32:16Z	review-bot (agent, delegated by alice)	sess-ttl	docs/sessions.md:3	45 is right
 ```
 
-The same rule applies on the command line: `ds ack --agent` requires `--delegated-by <human>`.
+The same rule applies on the command line: `ds ack --agent` requires `--delegated-by <human>`, a person listed in `[owners]`.
 
 ### Registering it in an MCP client
 
@@ -162,10 +175,11 @@ Use an absolute path for `command` if the client does not inherit your shell's `
 
 - writes the docsync rules for writers and reviewers into `AGENTS.md` between `<!-- docsync:begin -->` and `<!-- docsync:end -->` markers (creating the file or updating only that section), and a plain copy at `.ds/AGENTS.md`;
 - writes the same rules into the rules file and skill directory of one widely used agent that reads its own files instead of `AGENTS.md`;
-- registers `ds mcp` in `.mcp.json`;
-- installs a session-start hook in that agent's project settings that runs `ds map --budget 2000`, so every session begins with the table of contents.
+- registers `ds mcp` with the MCP clients it finds: always in `.mcp.json` at the repository root, and in `.cursor/mcp.json`, `.vscode/mcp.json` (with `"type": "stdio"`, which VS Code requires) and `.gemini/settings.json` when that client's directory exists. An existing file is merged into, keeping its other servers; a file that is not a plain JSON object (VS Code allows comments) is left alone with a note to add the server yourself. `agents.mcp = false` skips registration;
+- installs a session-start hook in that agent's project settings that runs `agents.session_hook`, by default `ds map --budget 2000`, so every session begins with the table of contents; an empty `session_hook` installs none;
+- adds `[agents] max_defs_per_run = 20` to `.ds/config.toml` when the file has no `[agents]` table, so the cap on `def` over MCP is written down where a reviewer sees it.
 
-It is safe to run again. An existing `.mcp.json` is left alone, with a note telling you to add the `docsync` server yourself, and an existing hook is kept:
+It is safe to run again. A `docsync` server already registered is kept as it is (you may have pointed it at an absolute path), and so are an existing hook and an existing `[agents]` table:
 
 <!-- doctest
 ds init --agents
@@ -173,12 +187,15 @@ ds init --agents
 
 ```console
 $ ds init --agents
-…
-.mcp.json already exists; add a "docsync" server running `ds mcp` yourself
-…
+kept .ds/config.toml [agents] (max_defs_per_run = 1)
+updated CLAUDE.md (docsync rules between markers)
+updated AGENTS.md (docsync rules between markers)
+wrote .claude/skills/docsync/SKILL.md
+kept .mcp.json (a "docsync" server is already registered)
+kept .claude/settings.json (SessionStart hook: ds map --budget 2000)
 ```
 
-The rules themselves, in short: never cite a path and line, define the block and cite its id; never paste code or type a fact, cite it; start a session with `ds map` and a page edit with `ds context <doc> --budget N --since ack`; run `ds check` before declaring done and `ds why <id>` before deleting or renaming code; and when reviewing, read each finding's sentence and diff, ack only what is still true, and leave anything that needs a person unacked. The full text is in [SPEC §25](../SPEC.md#25-rules-for-an-ai-writer-and-reviewer).
+The rules themselves, in short: never cite a path and line, define the block and cite its id; never paste code or type a fact, cite it; start a session with `ds map` and a page edit with `ds context <doc> --budget N --since ack`; run `ds check` before declaring done, `ds impact --staged` before proposing a change to defined code, and `ds why <id>` before deleting or renaming code; and when reviewing, start from `ds triage`, read each finding's sentence and diff, ack only what is still true, and leave anything that needs a person unacked. The full text is in [SPEC §25](../SPEC.md#25-rules-for-an-ai-writer-and-reviewer).
 
 ## ds review --ai
 

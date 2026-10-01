@@ -89,7 +89,7 @@ func (a *App) initCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return a.printAgentInstall(cmd, cfg.Prefix)
+				return a.printAgentInstall(cmd, cfg)
 			}
 			cfg := a.defaults()
 			if _, err := os.Stat(filepath.Join(a.dir, "docs")); err != nil {
@@ -122,7 +122,7 @@ func (a *App) initCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "wrote %s/%s\n", DirName, f.name)
 			}
 			if agents {
-				if err := a.printAgentInstall(cmd, cfg.Prefix); err != nil {
+				if err := a.printAgentInstall(cmd, cfg); err != nil {
 					return err
 				}
 			}
@@ -136,8 +136,8 @@ func (a *App) initCmd() *cobra.Command {
 }
 
 // printAgentInstall runs the --agents steps and prints one line each.
-func (a *App) printAgentInstall(cmd *cobra.Command, prefix string) error {
-	lines, err := a.installAgentFiles(prefix)
+func (a *App) printAgentInstall(cmd *cobra.Command, cfg config.Config) error {
+	lines, err := a.installAgentFiles(cfg)
 	if err != nil {
 		return err
 	}
@@ -147,21 +147,9 @@ func (a *App) printAgentInstall(cmd *cobra.Command, prefix string) error {
 	return nil
 }
 
-// MCPConfigFile is the repo-level MCP registration agents read (§26.10).
+// MCPConfigFile is the repo-level MCP registration agents read (§26.10),
+// the one MCPTargets always writes.
 const MCPConfigFile = ".mcp.json"
-
-// registerMCP writes .mcp.json when absent. An existing file is left alone:
-// merging someone's editor config is not this tool's business.
-func registerMCP(dir, name string) (bool, error) {
-	p := filepath.Join(dir, MCPConfigFile)
-	if _, err := os.Stat(p); err == nil {
-		return false, nil
-	}
-	body := map[string]any{"mcpServers": map[string]any{mcpServerName: map[string]any{"command": name, "args": []string{"mcp"}}}}
-	raw, _ := json.MarshalIndent(body, "", "  ")
-	err := os.WriteFile(p, append(raw, '\n'), filePerm)
-	return err == nil, err
-}
 
 // The statuses a `ds doctor` row can report. A FAIL row means a command will
 // not work as things stand, so doctor exits ExitError when any row has one: a
@@ -603,17 +591,50 @@ func printFindings(w io.Writer, findings []check.Finding, expand bool) {
 			}
 			continue
 		}
-		if f.Doc != cur {
-			cur = f.Doc
+		if label := docLabel(f); label != cur {
+			cur = label
 			fmt.Fprintf(w, "%s\n", cur)
 		}
 		fmt.Fprintf(w, "  %d\t%-8s %-18s %s\n", f.Line, f.Severity, f.State, f.Message)
 		if f.Remedy.IfStillTrue != "" {
-			fmt.Fprintf(w, "      still true: %s\n      otherwise:  %s\n", f.Remedy.IfStillTrue, f.Remedy.IfNot)
+			fmt.Fprintf(w, "      still true: %s\n      otherwise:  %s\n", remedyIn(f, f.Remedy.IfStillTrue), remedyIn(f, f.Remedy.IfNot))
 		} else if f.Remedy.Fix != "" {
-			fmt.Fprintf(w, "      fix: %s\n", f.Remedy.Fix)
+			fmt.Fprintf(w, "      fix: %s\n", remedyIn(f, f.Remedy.Fix))
 		}
 	}
+}
+
+// docLabel names the doc a finding is about, with the repository that holds
+// it when that is not this one (bug 102). A citation published by another
+// repository was printed under its bare path, which reads as a file here,
+// and nothing on the screen said where to go to fix it.
+func docLabel(f check.Finding) string {
+	if f.DocRepo == "" {
+		return f.Doc
+	}
+	return fmt.Sprintf("%s (in the %s repository)", f.Doc, f.DocRepo)
+}
+
+// docAt is a finding's doc:line, with the repository that holds it when
+// that is not this one (bug 102).
+func docAt(f check.Finding) string {
+	at := fmt.Sprintf("%s:%d", f.Doc, f.Line)
+	if f.DocRepo == "" {
+		return at
+	}
+	return fmt.Sprintf("%s (in the %s repository)", at, f.DocRepo)
+}
+
+// remedyIn says where a remedy has to run. An ack is recorded in the
+// repository that holds the citation, so the printed `ds ack` for another
+// repository's citation failed with "no reference at that doc line" when
+// run where it was printed (bug 102). The JSON keeps the bare command, with
+// doc_repo beside it.
+func remedyIn(f check.Finding, remedy string) string {
+	if f.DocRepo == "" || remedy == "" {
+		return remedy
+	}
+	return "in " + f.DocRepo + ": " + remedy
 }
 
 func summaryLine(rep docsync.Report) string {
@@ -878,16 +899,25 @@ func (a *App) refreshCmd() *cobra.Command {
 			}
 			sys, st := ld.sys, ld.st
 			out := cmd.OutOrStdout()
-			if sys.Config().Include.Mode == config.IncludeRepo && !dry {
+			if sys.Config().Include.Mode == config.IncludeRepo {
 				res, err := sys.Scan(cmd.Context())
 				if err != nil {
 					return err
 				}
-				regions, err := a.writeFences(sys, res, st)
+				regions, docs, err := a.writeFences(sys, res, st, dry)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "%d repo-mode copies rewritten\n", regions)
+				if dry {
+					// --dry-run said nothing about copies, the one thing
+					// refresh writes into pages (bug 105).
+					fmt.Fprintf(out, "%d repo-mode copies would be rewritten\n", regions)
+					for _, d := range docs {
+						fmt.Fprintf(out, "  %s\n", d)
+					}
+				} else {
+					fmt.Fprintf(out, "%d repo-mode copies rewritten\n", regions)
+				}
 			}
 			rep, err := sys.Check(cmd.Context(), docsync.CheckOptions{})
 			if err != nil {
@@ -929,31 +959,42 @@ func (a *App) refreshCmd() *cobra.Command {
 // writeFences rewrites repo-mode copies in every doc with a block-position
 // reference (§9.2). These are the one source write besides def and adopt,
 // and they are not journaled: a copy is derived, and refresh regenerates it.
-func (a *App) writeFences(sys *docsync.System, res scan.Result, st *Store) (int, error) {
-	docs := map[string]bool{}
+//
+// It returns how many copies changed and the docs holding them, in path
+// order; with dry set it computes exactly that and writes nothing.
+func (a *App) writeFences(sys *docsync.System, res scan.Result, st *Store, dry bool) (int, []string, error) {
+	seen := map[string]bool{}
+	var docs []string
 	for _, r := range res.Refs {
-		if r.Verb == extract.VerbBlock && r.Carrier == block.CarrierBlock {
-			docs[r.Pos.File] = true
+		if r.Verb == extract.VerbBlock && r.Carrier == block.CarrierBlock && !seen[r.Pos.File] {
+			seen[r.Pos.File] = true
+			docs = append(docs, r.Pos.File)
 		}
 	}
+	sort.Strings(docs)
 	total := 0
-	for doc := range docs {
+	var changed []string
+	for _, doc := range docs {
 		p := filepath.Join(st.Root, filepath.FromSlash(doc))
 		src, err := os.ReadFile(p)
 		if err != nil {
-			return total, err
+			return total, changed, err
 		}
 		out, n := sys.Fences(res, doc, src)
 		if n == 0 {
 			continue
 		}
+		total += n
+		changed = append(changed, doc)
+		if dry {
+			continue
+		}
 		// WriteFile keeps an existing file's mode.
 		if err := os.WriteFile(p, out, filePerm); err != nil {
-			return total, err
+			return total, changed, err
 		}
-		total += n
 	}
-	return total, nil
+	return total, changed, nil
 }
 
 func (a *App) renderCmd() *cobra.Command {
@@ -1176,6 +1217,9 @@ func (a *App) whyCmd() *cobra.Command {
 			for _, r := range w.Refs {
 				fmt.Fprintf(out, "  %s:%d  ds:%s  %s\n", r.Pos.File, r.Pos.Start, r.Verb, r.Sentence)
 			}
+			for _, r := range w.RemoteRefs {
+				fmt.Fprintf(out, "  %s:%d (in the %s repository)  ds:%s\n", r.Doc, r.Line, r.Repo, r.Verb)
+			}
 			for _, c := range w.CoveredBy {
 				fmt.Fprintf(out, "  covered by %s\n", c)
 			}
@@ -1362,9 +1406,23 @@ func (a *App) impactCmd() *cobra.Command {
 				return nil
 			}
 			for _, g := range imp.ByDoc {
-				fmt.Fprintf(out, "%s (%d)\n", g.Key, len(g.Findings))
+				// The library groups by path; two repositories can hold the
+				// same path, and a header without the repository named a
+				// file that is not in this one (bug 102).
+				var labels []string
+				byLabel := map[string][]check.Finding{}
 				for _, f := range g.Findings {
-					fmt.Fprintf(out, "  %d  %s  %s\n", f.Line, f.State, f.ID)
+					l := docLabel(f)
+					if _, seen := byLabel[l]; !seen {
+						labels = append(labels, l)
+					}
+					byLabel[l] = append(byLabel[l], f)
+				}
+				for _, l := range labels {
+					fmt.Fprintf(out, "%s (%d)\n", l, len(byLabel[l]))
+					for _, f := range byLabel[l] {
+						fmt.Fprintf(out, "  %d  %s  %s\n", f.Line, f.State, f.ID)
+					}
 				}
 			}
 			for _, g := range imp.ByOwner {

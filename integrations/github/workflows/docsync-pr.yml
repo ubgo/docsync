@@ -12,13 +12,16 @@
 # pasted back, a manual run checks the branch it is started on.
 # Pull requests: findings become one comment per doc; the job fails on
 # errors so a required status blocks the merge. A reviewer who applies the
-# `docs-acked` label acks every finding for the PR (spec §24). Copy into
-# .github/workflows/.
+# `docs-acked` label acks every finding for the PR (spec §24), and the action
+# commits those acks (.ds/acks.tsv) to the pull request branch. That push is
+# why this job has `contents: write` and checks out the pull request head
+# rather than the merge commit. A pull request from a fork gets no push; its
+# acks are committed by the author. Copy into .github/workflows/.
 name: docsync
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 jobs:
   check:
@@ -27,4 +30,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Empty on a manual run, which then checks the branch it started on.
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: ubgo/docsync/integrations/github@main

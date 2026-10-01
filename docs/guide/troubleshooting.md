@@ -601,10 +601,15 @@ perl -pi -e 's|^prefix = "ds"$|prefix = "ds"\nworkspace = "file:///nonexistent/d
 
 ```console
 $ ds --dir ../fresh scan
-ds: workspace index unreachable and no cached copy
+ds: workspace index unreachable and no cached copy: git: not a repository or git not installed
+fatal: '/nonexistent/ds-index.git' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
 ```
 
-In a fresh checkout with `workspace` set to a git URL, run `ds sync` once to clone the index into `.ds/index/`. After that, a failed fetch only warns and the cached copy is used.
+With `workspace` set to a git URL, the first command that needs the index, whichever it is, clones it into `.ds/index/`. This error means that clone failed, and git's own message says why: check the URL and your git credentials. Once the clone exists, a failed fetch only warns and the cached copy is used.
 
 ### Every external link is dead
 

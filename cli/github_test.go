@@ -345,7 +345,10 @@ func TestExportHugo(t *testing.T) {
 	write(t, site, "hugo.toml", "baseURL = 'https://example.org/'\ntitle = 'docs'\n[markup.goldmark.renderer]\nunsafe = true\n")
 	write(t, site, "content/_index.md", "---\ntitle: Home\n---\n\nSave:\n\n{{< ds id=\"sess-save-k7m2p4xq\" >}}\n\nMissing: {{< ds id=\"nope-a2b6f8jk\" >}}\n")
 	write(t, site, "layouts/index.html", "{{ .Content }}\n{{ partial \"docsync/status.html\" . }}\n")
-	write(t, site, "layouts/_default/single.html", "{{ .Content }}")
+	write(t, site, "layouts/_default/single.html", "{{ .Content }}\n{{ partial \"docsync/status.html\" . }}\n")
+	// The page built from content/docs/sessions.md is the repository's
+	// docs/sessions.md, so its status lists that page's references.
+	write(t, site, "content/docs/sessions.md", "---\ntitle: Sessions\n---\n\nSessions.\n")
 	write(t, site, "layouts/_default/list.html", "{{ .Content }}")
 	shortcode, _ := os.ReadFile(filepath.Join("..", "integrations", "hugo", "layouts", "shortcodes", "ds.html"))
 	partial, _ := os.ReadFile(filepath.Join("..", "integrations", "hugo", "layouts", "partials", "docsync", "status.html"))
@@ -359,8 +362,17 @@ func TestExportHugo(t *testing.T) {
 		t.Fatalf("hugo: %v\n%s", err, out)
 	}
 	html, _ := os.ReadFile(filepath.Join(site, "public", "index.html"))
-	if !strings.Contains(string(html), `class="language-go"`) || !strings.Contains(string(html), `data-ds-id="sess-save-k7m2p4xq" data-ds-change="ok"`) || !strings.Contains(string(html), "nope-a2b6f8jk not exported") || !strings.Contains(string(html), `data-ds-state="broken"`) {
+	if !strings.Contains(string(html), `class="language-go"`) || !strings.Contains(string(html), `data-ds-id="sess-save-k7m2p4xq" data-ds-change="ok"`) || !strings.Contains(string(html), "nope-a2b6f8jk not exported") {
 		t.Errorf("hugo output = %s", html)
+	}
+	// The status partial lists only the page's own references (bug 112):
+	// the home page cites nothing, the sessions page carries its own.
+	if !strings.Contains(string(html), `class="docsync-status"`) || strings.Contains(string(html), "data-ds-doc=") {
+		t.Errorf("home page status = %s", html)
+	}
+	sessions, _ := os.ReadFile(filepath.Join(site, "public", "docs", "sessions", "index.html"))
+	if !strings.Contains(string(sessions), `data-ds-doc="docs/sessions.md"`) || !strings.Contains(string(sessions), `data-ds-state="broken"`) {
+		t.Errorf("sessions page status = %s", sessions)
 	}
 }
 

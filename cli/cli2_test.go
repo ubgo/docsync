@@ -65,6 +65,7 @@ func TestTriageAuditBlame(t *testing.T) {
 	if r := run(t, dir, v, "audit", "--since", "yesterday"); r.code != ExitError {
 		t.Errorf("audit bad date = %+v", r)
 	}
+	addOwners(t, dir, "k")
 	if r := run(t, dir, v, "ack", "sess-save-k7m2p4xq", "--doc", "docs/other.md", "--line", "1", "--agent", "--delegated-by", "k"); r.code != 0 {
 		t.Fatal(r)
 	}
@@ -435,7 +436,7 @@ func TestHTTPRecordsAndRepoModeRefresh(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = os.Chmod(filepath.Join(dir, "docs/sessions.md"), 0o000)
-		if _, err := app.writeFences(ld.sys, res, ld.st); err == nil {
+		if _, _, err := app.writeFences(ld.sys, res, ld.st, false); err == nil {
 			t.Error("unreadable doc between scan and write must surface")
 		}
 		_ = os.Chmod(filepath.Join(dir, "docs/sessions.md"), 0o644)

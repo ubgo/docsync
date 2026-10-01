@@ -742,8 +742,9 @@ cp ../good.toml .ds/config.toml
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `max_defs_per_run` | integer | `20` | How many `def` calls one `ds mcp` session may make. `0` removes the cap. |
-| `mcp`, `session_hook` | boolean, string | `true`, empty | Accepted; see [below](#keys-that-are-accepted-but-do-nothing-yet). |
+| `max_defs_per_run` | integer | `20` | How many `def` calls one `ds mcp` session may make. `0` removes the cap. `ds init --agents` writes this table when the config has none. |
+| `mcp` | boolean | `true` | Whether `ds init --agents` registers `ds mcp` with the MCP clients it finds. |
+| `session_hook` | string | `"ds map --budget 2000"` | The command the session-start hook `ds init --agents` installs runs. Empty installs no hook. |
 
 ```toml
 [agents]
@@ -829,8 +830,6 @@ The parser accepts these keys, so a config written from the [specification's exa
 |---|---|
 | `resolve.enabled` | Resolution is controlled only by `ds check --resolve`. |
 | `notify.github_issues` | Slack is the only channel. |
-| `agents.mcp` | `ds init --agents` registers `ds mcp` either way. |
-| `agents.session_hook` | `ds init --agents` always installs `ds map --budget 2000`. |
 | `env.known` | Only checked against `env.default`. |
 | `[sources.<name>]` with `dsn`, `url`, `ttl` | Parsed, and `ttl` must be a valid day duration (default `"24h"`), but no command reads them. |
 | `[performance]` | Targets for the project's own performance suite; any keys are accepted and ignored. |

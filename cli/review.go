@@ -122,7 +122,7 @@ func printWorklist(w interface{ Write([]byte) (int, error) }, items []reviewItem
 	}
 	for _, it := range items {
 		f := it.Finding
-		fmt.Fprintf(w, "- [ ] %s:%d  %s  %s\n", f.Doc, f.Line, f.State, f.Message)
+		fmt.Fprintf(w, "- [ ] %s  %s  %s\n", docAt(f), f.State, f.Message)
 		if f.Sentence != "" {
 			fmt.Fprintf(w, "      sentence: %s\n", f.Sentence)
 		}
@@ -130,9 +130,9 @@ func printWorklist(w interface{ Write([]byte) (int, error) }, items []reviewItem
 			fmt.Fprintf(w, "%s\n", indent(f.Diff, "      | "))
 		}
 		if f.Remedy.IfStillTrue != "" {
-			fmt.Fprintf(w, "      still true: %s\n      otherwise:  %s\n", f.Remedy.IfStillTrue, f.Remedy.IfNot)
+			fmt.Fprintf(w, "      still true: %s\n      otherwise:  %s\n", remedyIn(f, f.Remedy.IfStillTrue), remedyIn(f, f.Remedy.IfNot))
 		} else if f.Remedy.Fix != "" {
-			fmt.Fprintf(w, "      fix: %s\n", f.Remedy.Fix)
+			fmt.Fprintf(w, "      fix: %s\n", remedyIn(f, f.Remedy.Fix))
 		}
 	}
 }

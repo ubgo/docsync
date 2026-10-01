@@ -45,7 +45,11 @@ var (
 	ErrNoFS               = errors.New("docsync: WithFS is required")
 	ErrNotFound           = errors.New("docsync: not found")
 	ErrDelegationRequired = errors.New("docsync: an agent ack needs delegated_by (§26.7)")
-	ErrNoReference        = errors.New("docsync: no reference at that doc line")
+	// ErrDelegateNotOwner refuses an agent ack whose delegated_by is not a
+	// person listed in [owners] (§26.7): the delegate is who judged, and a
+	// name nobody vouches for records no judgment at all.
+	ErrDelegateNotOwner = errors.New("docsync: delegated_by must name a person listed in [owners] (§26.7)")
+	ErrNoReference      = errors.New("docsync: no reference at that doc line")
 	// ErrNoCarrier is returned instead of writing a directive into a file whose
 	// type has no comment syntax in extract.Styles. It exists because the
 	// alternative that shipped was writing the directive bare, which is invalid
@@ -131,6 +135,7 @@ type System struct {
 
 	oldContent   func(row ledger.Row) (string, bool)
 	bodyAt       func(hash string) (string, bool)
+	foreignLink  func(b block.Block) (string, bool)
 	commitExists func(sha string) bool
 	urlCheck     func(href string) check.URLResult
 	resolver     check.Resolver
@@ -306,6 +311,17 @@ func WithOldContent(f func(row ledger.Row) (string, bool)) Option {
 // change table does not span is reported with block.ClassUnknown.
 func WithBodyAt(f func(hash string) (string, bool)) Option {
 	return func(s *System) error { s.bodyAt = f; return nil }
+}
+
+// WithForeignLink supplies the URL of a block another repository in the
+// workspace defines, for `Render` (render.Options.ForeignLink). Repo-mode
+// copies never use it: see render.Fragment. The library knows the
+// defining repository's name and the block's path inside it, not where that
+// repository is hosted, so the URL is the caller's decision. Without it
+// such a block renders its location unlinked, with the repository named,
+// rather than a link relative to this repository (bug 105).
+func WithForeignLink(f func(b block.Block) (string, bool)) Option {
+	return func(s *System) error { s.foreignLink = f; return nil }
 }
 
 // Bodies is what the caller should add to the body store after a scan:
@@ -695,7 +711,7 @@ func (s *System) Fences(res scan.Result, doc string, src []byte) ([]byte, int) {
 		if !ok {
 			continue
 		}
-		frag, ok, _ := render.Fragment(b, ref, s.cfg.Prefix, s.cfg.Include.MaxLines)
+		frag, ok, _ := render.Fragment(check.WithPublishedBody(b, s.bodyAt), ref, s.cfg.Prefix, s.cfg.Include.MaxLines)
 		if !ok {
 			continue
 		}
@@ -759,9 +775,14 @@ func (s *System) Render(ctx context.Context, doc string, opts RenderOptions) ([]
 	if env == "" {
 		env = s.cfg.Env.Default
 	}
-	in := render.Input{Doc: doc, Src: src, Defs: append(append([]block.Block{}, res.Defs...), s.merged...)}
+	defs := append([]block.Block{}, res.Defs...)
+	for _, b := range s.merged {
+		defs = append(defs, check.WithPublishedBody(b, s.bodyAt))
+	}
+	in := render.Input{Doc: doc, Src: src, Defs: defs}
 	ropts := render.Options{
-		Prefix: s.cfg.Prefix, Permalink: s.cfg.Check.Permalink, Commit: s.commit, MaxLines: s.cfg.Include.MaxLines,
+		ForeignLink: s.foreignLink,
+		Prefix:      s.cfg.Prefix, Permalink: s.cfg.Check.Permalink, Commit: s.commit, MaxLines: s.cfg.Include.MaxLines,
 		Env: env, Now: s.now(), Snapshot: s.snapshot, Records: s.records, Runs: opts.Runs, Verbs: s.renderVerbs(res.Defs),
 	}
 	if s.renderer != nil {
