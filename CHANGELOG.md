@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The VS Code extension never started: VS Code's language client runs the server as `ds lsp --stdio`, and `ds lsp` rejected the flag and exited. `ds lsp` now accepts `--stdio`, and the extension no longer asks for it, so it also works with an older `ds` (bug 130).
+- In VS Code, clicking a `[text](ds:cfg?id=…)` or `ds:block` link in markdown failed with "Unable to resolve resource". The extension now opens what it names: it reveals the block in its file and shows the id, location and current body (bug 131).
+
 ## [0.1.5] - 2026-10-01
 
 A release of the `ds` binary and the `cli` module (0.1.5), the library (0.1.3), and the tier modules (`ext/structured` 0.1.1, `ext/treesitter` 0.1.2, `ext/records/sqlite` 0.1.1): 81 fixes from a sweep that ran every documented behaviour against the binary. Read Upgrading first.

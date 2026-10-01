@@ -45,7 +45,7 @@ type lspServer struct {
 }
 
 func (a *App) lspCmd() *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:   "lsp",
 		Short: "serve code lenses, hover, and go-to-definition over stdio (LSP)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -53,7 +53,17 @@ func (a *App) lspCmd() *cobra.Command {
 			return s.serve(cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}
+	// Editor clients name the transport on the command line; VS Code's
+	// language client starts every stdio server as `<command> --stdio`.
+	// stdio is the only transport here, so the flag is accepted and changes
+	// nothing. Rejecting it made the server exit at once, and the VS Code
+	// extension never started (bug 130).
+	c.Flags().Bool(flagStdio, true, "use stdin and stdout (the only transport; accepted because editor clients pass it)")
+	return c
 }
+
+// flagStdio is the transport flag editor clients pass.
+const flagStdio = "stdio"
 
 // readMessage parses one framed message.
 func readMessage(r *bufio.Reader) ([]byte, error) {

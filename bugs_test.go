@@ -54,7 +54,9 @@ func TestEveryFixedBugIsPinned(t *testing.T) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(p, "_test.go") && !(strings.HasPrefix(p, "scripts"+string(filepath.Separator)) && strings.HasSuffix(p, ".sh")) {
+		// Go tests, e2e scripts, and the JavaScript integrations' node tests
+		// (the VS Code client and the Docusaurus plugin) all prove fixes.
+		if !strings.HasSuffix(p, "_test.go") && !strings.HasSuffix(p, ".test.js") && !(strings.HasPrefix(p, "scripts"+string(filepath.Separator)) && strings.HasSuffix(p, ".sh")) {
 			return nil
 		}
 		b, err := os.ReadFile(p)

@@ -164,6 +164,11 @@ func TestLSP(t *testing.T) {
 	if r := lspRun(t, dir, v, frame("not json")); len(r) != 1 || r[0].Error == nil || r[0].Error.Code != rpcParseError {
 		t.Errorf("parse error = %+v", r)
 	}
+	// VS Code's language client starts the server as `ds lsp --stdio` (bug 130).
+	var stdioOut bytes.Buffer
+	if code := Run([]string{"lsp", "--stdio"}, WithDir(dir), WithIO(strings.NewReader(frame(`{"jsonrpc":"2.0","id":1,"method":"shutdown"}`, `{"jsonrpc":"2.0","method":"exit"}`)), &stdioOut, &stdioOut), WithVCS(v)); code != ExitOK || !strings.Contains(stdioOut.String(), `"id":1`) {
+		t.Errorf("lsp --stdio = %d %q", code, stdioOut.String())
+	}
 	if code := Run([]string{"lsp"}, WithDir(dir), WithIO(strings.NewReader(frame("not json")), failWriter{}, failWriter{}), WithVCS(v)); code != ExitError {
 		t.Errorf("write failure on parse error = %d", code)
 	}

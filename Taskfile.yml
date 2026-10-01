@@ -124,6 +124,20 @@ tasks:
       # and the binary from drifting apart in either direction.
       - cd cli && go run ./internal/doctest -bin ../bin -dir ../docs/guide -root .. {{.PAGE}}
 
+  vscode:try:
+    desc: Open a demo repository in a VS Code window running the docsync extension from editors/vscode (no install); DIR= picks the demo folder
+    deps: [cli:build]
+    cmds:
+      - cd editors/vscode && npm install --silent --no-package-lock
+      - sh scripts/vscode-demo.sh {{.DIR}}
+
+  vscode:package:
+    desc: Build the installable editors/vscode/docsync-<version>.vsix (install with code --install-extension <file>)
+    dir: editors/vscode
+    cmds:
+      - npm install --silent --no-package-lock
+      - npx --yes @vscode/vsce package --allow-missing-repository
+
   perf:
     desc: 'Time the built ds binary against the SPEC section 33 targets on a generated repo of FILES files (default 100000): scan under 60s, incremental check under 2s, impact --staged under 1s'
     deps: [cli:build]

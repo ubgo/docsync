@@ -110,3 +110,5 @@
 127 ds init docs glob depends on layout and was undocumented
 128 ds scan read checkouts nested in the repository (worktrees, cloned dependencies) as part of it
 129 a repo-mode copy that only moved was reported tampered, and old-style copies failed check on upgrade
+130 the VS Code extension never started: its client ran ds lsp --stdio, which ds rejected
+131 clicking a ds: link in markdown in VS Code failed with Unable to resolve resource
