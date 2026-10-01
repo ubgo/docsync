@@ -34,7 +34,13 @@ git init -q .; git config user.email t@t; git config user.name t
 printf 'api_key: sk-live-SENTINELOLD # ds:def id=key-k7m2p4xq secret=true\nport: 8080 # ds:def id=port-h3v8n2wd\n' > config/app.yaml
 printf 'env:\n  STRIPE_KEY: ${{ secrets.STRIPE_KEY }} # ds:def id=gh-key-t4k2b9rf secret=true\n' > .github/deploy.yml
 printf '# D\n\nThe [key](ds:cfg?id=key-k7m2p4xq) is set, the [ref](ds:cfg?id=gh-key-t4k2b9rf) is named, and the [port](ds:cfg?id=port-h3v8n2wd) too.\n\n<!-- ds:block id=key-k7m2p4xq -->\n' > docs/d.md
-ds init >/dev/null; git add -A; git commit -qm a; ds scan >/dev/null; git add -A; git commit -qm b
+# A source=env hop whose variable holds a value: `check --resolve` runs the
+# shipped ds-resolve-env over it, and neither the plugin nor any finding may
+# print what the variable holds (bug 83).
+printf 'env_var: DS_E2E_SECRET # ds:def id=app-key-m4w8k2qn secret=true source=env from=gh-key-t4k2b9rf\n' > config/env.yaml
+DS_E2E_SECRET=sk-live-SENTINELENV; export DS_E2E_SECRET
+ds init >/dev/null; printf '\n[resolve]\nenabled = true\nproviders = ["env"]\n' >> .ds/config.toml
+git add -A; git commit -qm a; ds scan >/dev/null; git add -A; git commit -qm b
 
 mcp() { # $1 tool, $2 arguments as JSON
   printf '%s\n' \
@@ -50,7 +56,7 @@ sweep() { # $1 describes the state
              "context docs/d.md" "context key-k7m2p4xq" "read key-k7m2p4xq" "why key-k7m2p4xq" \
              "why key-k7m2p4xq --history" "find key" "find --json key" "locate key-k7m2p4xq" \
              "blame docs/d.md 3" "status" "report" "triage" "graph" "review" "map" "impact" "audit" \
-             "export hugo --out out"; do
+             "export hugo --out out" "check --resolve" "check --resolve --json"; do
     # $cmd is split into words on purpose: it is a command and its arguments.
     o=$(ds $cmd 2>&1; cat out/*.json 2>/dev/null)
     /bin/rm -f out/*.json
@@ -64,6 +70,11 @@ sweep() { # $1 describes the state
 }
 
 sweep "a clean tree"
+# The resolve sweep above is only evidence if the env plugin actually ran.
+case "$(ds check --resolve 2>&1)" in
+  *"provider env not reachable"*|*"resolve.enabled is false"*) no "check --resolve never asked ds-resolve-env: $(ds check --resolve 2>&1 | tail -4)";;
+  *) ok "check --resolve asked ds-resolve-env about the variable";;
+esac
 sedi 's/SENTINELOLD/SENTINELNEW/' config/app.yaml
 sweep "a changed secret, not yet scanned"
 # A rotated value is still detected: only the content is withheld, never the hash.

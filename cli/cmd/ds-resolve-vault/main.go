@@ -2,7 +2,8 @@
 // §37.4). It reads a KV secret through the `vault` CLI, which must be
 // installed and logged in, hashes the value in memory, and returns
 // existence and the hash. The value never leaves this process. The address
-// is `<mount>/<path>#<field>`; without `#<field>` the field is `value`.
+// is `vault:<mount>/<path>#<field>`, the `vault:` optional; without
+// `#<field>` the field is `value`.
 package main
 
 import (
@@ -20,6 +21,9 @@ import (
 // notFound is what the CLI prints on stderr for a missing secret; that
 // answer is "does not exist", not a plugin failure.
 const notFound = "No value found"
+
+// addressPrefix marks a Vault address in a repository (§12).
+const addressPrefix = "vault:"
 
 // defaultField is the KV field read when the address names none.
 const defaultField = "value"
@@ -52,7 +56,10 @@ func handle(req procplugin.Request) procplugin.Response {
 	if req.Op != procplugin.OpResolve {
 		return procplugin.Response{Error: "unsupported op " + req.Op}
 	}
-	path, field, ok := strings.Cut(req.Addr, "#")
+	// ds infers this provider from the `vault:` prefix (§12) and passes the
+	// address whole; the CLI knows no such prefix, so it is dropped here.
+	// It used to be passed on, and every vault: address failed (bug 81).
+	path, field, ok := strings.Cut(strings.TrimPrefix(req.Addr, addressPrefix), "#")
 	if !ok || field == "" {
 		field = defaultField
 	}

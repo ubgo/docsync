@@ -95,13 +95,53 @@ const (
 	TestSkipped TestOutcome = "skipped"
 )
 
-// URLResult is what a url checker hook reports.
+// URLResult is what a url checker hook reports. The two error shapes mean
+// different things and are reported differently:
+//   - Checked false, Err set: no HTTP answer came back (offline, DNS,
+//     refused, timed out). Reported `unverifiable`; a hook must not cache it.
+//   - Checked true, Err set: the request could not even be formed from href.
+//     Reported `problem` at the directive.
 type URLResult struct {
 	Status  int
 	Final   string // final URL after redirects
 	Title   string
 	Err     error
 	Checked bool // false when the hook could not check (offline)
+}
+
+// HTTP status codes run from 100 to 599 (RFC 9110 §15); anything else in an
+// expect= is a typo, not a status.
+const (
+	minHTTPStatus = 100
+	maxHTTPStatus = 599
+)
+
+// ParseHTTPStatus reads an expect= value as an HTTP status code: three
+// digits from 100 to 599, optionally quoted. ds:url's expect= takes only a
+// status; ds:run's takes one as one of its modes, and the CLI uses this so
+// both read the same grammar.
+func ParseHTTPStatus(s string) (int, bool) {
+	s = strings.Trim(s, `"'`)
+	if len(s) != 3 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < minHTTPStatus || n > maxHTTPStatus {
+		return 0, false
+	}
+	return n, true
+}
+
+// ParseRunTimeout reads a ds:run timeout= value: a positive Go duration
+// (`300ms`, `30s`, `2m`), the grammar run.timeout uses. The key was accepted
+// and never applied (bug 86); a value that does not parse is now a
+// `problem` at the directive rather than a silent fall back to run.timeout.
+func ParseRunTimeout(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(strings.Trim(s, `"'`))
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("timeout=%s must be a positive duration such as 30s", s)
+	}
+	return d, nil
 }
 
 // ResolveResult is what a secret resolver reports for one address (§12).
@@ -112,6 +152,16 @@ type ResolveResult struct {
 	Checked bool
 	Exists  bool
 	Hash    string
+	Err     error
+}
+
+// LocalResult is what the Local hook reports for one `local=true` def.
+// Present says the target file is readable here; Err, with Present, says
+// the def's pick= found nothing in it. Neither carries the content: a local
+// target is never hashed into the ledger, because the ledger is shared and
+// the file is on one machine only.
+type LocalResult struct {
+	Present bool
 	Err     error
 }
 
@@ -155,6 +205,11 @@ type Options struct {
 	// RunEnabled says `ds:run` directives may execute; the checker still
 	// never executes anything, it only stops reporting them as skipped.
 	RunEnabled bool
+	// Local answers whether a `local=true` def's target is on this machine
+	// and its pick= finds something (§9.1, §12). Nil, or Present false, is
+	// `unverifiable`, the state everywhere the file is absent; before this
+	// hook it was the state even beside the file (bug 85).
+	Local func(b block.Block) LocalResult
 	// ExtraVerbs are registered plugin verbs, so they are not `unknown`.
 	ExtraVerbs map[string]bool
 	// Handlers evaluate plugin verbs (§9.9, §37.3 Verb). A verb with no
@@ -529,6 +584,15 @@ func (r *runner) reference(ref block.Reference, docRepo string) {
 			}
 		}
 		f := base
+		if t := ref.Args[keyTimeout]; t != "" {
+			if _, err := ParseRunTimeout(t); err != nil {
+				f.State = StateProblem
+				f.Message = err.Error()
+				f.Remedy.Fix = fmt.Sprintf(remedyProblem, ref.Pos.File, ref.Pos.Start, err)
+				r.emit(f)
+				return
+			}
+		}
 		if r.in.Opts.RunEnabled {
 			f.State = StateOK
 			f.Message = "run directive will execute where enabled"
@@ -707,9 +771,17 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 	}
 	if def.IsLocal() {
 		f := base
-		f.State = StateUnverifiable
-		f.Message = fmt.Sprintf("%s is local=true; its content is not readable here", def.ID)
-		f.Remedy.Fix = fmt.Sprintf(remedyLocal, def.ID)
+		if res := r.local(def); res.Present && res.Err == nil {
+			// Present and picked: the citation resolves on this machine.
+			// The def's own row reports a failed pick, so a citation of it
+			// stays unverifiable rather than repeating that finding.
+			f.State = StateOK
+			f.Message = fmt.Sprintf("%s is local=true and present on this machine", def.ID)
+		} else {
+			f.State = StateUnverifiable
+			f.Message = fmt.Sprintf("%s is local=true; its content is not readable here", def.ID)
+			f.Remedy.Fix = fmt.Sprintf(remedyLocal, def.ID)
+		}
 		r.emit(f)
 		return
 	}
@@ -1216,6 +1288,21 @@ func (r *runner) url(ref block.Reference, base Finding) {
 		r.emit(f)
 		return
 	}
+	want := 0
+	if e := ref.Args[keyExpect]; e != "" {
+		// expect= was accepted and never read, so a link meant to answer 410
+		// or 204 could not say so (bug 87). A value that is not a status is
+		// a problem now, not a silent fallback.
+		status, ok := ParseHTTPStatus(e)
+		if !ok {
+			f.State = StateProblem
+			f.Message = fmt.Sprintf("ds:url expect=%s is not an HTTP status", e)
+			f.Remedy.Fix = fmt.Sprintf(remedyProblem, ref.Pos.File, ref.Pos.Start, "expect= must be a status code from 100 to 599")
+			r.emit(f)
+			return
+		}
+		want = status
+	}
 	if r.in.Opts.URLCheck == nil {
 		f.State = StateUnverifiable
 		f.Message = "external link not checked"
@@ -1226,13 +1313,27 @@ func (r *runner) url(ref block.Reference, base Finding) {
 	res := r.in.Opts.URLCheck(href)
 	switch {
 	case !res.Checked:
+		// The request never got an answer: offline, DNS, refused, timed
+		// out. That says nothing about the link, so it is not `dead`; a
+		// network failure used to be reported as "returned 0" (bug 87).
 		f.State = StateUnverifiable
 		f.Message = "external link not checked"
+		f.Remedy.Fix = remedyURL
 		if res.Err != nil {
 			f.Message += ": " + res.Err.Error()
+			f.Remedy.Fix = fmt.Sprintf(remedyURLUnreachable, href)
 		}
-		f.Remedy.Fix = remedyURL
-	case res.Status >= 400 || res.Err != nil:
+	case res.Err != nil:
+		// Checked with an error is a request that could not be formed:
+		// the href itself is wrong, which no network will fix.
+		f.State = StateProblem
+		f.Message = fmt.Sprintf("%s cannot be requested: %v", href, res.Err)
+		f.Remedy.Fix = fmt.Sprintf(remedyProblem, ref.Pos.File, ref.Pos.Start, res.Err)
+	case want != 0 && res.Status != want:
+		f.State = StateDead
+		f.Message = fmt.Sprintf("%s returned %d, expected %d", href, res.Status, want)
+		f.Remedy.Fix = fmt.Sprintf(remedyURLExpect, href, res.Status, want, ref.Pos.File, ref.Pos.Start)
+	case want == 0 && res.Status >= 400:
 		f.State = StateDead
 		f.Message = fmt.Sprintf("%s returned %d", href, res.Status)
 		f.Remedy.Fix = fmt.Sprintf(remedyURLDead, href, res.Status, ref.Pos.File, ref.Pos.Start)
@@ -1351,7 +1452,7 @@ func (r *runner) resolveChain(byID map[string]block.Block, members []string, roo
 			if res.Err != nil {
 				msg += ": " + res.Err.Error()
 			}
-			r.emit(Finding{State: StateUnverifiable, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: id, File: b.Pos.File, Message: msg, Remedy: Remedy{Fix: remedyURL}})
+			r.emit(Finding{State: StateUnverifiable, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: id, File: b.Pos.File, Message: msg, Remedy: Remedy{Fix: fmt.Sprintf(remedyResolveUnverifiable, provider)}})
 		case !res.Exists:
 			r.emit(Finding{State: StateResolveFailed, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: id, File: b.Pos.File, Owner: b.Owner(), Message: fmt.Sprintf("%s does not exist at %s", addr, provider), Remedy: Remedy{Fix: fmt.Sprintf(remedyResolveFailed, addr, provider, b.DirectivePos.File, b.DirectivePos.Start)}})
 		case res.Hash != "":
@@ -1370,14 +1471,19 @@ func (r *runner) resolveChain(byID map[string]block.Block, members []string, roo
 	if !oneTruth {
 		return
 	}
-	truthHash := ""
+	truthHash, truthID := "", ""
 	for _, id := range members {
 		if byID[id].IsTruth() {
-			truthHash = hashes[id]
+			truthHash, truthID = hashes[id], id
 		}
 	}
 	if truthHash == "" {
 		return
+	}
+	// The truth's hash from before a rotation, when this run saw one.
+	previous := ""
+	if old, ok := r.in.Opts.StoredHashes[truthID]; ok && old != truthHash {
+		previous = old
 	}
 	for _, id := range members {
 		b := byID[id]
@@ -1389,6 +1495,17 @@ func (r *runner) resolveChain(byID map[string]block.Block, members []string, roo
 		if sync == "" {
 			sync = remedyNoSync
 		}
+		if previous != "" && h == previous {
+			// A copy still holding the pre-rotation value: the sync has
+			// not run (§12). The stored hash is left as it was, so the
+			// truth keeps reading `rotated` and this copy `stale copy`
+			// until the sync catches up; advancing it here would turn the
+			// copy into a plain `out of sync` on the next run and lose the
+			// cause (bug 84).
+			delete(r.truthHashes, truthID)
+			r.emit(Finding{State: StateStaleCopy, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: id, File: b.Pos.File, Owner: b.Owner(), Message: fmt.Sprintf("%s still holds the value from before %s was rotated", id, truthID), Hash: HashPair{Acked: truthHash, Current: h}, Remedy: Remedy{Fix: fmt.Sprintf(remedyStaleCopy, id, truthID, sync)}})
+			continue
+		}
 		r.emit(Finding{State: StateOutOfSync, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: id, File: b.Pos.File, Owner: b.Owner(), Message: fmt.Sprintf("%s differs from truth %s", id, root), Hash: HashPair{Acked: truthHash, Current: h}, Remedy: Remedy{Fix: fmt.Sprintf(remedyOutOfSync, id, root, sync)}})
 	}
 }
@@ -1396,10 +1513,28 @@ func (r *runner) resolveChain(byID map[string]block.Block, members []string, roo
 // locals reports local=true defs, which a scan can never verify.
 func (r *runner) locals() {
 	for _, b := range r.in.Defs {
-		if b.IsLocal() {
-			r.emit(Finding{State: StateUnverifiable, Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: b.ID, File: b.Pos.File, Message: "local=true def is only readable on its own machine", Remedy: Remedy{Fix: fmt.Sprintf(remedyLocal, b.ID)}})
+		if !b.IsLocal() {
+			continue
 		}
+		f := Finding{Doc: b.DirectivePos.File, Line: b.DirectivePos.Start, ID: b.ID, File: b.Pos.File}
+		switch res := r.local(b); {
+		case !res.Present:
+			f.State, f.Message, f.Remedy.Fix = StateUnverifiable, "local=true def is only readable on its own machine", fmt.Sprintf(remedyLocal, b.ID)
+		case res.Err != nil:
+			f.State, f.Message, f.Remedy.Fix = StatePickFailed, fmt.Sprintf("%s is present here but %v", b.Pos.File, res.Err), fmt.Sprintf(remedyPick, b.DirectivePos.File, b.DirectivePos.Start)
+		default:
+			f.State, f.Message = StateOK, fmt.Sprintf("local=true target %s is present on this machine", b.Pos.File)
+		}
+		r.emit(f)
 	}
+}
+
+// local asks the Local hook about a local=true def; no hook is absent.
+func (r *runner) local(b block.Block) LocalResult {
+	if r.in.Opts.Local == nil {
+		return LocalResult{}
+	}
+	return r.in.Opts.Local(b)
 }
 
 // pages evaluates covers and review_every per page.

@@ -135,6 +135,7 @@ type System struct {
 	urlCheck     func(href string) check.URLResult
 	resolver     check.Resolver
 	storedHashes map[string]string
+	localRead    func(path string) ([]byte, error)
 	tests        map[string]check.TestOutcome
 	snapshot     func(id, sha string) (string, bool)
 	records      func(args map[string]string) ([]map[string]string, error)
@@ -342,6 +343,44 @@ func WithURLCheck(f func(href string) check.URLResult) Option {
 // WithResolver supplies the secret resolver used under --resolve (§12).
 func WithResolver(r check.Resolver) Option {
 	return func(s *System) error { s.resolver = r; return nil }
+}
+
+// WithLocalReader lets check look at `local=true` targets (§9.1, §12): f
+// reads a def's file= path on the machine running check. A target that f
+// reads, and whose pick= finds something, is `ok` there; one f cannot read
+// stays `unverifiable`, which is what CI reports. Without it every local def
+// is unverifiable everywhere (bug 85). Nothing read is hashed or stored: the
+// ledger is shared and the file exists on one machine.
+func WithLocalReader(f func(path string) ([]byte, error)) Option {
+	return func(s *System) error { s.localRead = f; return nil }
+}
+
+// localHook adapts the reader to check's Local hook, reading each target
+// once per check however many defs and citations name it.
+func (s *System) localHook() func(block.Block) check.LocalResult {
+	if s.localRead == nil {
+		return nil
+	}
+	seen := map[string]check.LocalResult{}
+	return func(b block.Block) check.LocalResult {
+		expr := b.Args[block.KeyPick]
+		if expr == "" {
+			expr = pick.SchemeFile
+		}
+		key := b.Pos.File + "\x00" + expr
+		if res, ok := seen[key]; ok {
+			return res
+		}
+		var res check.LocalResult
+		if src, err := s.localRead(b.Pos.File); err == nil {
+			res.Present = true
+			if _, err := pick.PickWith(s.pickers, expr, string(src)); err != nil {
+				res.Err = fmt.Errorf("pick=%s failed: %w", expr, err)
+			}
+		}
+		seen[key] = res
+		return res
+	}
 }
 
 // WithStoredHashes supplies truth hashes kept from an earlier resolve, so a
@@ -652,7 +691,7 @@ func (s *System) checkScan(res scan.Result, opts CheckOptions) (Report, error) {
 			UnackedIsWarning: s.cfg.Check.Unacked == config.UnackedWarn, Strict: opts.Strict,
 			Wording:    s.cfg.Check.Sentence != config.SentencePosition,
 			OldContent: s.oldContent, BodyAt: s.bodyAt, CommentPrefixes: commentPrefixes,
-			TestResults: s.tests, CommitExists: s.commitExists, URLCheck: urlCheck, Resolve: resolver, StoredHashes: s.storedHashes,
+			TestResults: s.tests, CommitExists: s.commitExists, URLCheck: urlCheck, Resolve: resolver, StoredHashes: s.storedHashes, Local: s.localHook(),
 			HasRecords: s.records != nil, RunEnabled: opts.Run && s.cfg.Run.Enabled, ExtraVerbs: s.verbs,
 			Handlers: handlers, KnownKeys: knownKeys, RequiredKeys: requiredKeys, Classify: s.classifier,
 		},

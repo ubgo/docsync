@@ -20,6 +20,8 @@ func TestResolver(t *testing.T) {
 				t.Errorf("args = %q", joined)
 			}
 			return []byte("s3cret"), "", nil
+		// The vault: prefix ds infers the provider from never reaches the
+		// CLI (bug 81).
 		case 2:
 			if joined != "vault kv get -field=token secret/app" {
 				t.Errorf("args = %q", joined)
@@ -33,7 +35,7 @@ func TestResolver(t *testing.T) {
 	in := strings.Join([]string{
 		`{"op":"handshake","protocol":1}`,
 		`{"op":"resolve","addr":"secret/app","want":"exists"}`,
-		`{"op":"resolve","addr":"secret/app#token","want":"hash"}`,
+		`{"op":"resolve","addr":"vault:secret/app#token","want":"hash"}`,
 		`{"op":"resolve","addr":"missing","want":"exists"}`,
 		`{"op":"resolve","addr":"denied"}`,
 		`{"op":"pick"}`,

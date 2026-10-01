@@ -282,8 +282,9 @@ Link form only. The link text is the last known value so raw markdown reads; the
 | Key | Meaning |
 |---|---|
 | exactly one of `id` `cmd` `file` | what to run; `id` requires `runnable=true` on the def |
-| `expect` | `ok` (exit zero), `rows`, an HTTP status, or a quoted substring |
-| `env`, `timeout`, `show=output\|command\|both\|none` | |
+| `expect` | every mode needs exit status zero, then: `ok` nothing more; `rows` some output; an HTTP status (three digits, 100 to 599) the last status the output reports, the last `HTTP/<version> <code>` line when there is one (`curl -sIL`) or else the last non-blank line (`curl -s -o /dev/null -w '%{http_code}'`); anything else a substring the output must contain |
+| `timeout` | a positive Go duration (`90s`, `2m`) that replaces `run.timeout` for this command; a value that does not parse is a `problem` and the command does not run |
+| `env`, `show=output\|command\|both\|none` | |
 
 Rendered as the command plus its last result and timestamp. Executed only with `--run`, only where enabled, never on pull requests from forks, and `cmd=` and `file=` only in docs matching `run.allow`; `file=` must name a regular file inside the repository (relative, no `..`, no symlink) and reaches the shell as one quoted word. This is code execution from a text file and is treated as such.
 
@@ -323,9 +324,9 @@ See the [TOAST docs](ds:url?href=https://www.postgresql.org/docs/current/storage
 |---|---|
 | `href` | the external URL |
 | `title` | expected page title or substring; a change means moved or rewritten |
-| `expect` | HTTP status, default 200; redirects followed and the final URL recorded |
+| `expect` | the HTTP status the final response must have; without it any status below 400 is alive. Redirects are followed and the final URL recorded, so the status is the final one. A value that is not a status from 100 to 599 is a `problem` |
 
-Checked with `--resolve`, cached per `url.ttl`, rate limited. Findings `dead`, `moved`, `retitled`.
+Checked with `--resolve` where `resolve.enabled` is on, cached per `url.ttl`, rate limited. Findings `dead` (a status of 400 or more, or other than `expect`), `url moved` (the final URL differs from `href`; named apart from the block state `moved`), `retitled`. A request that gets no HTTP answer at all (offline, DNS, refused, timed out) is `unverifiable` and is not cached, so the next run with a network checks the link again; an `href` no request can be made from is a `problem`.
 
 #### 9.8 `ds:chain`
 
@@ -456,11 +457,13 @@ app-stripe-key-m4w8k2qn    env STRIPE_KEY                                 intern
     from op-stripe-key-p9c2v7ld  1password op://Platform/stripe-prod/credential   .env.tpl:3   TRUTH
 ```
 
-Checked from files alone, every run: exactly one `truth` per chain; every copy has a `from=` or it is `unsourced`; names agree hop to hop within an environment or the chain is `broken` at that hop.
+Checked from files alone, every run: exactly one `truth` per chain (zero or several is `chain broken`); every `from=` names a defined id and no `from=` loops (else `chain broken`); a secret with neither `from=` nor `truth=true` is `unsourced`. Names are not compared between hops: a GitHub secret renamed while the code still reads the old variable is reported only to a page that cites that hop's def, because a `ds:chain` citation is held to its own id. Hop-to-hop name agreement is not built (section 38).
 
-Checked with `--resolve` on a logged-in machine: provider plugins confirm each address exists. GitHub lists names only, so those hops are existence-only. Where a provider can be read, truth and copy are hashed in memory and compared; different is `out of sync`; with `resolve.store_hash` the truth's hash is kept so a later run can say `rotated`. Off by default, never on fork PRs. Rotation makes downstream copies `stale copy` until the sync runs, and every runbook citing the chain gets one `unacked` line.
+Checked with `--resolve` on a logged-in machine, where `resolve.enabled` is on: the plugin for each hop's provider confirms its address exists. GitHub lists names only, so those hops are existence-only. Where a provider can be read, truth and copy are hashed in memory and compared; different is `out of sync`; with `resolve.store_hash` the truth's hash is kept so a later run can say `rotated`. Off by default, never on fork PRs. Rotation makes a downstream copy that still holds the truth's previous value `stale copy` until the sync runs: the stored hash is not advanced while any copy is stale, so `rotated` and `stale copy` repeat on every run until the copies catch up. Runbooks citing the chain are not marked `unacked` by a rotation; that is not built (section 38), so a runbook to re-read after a rotation should be found from the `rotated` finding.
 
-**A truth on one laptop.** A `.env.prod` never in git can still be the declared truth: a remote def with `local=true`. CI reports `unverifiable`, the chain rendering says the truth lives on a machine, and most teams then move it to a vault.
+Each provider is asked through an executable on `PATH`: `ds-resolve-github`, `ds-resolve-onepassword` (the provider named `1password`), `ds-resolve-aws`, `ds-resolve-gcp`, `ds-resolve-vault`, and `ds-resolve-env` for `source=env` hops, which hashes the named variable from the environment `ds check` runs in and reports an unset variable as `unverifiable`, since its absence on one machine says nothing about the deployment. A plugin that is missing, not logged in, or locked makes its hop `unverifiable`, never `resolve failed`, which only a provider saying the address does not exist produces.
+
+**A truth on one laptop.** A `.env.prod` never in git can still be the declared truth: a remote def with `local=true`. Where the file is absent, as in CI, the def and its citations are `unverifiable`; on the machine holding it, `check` reads it, and the def is `ok` when its `pick=` finds something there and `pick failed` when it does not. Nothing read is hashed into the ledger, which is shared. The chain rendering says the truth lives on a machine, and most teams then move it to a vault.
 
 **Environments.** `env=` on a def and on a cite. Same id, one def per environment; a cite without `env=` gets the workspace default; `check` runs per environment and says which one is unsourced. Changes are tracked per environment too: each (id, env) is its own def from scan to scan, so renaming one environment's file reports no change, a change to prod is not read against dev, a claim `about=` an id expires when any of its environments changes, and `export hugo` writes the def the default environment resolves to.
 
@@ -592,11 +595,12 @@ Incremental by default: a file whose bytes did not change is not re-extracted, a
 | `assert failed` | cited test failed, was skipped, or was removed in the last published run | error | fix the test or the sentence |
 | `translation stale` | source paragraph changed since the translation was acked | error | update and ack |
 | `unsourced` | a secret copy with no `from=` | warning | declare the chain |
-| `chain broken` | names disagree between hops, or zero or many truths | error | fix the chain |
+| `chain broken` | zero or many truths, a `from=` naming an undefined id, or a `from=` cycle | error | fix the chain |
 | `out of sync` / `rotated` | with `--resolve`, copy differs from truth / truth changed since stored hash | error / warning | run the sync; ack runbooks |
+| `stale copy` | with `--resolve`, after a rotation, a copy still holds the truth's previous value | error | run the sync |
 | `resolve failed` | with `--resolve`, an address does not exist at its provider | error | fix the address |
-| `unverifiable` | a `local=true` def absent here, or a provider not logged in, or no network | warning | none required |
-| `dead` / `moved` / `retitled` | `ds:url` outcomes | error / warning / warning | update the link |
+| `unverifiable` | a `local=true` def absent here, or a provider plugin missing, not logged in, or locked, or a link that got no answer | warning | none required |
+| `dead` / `url moved` / `retitled` | `ds:url` outcomes: an error status or one other than `expect`, a redirect to another URL, a changed title | error / warning / warning | update the link |
 | `orphan` / `uncovered` | `covers` names a missing id / a def nobody cites | warning / info | tidy |
 | `undocumented export` | policy: an exported symbol under a required path has no def with a home | error | add a def and a page |
 | `unknown` | unknown verb or key | warning (`--strict`: error) | |
@@ -790,7 +794,7 @@ default = "prod"
 known = ["prod", "staging", "dev"]
 
 [resolve]
-enabled = false                              # opt in; never on fork PRs
+enabled = false                              # opt in: --resolve contacts nothing without it
 store_hash = false
 providers = ["github", "1password"]
 
@@ -828,6 +832,8 @@ escalate_after = "7d"
 suffix_alphabet = "23456789abcdefghjkmnpqrstuvwxyz"
 suffix_length = 8
 ```
+
+`--resolve` needs `resolve.enabled = true`, as `--run` needs `run.enabled`: the flag asks for one run and the key is the repository's consent. Without the key, `ds check --resolve` prints `resolve.enabled is false; no provider or link was contacted` on stderr and checks as if the flag were absent, so links and secret hops stay `unverifiable`. `resolve.providers`, when set, limits which plugins are asked; a hop whose provider is not listed is `unverifiable` with that reason.
 
 `run.shell` names the program that `ds:run` commands and the `[review]` command run under: `<shell> -c <command>` for `cmd=`, `id=` and the review command, and `<shell> <file>` for `file=`. The default is `sh`, found on PATH; on Windows, Git for Windows provides it, and a team whose commands are written for another shell names that one (`shell = "pwsh"`). docsync never substitutes a shell by itself, because the same command text means different things to different shells. When a command is about to run and the shell is not on PATH, `ds check --run` and `ds review --ai` stop with an error naming the shell and this key; nothing is recorded as run, and a repository with nothing to run is not asked for a shell.
 
@@ -1157,7 +1163,7 @@ Stripe credentials: <!-- ds:chain id=app-stripe-key-m4w8k2qn -->
 To rotate: change the item in 1Password, then run <!-- ds:run id=sync-secrets-job-q7n2m4kt expect=ok -->.
 ```
 
-Someone rotates in 1Password and forgets the sync. Nightly `check --resolve` reports `out of sync` on the GitHub hop and `unacked` on this runbook line. The on-call runs the `ds:run` from the doc, hashes match, the runbook is acked. No value was ever written anywhere.
+Someone rotates in 1Password and forgets the sync. Nightly `check --resolve` reports `rotated` on the 1Password truth and `stale copy` on every copy it can read, such as an AWS or Vault copy; a GitHub hop is existence-only and cannot be compared. The on-call runs the `ds:run` from the doc, the next check finds the copies matching, so `stale copy` clears and the new hash is stored, and `rotated` clears from the run after that. No value was ever written anywhere.
 
 ### 31. Translations, deprecation, tests, spec-first
 
@@ -1413,6 +1419,11 @@ The Go API follows semver independently of the spec version and the `json_format
 7. LSP with code lens and hover; VS Code client.
 8. Hugo and Docusaurus plugins for build-time rendering; `ds render` as the generic fallback.
 9. AI rules shipped as a `CLAUDE.md` fragment and a skill, generated by `init --agents`.
+
+Specified above and not built yet:
+
+- Hop-to-hop name agreement in a secret chain (section 12): which name a hop carries is not defined for every address shape (an `op://` reference or an ARN has none a variable can be compared with), and the common `STRIPE_KEY: ${{ secrets.STRIPE_SECRET }}` mapping renames on purpose, so a check needs a design that can tell the two apart and a way to accept a deliberate rename.
+- A rotation marking every runbook that cites the chain `unacked` (sections 12 and 30): an ack holds a block hash, and a rotation changes no block, so this needs acks that also record the truth's hash.
 
 ### 39. Glossary
 

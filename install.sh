@@ -3,7 +3,7 @@
 #
 # Regenerate:  volt gen install cli/cmd/ds
 # To change:   edit .volt.yml, or the template in volt itself — edits here are lost.
-# volt:hash ede1567e64c8
+# volt:hash 765d497ff15f
 # ds installer for macOS / Linux.
 #
 # Usage:
@@ -16,7 +16,7 @@ REPO="ubgo/docsync"
 BINARY="ds"
 # Companion programs shipped in the same archive and installed beside
 # ${BINARY}; empty when there are none.
-EXTRA_BINARIES="ds-resolve-aws ds-resolve-gcp ds-resolve-github ds-resolve-onepassword ds-resolve-vault"
+EXTRA_BINARIES="ds-resolve-aws ds-resolve-env ds-resolve-gcp ds-resolve-github ds-resolve-onepassword ds-resolve-vault"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 VERSION="${VERSION:-}"
 # The release-tag prefix of this CLI's stream: empty when the CLI is the repo

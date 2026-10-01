@@ -2,11 +2,15 @@
 // §37.4). It reads an `op://` reference through the `op` CLI, hashes the
 // value in memory, and returns existence and the hash. The value never
 // leaves this process; the host rejects any reply that carries more.
+//
+// ds asks this executable about the provider it calls "1password": addresses
+// starting op://, and defs with source=1password.
 package main
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -15,9 +19,34 @@ import (
 	"github.com/ubgo/docsync/procplugin"
 )
 
-// run executes `op read`; tests replace it.
-var run = func(args ...string) ([]byte, error) {
-	return exec.Command(args[0], args[1:]...).Output()
+// providerName is what the handshake reports: the provider ds names, which
+// differs from this executable's name.
+const providerName = "1password"
+
+// notFound lists what `op read` prints on stderr when the reference names a
+// vault, item or field that does not exist. Only these answer "does not
+// exist". Every other failure -- signed out, locked, a dismissed prompt, no
+// network, a malformed reference -- says nothing about the address and is
+// returned as an error, which ds reports as unverifiable. The plugin used to
+// call every failure "does not exist", so a locked op turned each 1Password
+// hop into a `resolve failed` error (bug 82).
+var notFound = []string{
+	"isn't an item",
+	"isn't a vault",
+	"isn't a field",
+	"does not have a field",
+	"no item found",
+}
+
+// run executes the provider CLI and returns stdout, and stderr on failure;
+// tests replace it.
+var run = func(args ...string) ([]byte, string, error) {
+	out, err := exec.Command(args[0], args[1:]...).Output()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return out, string(ee.Stderr), err
+	}
+	return out, "", err
 }
 
 // exit is swapped by tests.
@@ -30,22 +59,20 @@ func main() {
 }
 
 func serve(in io.Reader, out io.Writer) error {
-	return procplugin.Serve(in, out, "1password", []string{procplugin.KindResolve}, handle)
+	return procplugin.Serve(in, out, providerName, []string{procplugin.KindResolve}, handle)
 }
 
 func handle(req procplugin.Request) procplugin.Response {
 	if req.Op != procplugin.OpResolve {
 		return procplugin.Response{Error: "unsupported op " + req.Op}
 	}
-	raw, err := run("op", "read", "--no-newline", req.Addr)
+	raw, stderr, err := run("op", "read", "--no-newline", req.Addr)
 	if err != nil {
-		// op exits non-zero for a missing item; that is "does not exist",
-		// not a plugin failure, when the reference is well formed.
-		if strings.HasPrefix(req.Addr, "op://") {
+		if missing(stderr) {
 			no := false
 			return procplugin.Response{Exists: &no}
 		}
-		return procplugin.Response{Error: "op read: " + err.Error()}
+		return procplugin.Response{Error: "op read: " + strings.TrimSpace(err.Error()+" "+stderr)}
 	}
 	yes := true
 	resp := procplugin.Response{Exists: &yes}
@@ -54,4 +81,14 @@ func handle(req procplugin.Request) procplugin.Response {
 		resp.Hash = hex.EncodeToString(sum[:])
 	}
 	return resp
+}
+
+// missing reports whether op's stderr says the reference names nothing.
+func missing(stderr string) bool {
+	for _, s := range notFound {
+		if strings.Contains(stderr, s) {
+			return true
+		}
+	}
+	return false
 }

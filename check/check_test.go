@@ -395,8 +395,14 @@ func TestURLHookOutcomes(t *testing.T) {
 	if f := mk(URLResult{Checked: true, Status: 404}, ""); f.State != StateDead || f.Severity != SeverityError {
 		t.Errorf("dead = %+v", f)
 	}
-	if f := mk(URLResult{Checked: true, Status: 200, Err: errors.New("tls")}, ""); f.State != StateDead {
+	// An answer that could not be requested at all is the href's fault: a
+	// problem at the directive. No answer at all (above) is unverifiable,
+	// never dead (bug 87).
+	if f := mk(URLResult{Checked: true, Err: errors.New("bad url")}, ""); f.State != StateProblem || !strings.Contains(f.Message, "bad url") {
 		t.Errorf("error = %+v", f)
+	}
+	if f := mk(URLResult{Checked: false, Err: errors.New("offline")}, ""); strings.Contains(f.Remedy.Fix, "--resolve") || !strings.Contains(f.Remedy.Fix, "network access") {
+		t.Errorf("offline remedy = %+v", f)
 	}
 	if f := mk(URLResult{Checked: true, Status: 200, Final: "https://b.example/y"}, ""); f.State != StateURLMoved {
 		t.Errorf("moved = %+v", f)
@@ -406,6 +412,48 @@ func TestURLHookOutcomes(t *testing.T) {
 	}
 	if f := mk(URLResult{Checked: true, Status: 200, Title: "TOAST docs"}, "TOAST"); f.State != StateOK {
 		t.Errorf("alive = %+v", f)
+	}
+	// expect= is read (bug 87): the status must equal it, a 4xx that is
+	// expected is alive, and a value that is no status is a problem before
+	// anything is fetched.
+	withExpect := func(res URLResult, expect string) Finding {
+		args := map[string]string{"href": "https://a.example/x", "expect": expect}
+		rep := Run(Input{Repo: "api", Now: now, Refs: []block.Reference{ref("url", "", "d.md", 1, args)}, Opts: Options{URLCheck: func(string) URLResult { return res }}})
+		return rep.Findings[0]
+	}
+	if f := withExpect(URLResult{Checked: true, Status: 410}, "410"); f.State != StateOK {
+		t.Errorf("expected gone = %+v", f)
+	}
+	if f := withExpect(URLResult{Checked: true, Status: 200}, `"204"`); f.State != StateDead || !strings.Contains(f.Message, "expected 204") || !strings.Contains(f.Remedy.Fix, "expect=") {
+		t.Errorf("unexpected status = %+v", f)
+	}
+	for _, bad := range []string{"ok", "20", "600", "099", "2x0"} {
+		if f := withExpect(URLResult{Checked: true, Status: 200}, bad); f.State != StateProblem {
+			t.Errorf("expect=%s = %+v", bad, f)
+		}
+	}
+	// Without a hook the expect= is still validated.
+	rep := Run(Input{Repo: "api", Now: now, Refs: []block.Reference{ref("url", "", "d.md", 1, map[string]string{"href": "https://a.example/x", "expect": "soon"})}})
+	if rep.Findings[0].State != StateProblem {
+		t.Errorf("no hook, bad expect = %+v", rep.Findings[0])
+	}
+}
+
+// TestRunTimeoutKey pins ds:run timeout= (bug 86): a value that is not a
+// positive duration is a problem at the directive, a good one is accepted.
+func TestRunTimeoutKey(t *testing.T) {
+	t.Parallel()
+	for timeout, want := range map[string]State{"soon": StateProblem, "0s": StateProblem, "-1s": StateProblem, "90s": StateSkipped, `"2m"`: StateSkipped} {
+		rep := Run(Input{Repo: "api", Now: now, Prefix: "ds", Refs: []block.Reference{ref("run", "", "r.md", 1, map[string]string{"cmd": "true", "timeout": timeout})}})
+		if got := rep.Findings[0].State; got != want {
+			t.Errorf("timeout=%s = %s, want %s", timeout, got, want)
+		}
+	}
+	if d, err := ParseRunTimeout("1m30s"); err != nil || d.Seconds() != 90 {
+		t.Errorf("ParseRunTimeout = %v %v", d, err)
+	}
+	if n, ok := ParseHTTPStatus("'301'"); !ok || n != 301 {
+		t.Errorf("ParseHTTPStatus = %d %v", n, ok)
 	}
 }
 
@@ -496,6 +544,30 @@ func TestChains(t *testing.T) {
 	}
 	if u := bs[StateUnverifiable]; len(u) != 2 || u[0].ID != local.ID || u[1].ID != local.ID {
 		t.Errorf("local def and its citation are both unverifiable: %+v", u)
+	}
+	// Where the target is present the def and its citation are ok; present
+	// with a pick that finds nothing is `pick failed` on the def, and the
+	// citation stays unverifiable; absent is unverifiable as before (bug 85).
+	localState := func(res LocalResult) (State, State) {
+		rep := Run(Input{Repo: "api", Now: now, Defs: []block.Block{local}, Refs: refs[1:], Opts: Options{Local: func(block.Block) LocalResult { return res }}})
+		var def, cite State
+		for _, f := range rep.Findings {
+			if f.Doc == "d.md" {
+				cite = f.State
+			} else if f.ID == local.ID && f.State != StateUncovered {
+				def = f.State
+			}
+		}
+		return def, cite
+	}
+	if d, c := localState(LocalResult{Present: true}); d != StateOK || c != StateOK {
+		t.Errorf("present local = %s / %s", d, c)
+	}
+	if d, c := localState(LocalResult{Present: true, Err: errors.New("no key")}); d != StatePickFailed || c != StateUnverifiable {
+		t.Errorf("present, pick failed = %s / %s", d, c)
+	}
+	if d, c := localState(LocalResult{}); d != StateUnverifiable || c != StateUnverifiable {
+		t.Errorf("absent local = %s / %s", d, c)
 	}
 	// The chain reference itself is ok; chain members are referenced through from=.
 	if len(bs[StateOK]) != 1 {
@@ -684,6 +756,7 @@ func TestUndocumented(t *testing.T) {
 	}
 }
 
+// promise:resolver-unreachable-unverifiable
 func TestResolveChains(t *testing.T) {
 	t.Parallel()
 	truth := def("op-k7m2p4xq", ".env.tpl", 2, "op://v/i/f", map[string]string{"secret": "true", "truth": "true"})
@@ -733,6 +806,11 @@ func TestResolveChains(t *testing.T) {
 	if len(bs[StateUnverifiable]) != 1 || bs[StateUnverifiable][0].ID != down.ID || !strings.Contains(bs[StateUnverifiable][0].Message, "no credentials") {
 		t.Errorf("unreachable provider = %+v", bs[StateUnverifiable])
 	}
+	// The fix for a hop the resolver could not answer is about the plugin,
+	// not about external links, which is what it used to say (bug 83).
+	if fix := bs[StateUnverifiable][0].Remedy.Fix; !strings.Contains(fix, "plugin for gcp") || !strings.Contains(fix, "resolve.providers") || strings.Contains(fix, "link") {
+		t.Errorf("unreachable provider remedy = %q", fix)
+	}
 	if rep.TruthHashes[truth.ID] != "T1" {
 		t.Errorf("truth hashes = %v", rep.TruthHashes)
 	}
@@ -754,6 +832,30 @@ func TestResolveChains(t *testing.T) {
 	nameOnly := func(string, string) ResolveResult { return ResolveResult{Checked: true, Exists: true} }
 	if rep := Run(Input{Repo: "api", Now: now, Defs: defs, Refs: refs, Opts: Options{Resolve: nameOnly}}); len(byState(rep)[StateOutOfSync]) != 0 {
 		t.Error("existence-only truth compares nothing")
+	}
+	// A copy that still holds the truth's pre-rotation value is `stale copy`
+	// (§12, bug 84), and the stored hash is not advanced while one is, so
+	// the next run says the same thing until the sync runs; a copy that
+	// matches neither the old nor the new value stays `out of sync`.
+	staleRes := func(provider, addr string) ResolveResult {
+		switch provider {
+		case "vault":
+			return ResolveResult{Checked: true, Exists: true, Hash: "T0"}
+		case "aws":
+			return ResolveResult{Checked: true, Exists: true, Hash: "OTHER"}
+		}
+		return ResolveResult{Checked: true, Exists: true, Hash: "T1"}
+	}
+	stale := Run(Input{Repo: "api", Now: now, Defs: []block.Block{truth, vault, aws}, Opts: Options{Resolve: staleRes, StoredHashes: map[string]string{truth.ID: "T0"}}})
+	sb := byState(stale)
+	if len(sb[StateStaleCopy]) != 1 || sb[StateStaleCopy][0].ID != vault.ID || sb[StateStaleCopy][0].Severity != SeverityError || !strings.Contains(sb[StateStaleCopy][0].Remedy.Fix, "before it was rotated") {
+		t.Errorf("stale copy = %+v", sb[StateStaleCopy])
+	}
+	if len(sb[StateOutOfSync]) != 1 || sb[StateOutOfSync][0].ID != aws.ID || len(sb[StateRotated]) != 1 {
+		t.Errorf("out of sync beside a stale copy = %v", stale.Summary)
+	}
+	if _, advanced := stale.TruthHashes[truth.ID]; advanced {
+		t.Errorf("the stored hash must not advance while a copy is stale: %v", stale.TruthHashes)
 	}
 	// Unreachable without an error message.
 	silent := func(string, string) ResolveResult { return ResolveResult{} }

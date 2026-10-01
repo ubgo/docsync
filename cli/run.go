@@ -15,6 +15,7 @@ import (
 
 	"github.com/ubgo/docsync"
 	"github.com/ubgo/docsync/block"
+	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/config"
 	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/render"
@@ -30,9 +31,18 @@ const (
 	RunsFile = "runs.json"
 	// runOutputCap bounds what is kept from a command's output.
 	runOutputCap = 64 << 10
+	// runWaitDelay bounds how long a timed-out command's output is waited
+	// for after the shell is killed.
+	runWaitDelay = time.Second
 	// Expectations (§9.4 expect=).
 	expectOK   = "ok"
 	expectRows = "rows"
+	// Directive keys a run reads beyond what it executes.
+	runKeyExpect  = "expect"
+	runKeyTimeout = "timeout"
+	// httpStatusLine starts a status line in output such as `curl -sI`
+	// prints: `HTTP/1.1 200 OK`, `HTTP/2 404`.
+	httpStatusLine = "HTTP/"
 )
 
 // RunRecord is one stored outcome.
@@ -120,7 +130,20 @@ func (a *App) executeRuns(ctx context.Context, ld loaded, rep docsync.Report, en
 		if refEnv == "" {
 			refEnv = env
 		}
-		rec := a.runOne(ctx, command, argv, refEnv, cfg.Run.Env[refEnv], timeout, ref.Args["expect"])
+		limit := timeout
+		if t := ref.Args[runKeyTimeout]; t != "" {
+			// timeout= on the directive wins over run.timeout; it was
+			// accepted and never applied (bug 86). check reports a value
+			// that does not parse as a problem, and it is not run here.
+			d, err := check.ParseRunTimeout(t)
+			if err != nil {
+				fmt.Fprintf(out, "%s:%d  run FAILED: %v\n", ref.Pos.File, ref.Pos.Start, err)
+				failed++
+				continue
+			}
+			limit = d
+		}
+		rec := a.runOne(ctx, command, argv, refEnv, cfg.Run.Env[refEnv], limit, ref.Args[runKeyExpect])
 		runs[runKey(ref.Pos.File, ref.Pos.Start)] = rec
 		status := "ok"
 		if !rec.OK {
@@ -241,6 +264,10 @@ func (a *App) runOne(ctx context.Context, command string, argv []string, envName
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = a.dir
+	// Killing the shell at the deadline does not close the output pipe a
+	// child it started still holds; without a wait limit the run would
+	// still last as long as that child.
+	cmd.WaitDelay = runWaitDelay
 	cmd.Env = os.Environ()
 	for k, v := range extra {
 		cmd.Env = append(cmd.Env, k+"="+os.ExpandEnv(v))
@@ -259,13 +286,52 @@ func (a *App) runOne(ctx context.Context, command string, argv []string, envName
 		rec.Output += "\n(timed out after " + timeout.String() + ")"
 		exitOK = false
 	}
-	switch strings.Trim(expect, `"'`) {
-	case "", expectOK:
-		rec.OK = exitOK
-	case expectRows:
-		rec.OK = exitOK && strings.TrimSpace(output) != ""
-	default:
-		rec.OK = strings.Contains(output, strings.Trim(expect, `"'`))
-	}
+	rec.OK = exitOK && meetsExpect(output, expect)
 	return rec
+}
+
+// meetsExpect judges a run's output against expect= (§9.4), for a command
+// that already exited zero: every mode requires that. The substring mode
+// used to ignore the exit status, so a command that printed the expected
+// text and then failed passed (bug 86).
+//   - "" or ok: nothing more.
+//   - rows: some output.
+//   - an HTTP status (three digits, 100 to 599): the last status the output
+//     reports is that code. The last `HTTP/<version> <code>` line counts
+//     when there is one, as `curl -sIL` prints after redirects; otherwise
+//     the last non-blank line, trimmed, as `curl -s -o /dev/null -w
+//     '%{http_code}'` prints. This mode was documented and did not exist.
+//   - anything else: a substring the output must contain.
+func meetsExpect(output, expect string) bool {
+	want := strings.Trim(expect, `"'`)
+	switch want {
+	case "", expectOK:
+		return true
+	case expectRows:
+		return strings.TrimSpace(output) != ""
+	}
+	if code, ok := check.ParseHTTPStatus(want); ok {
+		return reportedStatus(output) == strconv.Itoa(code)
+	}
+	return strings.Contains(output, want)
+}
+
+// reportedStatus is the last HTTP status a command's output reports, as
+// meetsExpect describes, or "" when it reports none.
+func reportedStatus(output string) string {
+	last, status := "", ""
+	for _, l := range strings.Split(output, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		last = l
+		if fields := strings.Fields(l); len(fields) >= 2 && strings.HasPrefix(fields[0], httpStatusLine) {
+			status = fields[1]
+		}
+	}
+	if status != "" {
+		return status
+	}
+	return last
 }

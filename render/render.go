@@ -116,6 +116,16 @@ const (
 	ProviderFile        = "file"
 )
 
+// ProviderValues is the canonical list of the providers above.
+var ProviderValues = []string{ProviderGitHub, ProviderOnePassword, ProviderAWS, ProviderGCP, ProviderVault, ProviderEnv, ProviderFile}
+
+// AddressProviderValues are the providers Provider infers from an address's
+// shape, as opposed to those only a `source=` can name. Each is a provider
+// `ds check --resolve` asks a plugin about without the author saying which,
+// so each must have a plugin shipped beside ds; a test holds the release to
+// that (bug 80).
+var AddressProviderValues = []string{ProviderGitHub, ProviderOnePassword, ProviderAWS, ProviderGCP, ProviderVault}
+
 // Reference keys the renderer reads.
 const (
 	keyLines    = "lines"

@@ -2,7 +2,7 @@
 #
 # Regenerate:  volt gen install cli/cmd/ds
 # To change:   edit .volt.yml, or the template in volt itself — edits here are lost.
-# volt:hash 289febd4e1c0
+# volt:hash 5c2337c0cb76
 # ds installer for Windows (PowerShell).
 #
 # Usage:
@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 $Repo   = "ubgo/docsync"
 $Binary = "ds"
 # Companion programs shipped in the same archive and installed beside it.
-$ExtraBinaries = "ds-resolve-aws ds-resolve-gcp ds-resolve-github ds-resolve-onepassword ds-resolve-vault" -split " " | Where-Object { $_ }
+$ExtraBinaries = "ds-resolve-aws ds-resolve-env ds-resolve-gcp ds-resolve-github ds-resolve-onepassword ds-resolve-vault" -split " " | Where-Object { $_ }
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA $Binary }
 $Version    = if ($env:VERSION) { $env:VERSION } else { "" }
 # The release-tag prefix of this CLI's stream: empty for a root CLI (v1.2.0),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"strings"
 	"testing"
@@ -692,6 +693,58 @@ func TestResolverOption(t *testing.T) {
 	rep, _ = s.Check(context.Background(), CheckOptions{Resolve: true})
 	if calls != 2 || rep.TruthHashes["op-stripe-key-p9c2v7ld"] != "H-1password" || rep.States[check.StateRotated] != 1 || rep.States[check.StateOutOfSync] != 1 {
 		t.Errorf("resolve = calls %d states %v hashes %v", calls, rep.States, rep.TruthHashes)
+	}
+}
+
+// TestLocalReaderOption pins WithLocalReader (bug 85): a local=true target
+// the reader can read, and whose pick= finds something, is ok; a pick that
+// finds nothing is `pick failed`; a target the reader cannot read stays
+// unverifiable. Each target is read once however often it is named, and
+// without the option every local def is unverifiable, as before.
+func TestLocalReaderOption(t *testing.T) {
+	t.Parallel()
+	fsys := repo(false)
+	fsys["docs/local.md"] = &fstest.MapFile{Data: []byte(strings.Join([]string{
+		"<!-- ds:def id=prod-env-x4y5z6a7 file=.env.prod local=true pick=env:STRIPE_KEY -->",
+		"<!-- ds:def id=prod-dsn-b5c6d7e8 file=.env.prod local=true pick=env:MISSING -->",
+		"<!-- ds:def id=prod-all-c6d7e8f9 file=.env.prod local=true -->",
+		"<!-- ds:def id=laptop-d7e8f9a2 file=/home/someone/.env local=true -->",
+		"Key: [k](ds:cfg?id=prod-env-x4y5z6a7) and [all](ds:block?id=prod-all-c6d7e8f9).",
+		"",
+	}, "\n"))}
+	reads := map[string]int{}
+	reader := func(path string) ([]byte, error) {
+		reads[path]++
+		if path == ".env.prod" {
+			return []byte("STRIPE_KEY=op://Platform/stripe/credential\n"), nil
+		}
+		return nil, fs.ErrNotExist
+	}
+	states := func(rep Report) map[string]check.State {
+		out := map[string]check.State{}
+		for _, f := range rep.Findings {
+			if f.Doc == "docs/local.md" && f.State != check.StateUncovered {
+				out[fmt.Sprintf("%d", f.Line)] = f.State
+			}
+		}
+		return out
+	}
+	rep, err := newSys(t, fsys, WithLocalReader(reader)).Check(context.Background(), CheckOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]check.State{"1": check.StateOK, "2": check.StatePickFailed, "3": check.StateOK, "4": check.StateUnverifiable, "5": check.StateOK}
+	if got := states(rep); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("with a reader = %v, want %v", got, want)
+	}
+	if reads[".env.prod"] != 3 || reads["/home/someone/.env"] != 1 {
+		t.Errorf("reads = %v (one per target and pick)", reads)
+	}
+	rep, _ = newSys(t, fsys).Check(context.Background(), CheckOptions{})
+	for line, st := range states(rep) {
+		if st != check.StateUnverifiable {
+			t.Errorf("without a reader line %s = %s, want unverifiable", line, st)
+		}
 	}
 }
 

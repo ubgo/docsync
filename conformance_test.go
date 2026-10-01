@@ -425,6 +425,7 @@ func TestConformanceStatesCovered(t *testing.T) {
 		check.StateResolveFailed: "needs a resolver; covered by check unit tests",
 		check.StateOutOfSync:     "needs a resolver; covered by check unit tests",
 		check.StateRotated:       "needs a resolver; covered by check unit tests",
+		check.StateStaleCopy:     "needs a resolver; covered by check unit tests",
 	}
 	// In -update mode TestConformance is rewriting these files in parallel,
 	// so reading them here races and reports a half-written file as a

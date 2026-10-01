@@ -2,6 +2,7 @@ package render
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -321,9 +322,25 @@ func TestHelpers(t *testing.T) {
 	if formatValue("not a url", FormatHost) != "not a url" || formatValue("v", "") != "v" || formatValue("v", "weird") != "v" {
 		t.Error("formatValue fallbacks")
 	}
+	inferred := map[string]bool{}
 	for addr, want := range map[string]string{"op://a/b": ProviderOnePassword, "${{ secrets.X }}": ProviderGitHub, "arn:aws:secretsmanager:x": ProviderAWS, "projects/p/secrets/s": ProviderGCP, "vault:kv/x": ProviderVault, "STRIPE_KEY": "src"} {
-		if got := Provider(addr, "src"); got != want {
+		got := Provider(addr, "src")
+		if got != want {
 			t.Errorf("Provider(%q) = %q", addr, got)
+		}
+		if got != "src" {
+			inferred[got] = true
+		}
+	}
+	// AddressProviderValues is what the release is checked against for a
+	// shipped plugin per provider (bug 80); it must be exactly what Provider
+	// infers, or a new address shape could ship with no plugin.
+	if len(inferred) != len(AddressProviderValues) {
+		t.Errorf("Provider infers %v, AddressProviderValues lists %v", inferred, AddressProviderValues)
+	}
+	for _, p := range AddressProviderValues {
+		if !inferred[p] || !slices.Contains(ProviderValues, p) {
+			t.Errorf("AddressProviderValues has %q, which Provider never infers or ProviderValues lacks", p)
 		}
 	}
 	if _, ok := Value(block.Block{Content: "  \n"}); ok {

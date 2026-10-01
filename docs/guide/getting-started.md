@@ -12,7 +12,7 @@ macOS (Apple silicon), Linux and Windows, amd64 or arm64. On macOS and Linux:
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | sh
 ```
 
-It downloads the newest `ds` release for your machine, checks it against the release's `checksums.txt`, and installs `ds` and its five secret-resolver plugins (`ds-resolve-aws`, `-gcp`, `-github`, `-onepassword`, `-vault`) to `/usr/local/bin`, using sudo if it needs to. No Go toolchain is involved. Options go on the `sh` side of the pipe:
+It downloads the newest `ds` release for your machine, checks it against the release's `checksums.txt`, and installs `ds` and its six secret-resolver plugins (`ds-resolve-aws`, `-env`, `-gcp`, `-github`, `-onepassword`, `-vault`) to `/usr/local/bin`, using sudo if it needs to. No Go toolchain is involved. Options go on the `sh` side of the pipe:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | INSTALL_DIR=$HOME/.local/bin sh   # no sudo
@@ -29,7 +29,7 @@ With Go 1.26 or later and a C compiler (`ds` includes the tree-sitter parsers, w
 
 ```sh
 go install github.com/ubgo/docsync/cli/cmd/ds@latest
-go install github.com/ubgo/docsync/cli/cmd/ds-resolve-aws@latest   # only if you use `ds check --resolve`: -aws -gcp -github -onepassword -vault
+go install github.com/ubgo/docsync/cli/cmd/ds-resolve-aws@latest   # only if you use `ds check --resolve`: -aws -env -gcp -github -onepassword -vault
 ```
 
 Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64, windows/amd64 and windows/arm64, with a `checksums.txt`.

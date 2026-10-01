@@ -73,7 +73,9 @@ func (a *App) urlChecker(cfg config.Config, st *Store) (func(href string) check.
 	}
 	var last time.Time
 	hook := func(href string) check.URLResult {
-		if e, ok := cache[href]; ok && a.now().Sub(e.CheckedAt) < ttl {
+		// An entry holding a transport error is never served: older builds
+		// cached a network failure as a dead link for url.ttl (bug 87).
+		if e, ok := cache[href]; ok && e.Error == "" && a.now().Sub(e.CheckedAt) < ttl {
 			return e.result()
 		}
 		if interval > 0 && !last.IsZero() {
@@ -82,7 +84,13 @@ func (a *App) urlChecker(cfg config.Config, st *Store) (func(href string) check.
 			}
 		}
 		last = time.Now()
-		e := fetch(client, href)
+		e, answered := fetch(client, href)
+		if !answered {
+			// No HTTP answer: unverifiable, and not cached, so the next
+			// run with a network checks the link again.
+			delete(cache, href)
+			return check.URLResult{Err: fmt.Errorf("%s", e.Error)}
+		}
 		e.CheckedAt = a.now()
 		cache[href] = e
 		return e.result()
@@ -104,22 +112,26 @@ func (e URLEntry) result() check.URLResult {
 	return r
 }
 
-// fetch performs one GET and reads the title.
-func fetch(client *http.Client, href string) URLEntry {
+// fetch performs one GET and reads the title. answered is false when no
+// HTTP response came back (offline, DNS, refused, timed out): that is a
+// fact about this machine's network, not the link, and is neither cached
+// nor reported dead. A request that cannot be formed from href is an
+// answer: the href is wrong wherever it is checked.
+func fetch(client *http.Client, href string) (e URLEntry, answered bool) {
 	req, err := http.NewRequest(http.MethodGet, href, nil)
 	if err != nil {
-		return URLEntry{Error: err.Error()}
+		return URLEntry{Error: err.Error()}, true
 	}
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := client.Do(req)
 	if err != nil {
-		return URLEntry{Error: err.Error()}
+		return URLEntry{Error: err.Error()}, false
 	}
 	defer resp.Body.Close()
-	e := URLEntry{Status: resp.StatusCode, Final: resp.Request.URL.String()}
+	e = URLEntry{Status: resp.StatusCode, Final: resp.Request.URL.String()}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, titleReadCap))
 	if m := titleRE.FindSubmatch(body); m != nil {
 		e.Title = string(m[1])
 	}
-	return e
+	return e, true
 }

@@ -432,8 +432,18 @@ func (a *App) checkCmd() *cobra.Command {
 					return err
 				}
 				resolveCfg = cfg
-				a.urlCheck, saveURLs = a.urlChecker(cfg, st)
-				a.resolveHook = a.resolver(cfg)
+				if !cfg.Resolve.Enabled {
+					// Said on stderr so `--json` stays one document; the
+					// run then checks as if --resolve were absent, which
+					// reports every link and secret hop as not verified.
+					fmt.Fprintln(cmd.ErrOrStderr(), resolveDisabled)
+					opts.Resolve = false
+				}
+			}
+			if opts.Resolve {
+				a.urlCheck, saveURLs = a.urlChecker(resolveCfg, st)
+				a.resolveHook = a.resolver(resolveCfg)
+				var err error
 				if a.storedHashes, err = st.LoadHashes(); err != nil {
 					return err
 				}
@@ -495,7 +505,7 @@ func (a *App) checkCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.Strict, flagStrict, false, "warnings fail the run")
 	cmd.Flags().StringVar(&opts.Env, flagEnv, "", "environment for cites without env=")
 	cmd.Flags().BoolVar(&opts.Run, flagRun, false, "allow ds:run where run.enabled")
-	cmd.Flags().BoolVar(&opts.Resolve, flagResolve, false, "reach providers and the network")
+	cmd.Flags().BoolVar(&opts.Resolve, flagResolve, false, "reach providers and the network where resolve.enabled")
 	cmd.Flags().BoolVar(&full, flagFull, false, "rescan every file")
 	cmd.Flags().BoolVar(&explain, flagExplain, false, "print every directive the scan matched, with its tier and carrier")
 	cmd.Flags().BoolVar(&expand, flagExpand, false, "list every finding; by default a heavily cited id collapses to one line with a count")

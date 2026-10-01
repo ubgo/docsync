@@ -153,7 +153,7 @@ The token is required even for `--dry-run`, though nothing is sent.
 |---|---|---|
 | `docsync-pr.yml` | pull requests | the action above |
 | `docsync-publish.yml` | default branch, after merge | `ds publish`, which writes this repository's ledger into the workspace index (see [Cross-repo](cross-repo.md)) |
-| `docsync-nightly.yml` | on a schedule | `ds check --run --resolve` with credentials, then `ds notify` |
+| `docsync-nightly.yml` | on a schedule | `ds check --run --resolve` with credentials, then `ds notify`; each flag acts only where the repository consents in `.ds/config.toml` (`[run] enabled = true`, `[resolve] enabled = true`) |
 
 All three ship with `on: workflow_dispatch:` only, so they run when started from the Actions tab and never spend minutes on their own. Each file's header comment carries the trigger lines to paste back (`pull_request`, `push` to `main`, or a `schedule`) once you want them automatic.
 

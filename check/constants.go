@@ -39,6 +39,7 @@ const (
 	StateUndocumented     State = "undocumented export"
 	StateResolveFailed    State = "resolve failed"
 	StateOutOfSync        State = "out of sync"
+	StateStaleCopy        State = "stale copy"
 	StateRotated          State = "rotated"
 	StateStale            State = "stale"
 	StateTampered         State = "tampered"
@@ -47,7 +48,7 @@ const (
 
 // StateValues is the canonical order, used by the summary.
 // dsself:def id=statevalues-vwvk2kq3 owner=@docsync stability=stable
-var StateValues = []State{StateOK, StateMoved, StateUnacked, StateBroken, StatePickFailed, StateTooLarge, StateRange, StateExpired, StateSunset, StateDeprecated, StateAssertFailed, StateTranslationStale, StateUnsourced, StateChainBroken, StateUnverifiable, StateSkipped, StateOrphan, StateUncovered, StateUnknown, StateProblem, StateDead, StateRetitled, StateURLMoved, StateUndocumented, StateResolveFailed, StateOutOfSync, StateRotated, StateStale, StateTampered, StateUnscanned}
+var StateValues = []State{StateOK, StateMoved, StateUnacked, StateBroken, StatePickFailed, StateTooLarge, StateRange, StateExpired, StateSunset, StateDeprecated, StateAssertFailed, StateTranslationStale, StateUnsourced, StateChainBroken, StateUnverifiable, StateSkipped, StateOrphan, StateUncovered, StateUnknown, StateProblem, StateDead, StateRetitled, StateURLMoved, StateUndocumented, StateResolveFailed, StateOutOfSync, StateStaleCopy, StateRotated, StateStale, StateTampered, StateUnscanned}
 
 // Baseline names what a drifted finding was measured against (§26.2).
 type Baseline string
@@ -116,6 +117,7 @@ var severityOf = map[State]Severity{
 	StateUndocumented:     SeverityError,
 	StateResolveFailed:    SeverityError,
 	StateOutOfSync:        SeverityError,
+	StateStaleCopy:        SeverityError,
 	StateRotated:          SeverityWarning,
 	StateStale:            SeverityError,
 	StateTampered:         SeverityError,
@@ -196,10 +198,22 @@ const (
 	remedyResolveFailed = "%s does not exist at %s; fix the address in %s:%d"
 	remedyOutOfSync     = "%s differs from its truth %s; run the sync (%s) and ack the runbooks that cite the chain"
 	remedyRotated       = "the truth %s changed since its stored hash; run the syncs of its copies and ack the runbooks"
-	remedyNoSync        = "no sync= declared"
-	remedyRepoRemoved   = "repo removed: add %s back to the workspace or drop the reference at %s:%d"
-	remedyStale         = "the copy at %s:%d was rendered from an older %s; run `ds refresh`"
-	remedyTampered      = "the copy at %s:%d was edited by hand; edit the source block instead, then `ds refresh`"
+	// remedyStaleCopy: the copy holds exactly the truth's value from before
+	// the rotation, so the cause is known — the sync has not run since.
+	remedyStaleCopy = "%s still holds the value %s had before it was rotated; run the sync (%s)"
+	// remedyResolveUnverifiable is the fix for a secret hop the resolver
+	// could not answer. Secret hops used to carry remedyURL, which talks
+	// about external links (bug 83).
+	remedyResolveUnverifiable = "install the ds-resolve plugin for %[1]s on PATH and log in to the CLI it wraps, or leave %[1]s out of resolve.providers; the message says what failed"
+	// remedyURLUnreachable is the fix for a link whose request failed
+	// before any HTTP status came back: the network, not the link, is what
+	// is known to be wrong, so nothing is reported dead (bug 87).
+	remedyURLUnreachable = "the request for %s failed before the server answered; check again with network access"
+	remedyURLExpect      = "the link %s returned %d, not the expected %d; update the link or expect= at %s:%d"
+	remedyNoSync         = "no sync= declared"
+	remedyRepoRemoved    = "repo removed: add %s back to the workspace or drop the reference at %s:%d"
+	remedyStale          = "the copy at %s:%d was rendered from an older %s; run `ds refresh`"
+	remedyTampered       = "the copy at %s:%d was edited by hand; edit the source block instead, then `ds refresh`"
 )
 
 // Known keys per verb, for `unknown` warnings. Every key from the spec's
@@ -236,6 +250,8 @@ const (
 	keyHref       = "href"
 	keyTitle      = "title"
 	keyCmd        = "cmd"
+	keyExpect     = "expect"
+	keyTimeout    = "timeout"
 	keyFileArg    = "file"
 )
 

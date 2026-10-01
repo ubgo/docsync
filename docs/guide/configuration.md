@@ -560,17 +560,18 @@ known = ["prod", "staging", "dev"]
 
 ## resolve
 
-These keys apply to `ds check --resolve`, which asks `ds-resolve-<provider>` plugins whether secret addresses exist. Resolution only happens when `--resolve` is passed.
+These keys apply to `ds check --resolve`, which asks `ds-resolve-<provider>` plugins whether secret addresses exist and fetches `ds:url` links. Resolution happens only when `--resolve` is passed and `enabled` is true: the flag asks for one run, the key is the repository's consent, as with `[run]`.
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `providers` | array of strings | empty | When set, only these providers are called; a citation for any other provider is reported as unreachable. Empty allows every provider that has a plugin on `PATH`. |
+| `providers` | array of strings | empty | When set, only these providers are called; a hop for any other provider is `unverifiable` with that reason. Empty allows every provider that has a plugin on `PATH`. Providers are named as addresses and `source=` name them: `github`, `1password` (its plugin is `ds-resolve-onepassword`), `aws`, `gcp`, `vault`, `env`. |
 | `store_hash` | boolean | `false` | Keep the hashes that resolution returns in `.ds/hashes.json`, so the next run can tell that the truth has changed (`rotated`). |
-| `enabled` | boolean | `false` | Accepted; see [below](#keys-that-are-accepted-but-do-nothing-yet). |
+| `enabled` | boolean | `false` | Whether `--resolve` contacts anything. When false, `check --resolve` prints `resolve.enabled is false; no provider or link was contacted` on stderr and checks as if the flag were absent, so links and secret hops are `unverifiable`. |
 
 ```toml
 [resolve]
-providers = ["github", "onepassword"]
+enabled = true
+providers = ["github", "1password"]
 store_hash = true
 ```
 
@@ -582,7 +583,7 @@ store_hash = true
 |---|---|---|---|
 | `enabled` | boolean | `false` | Whether `--run` executes anything at all. When false, `check --run` prints `run.enabled is false; nothing executed`. |
 | `allow` | array of globs | empty | The docs whose `cmd=` and `file=` directives may run. |
-| `timeout` | Go duration | `"30s"` | How long one command may run. |
+| `timeout` | Go duration | `"30s"` | How long one command may run; a `timeout=` on a `ds:run` directive replaces it for that command. |
 | `shell` | string | `"sh"` | The program commands run under, found on `PATH`: `<shell> -c <command>` for `cmd=` and `id=` (and for `[review] command`), `<shell> <file>` for `file=`. On Windows, Git for Windows provides `sh`; a team whose commands are written for PowerShell sets `"pwsh"`. docsync never picks another shell on its own. |
 
 `[run.env.<name>]` sets environment variables for commands run with `env=<name>`. Values may reference the caller's environment with `$VAR`, which is expanded when the command runs, so the secret itself stays out of the file.
@@ -639,11 +640,11 @@ A repository with nothing to run never needs the shell.
 
 ## url
 
-These keys apply to `ds:url` links, which are checked under `ds check --resolve`.
+These keys apply to `ds:url` links, which are checked under `ds check --resolve` when `resolve.enabled` is true.
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `ttl` | day duration | `"7d"` | How long a link's last result is trusted before it is fetched again. Results are kept in `.ds/urls.json`. |
+| `ttl` | day duration | `"7d"` | How long a link's last answer is trusted before it is fetched again. Answers are kept in `.ds/urls.json`; a request that got no answer (no network) is not kept, so it is tried again on the next run. |
 | `rate_per_minute` | integer | `30` | At most this many requests a minute. |
 
 ```toml
@@ -827,7 +828,6 @@ The parser accepts these keys, so a config written from the [specification's exa
 
 | Key | Status |
 |---|---|
-| `resolve.enabled` | Resolution is controlled only by `ds check --resolve`. |
 | `notify.github_issues` | Slack is the only channel. |
 | `agents.mcp` | `ds init --agents` registers `ds mcp` either way. |
 | `agents.session_hook` | `ds init --agents` always installs `ds map --budget 2000`. |
@@ -880,7 +880,8 @@ default = "prod"                    # for citations without env=
 known = ["prod", "staging", "dev"]
 
 [resolve]
-providers = ["github", "onepassword"]   # only these ds-resolve-* plugins are called
+enabled = true                      # ds check --resolve contacts providers and links
+providers = ["github", "1password"]     # only these providers' plugins are called
 store_hash = false                  # true keeps resolved hashes in .ds/hashes.json
 
 [run]

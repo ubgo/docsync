@@ -12,11 +12,12 @@ toolchain:
   # (volt v0.2.0 or later).
   cc: "zig cc -target {{.ZigTarget}}"
   cxx: "zig c++ -target {{.ZigTarget}}"
-# The five secret-resolver plugins ride in the same archive and are installed
+# The six secret-resolver plugins ride in the same archive and are installed
 # beside ds, so `ds check --resolve` works without a Go toolchain. They are
 # pure Go; they simply take this build's settings.
 extra_binaries:
   - ../ds-resolve-aws
+  - ../ds-resolve-env
   - ../ds-resolve-gcp
   - ../ds-resolve-github
   - ../ds-resolve-onepassword

@@ -12,7 +12,9 @@
 # A schedule spends minutes every night whether or not anything changed.
 # Nightly scheduled job (spec §24, §27 step 6): the only place `--resolve`
 # and `--run` are enabled, with credentials, never on pull requests. Sends
-# findings to the configured notifiers. Copy into .github/workflows/.
+# findings to the configured notifiers. Copy into .github/workflows/. Each
+# flag acts only where .ds/config.toml consents: [run] enabled = true and
+# [resolve] enabled = true.
 name: docsync nightly
 on:
   workflow_dispatch:

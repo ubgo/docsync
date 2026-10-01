@@ -949,7 +949,7 @@ This [page](ds:url?href=https://go.dev/this-page-does-not-exist-xyz) is gone.
 |---|---|
 | `href` | required; the external URL |
 | `title` | the expected page title, or a substring of it; a change means the page moved or was rewritten |
-| `expect` | the expected HTTP status, default 200 |
+| `expect` | the HTTP status the final response must have, after redirects; without it any status below 400 is alive. A value that is not a status from 100 to 599 is a `problem` |
 
 `ds render` turns it into an ordinary link. Without network access the check is skipped with a warning:
 
@@ -965,7 +965,7 @@ docs/url.md
 3 warning
 ```
 
-With `ds check --resolve`, `ds` fetches each page and reports `dead` (an error), `retitled` and `url moved` (warnings):
+With `[resolve] enabled = true` in the config and `ds check --resolve`, `ds` fetches each page and reports `dead` (an error), `retitled` and `url moved` (warnings). A request that gets no answer at all, such as on a machine with no network, stays `unverifiable` and is not cached:
 
 <!-- doctest:skip needs network access to go.dev -->
 
@@ -993,8 +993,9 @@ ds init
 | Key | Meaning |
 |---|---|
 | exactly one of `id`, `cmd`, `file` | what to run; `id` needs `runnable=true` on the def |
-| `expect` | `ok` (exit zero), `rows`, an HTTP status, or a quoted substring of the output |
-| `env`, `timeout`, `show` | environment, time limit, and what the renderer shows (`output`, `command`, `both`, `none`) |
+| `expect` | every mode needs exit status zero, then: `ok` nothing more; `rows` some output; an HTTP status such as `200`, the last status the output reports (the last `HTTP/…` status line, else the last non-blank line); anything else a substring the output must contain |
+| `timeout` | a positive duration such as `90s` that replaces `run.timeout` for this command; one that does not parse is a `problem` and the command does not run |
+| `env`, `show` | environment, and what the renderer shows (`output`, `command`, `both`, `none`) |
 
 The def for an `id=` run is a block marked runnable:
 
@@ -1103,7 +1104,7 @@ app-stripe-key-m4w8k2qn  STRIPE_KEY  store/pay.go:7
     from op-stripe-key-p9c2v7ld  op://Platform/stripe-prod/credential  .env.tpl:1  TRUTH
 ```
 
-`ds:chain` takes `id` and `env`. A `ds:block` of a secret def renders nothing (`ds:block refuses to render it`). Provider checks, rotation, and the chain findings (`unsourced`, `chain broken`, `out of sync`) are in [Secrets and runs](secrets-and-runs.md) and [SPEC §12](../SPEC.md#12-secrets-chains-and-environments).
+`ds:chain` takes `id` and `env`. A `ds:block` of a secret def renders nothing (`ds:block refuses to render it`). Provider checks, rotation, and the chain findings (`unsourced`, `chain broken`, `out of sync`, `stale copy`) are in [Secrets and runs](secrets-and-runs.md) and [SPEC §12](../SPEC.md#12-secrets-chains-and-environments).
 
 ## Environments
 

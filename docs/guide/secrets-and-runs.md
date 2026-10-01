@@ -64,7 +64,7 @@ And one more page, outside `run.allow`:
 <!-- ds:run cmd="echo hi" expect=ok -->
 ```
 
-`expect=` decides success: `ok` (or nothing) means exit status zero; `rows` means exit zero and some output; any other value is a substring the output must contain, and the exit status is then not consulted. `show=command`, `show=output`, or `show=none` limit what `ds render` prints; the default shows both. Every command gets `run.timeout`: a `timeout=` key on the directive is accepted without a warning but not applied (see below), so set the limit in config.
+`expect=` decides success, and every mode first needs exit status zero: `ok` (or nothing) asks for nothing more; `rows` means some output; an HTTP status such as `200` means the last status the output reports, the last `HTTP/…` status line when there is one (as `curl -sIL` prints) or else the last non-blank line (as `curl -s -o /dev/null -w '%{http_code}'` prints); any other value is a substring the output must contain. `show=command`, `show=output`, or `show=none` limit what `ds render` prints; the default shows both. Every command gets `run.timeout` unless its directive says `timeout=`, a positive duration that replaces it for that command; a `timeout=` that does not parse is a `problem` finding and the command does not run.
 
 <!-- doctest
 ds scan
@@ -127,12 +127,12 @@ Fails: <!-- ds:run cmd="exit 3" expect=ok -->
 ds scan
 -->
 
-The `sleep 2` runs to completion despite `timeout=1s`. A command that misses its expectation prints `run FAILED` and makes `ds check` exit 1, although it adds no row to the findings summary:
+The `sleep 2` is stopped at its directive's `timeout=1s`, which replaces the 30 seconds of `run.timeout` for that line. A command that misses its expectation or its time limit prints `run FAILED` and makes `ds check` exit 1, although it adds no row to the findings summary:
 
 ```console
 $ STAGING_DATABASE_URL=postgres://staging-db/app ds check --run; echo "exit=$?"
 …
-runbooks/deploy.md:9  run ok: sleep 2
+runbooks/deploy.md:9  run FAILED: sleep 2
 runbooks/deploy.md:11  run FAILED: exit 3
 6 none
 exit=1
@@ -229,7 +229,7 @@ See the [storage guide](ds:url?href=https://example.com/guide&title=Storage%20gu
 <!-- ds:url href=https://example.com/guide title="Storage guide" -->
 ```
 
-`href` is the link; `title` is a substring the page's `<title>` must contain. Without `--resolve` each one is a warning that it was not checked. With it, `ds` fetches the page, follows redirects, and reports what it found.
+`href` is the link; `title` is a substring the page's `<title>` must contain. Without `--resolve` each one is a warning that it was not checked. With it, and `[resolve] enabled = true` in the config, `ds` fetches the page, follows redirects, and reports what it found.
 
 The examples here run against a small local server standing in for the web: `/guide` answers with the title "Storage guide, 2nd edition", `/old` redirects to `/new`, and everything else is a 404.
 
@@ -285,6 +285,21 @@ Escaped: [guide](ds:url?href=http://127.0.0.1:8765/guide&title=Storage%20guide).
 <!-- ds:url href=http://127.0.0.1:8765/guide title="Storage guide" -->
 ```
 
+A link expected to answer something other than success says so with `expect=`, the status the final response must have:
+
+```markdown file=docs/links.md append=true
+
+The [retired API](ds:url?href=http://127.0.0.1:8765/v1&expect=404) is expected to be gone.
+```
+
+`--resolve` contacts nothing until the repository consents in its config, as `[run] enabled` does for `--run`:
+
+```toml file=.ds/config.toml append=true
+
+[resolve]
+enabled = true
+```
+
 <!-- doctest
 ds scan
 -->
@@ -305,10 +320,10 @@ docs/links.md
       fix: the page at http://127.0.0.1:8765/guide no longer has title "Manual"; confirm it is still the right page
   11	warning  retitled           title is now "Storage guide, 2nd edition"
       fix: the page at http://127.0.0.1:8765/guide no longer has title "\"Storage\""; confirm it is still the right page
-1 error, 3 warning, 2 none
+1 error, 3 warning, 3 none
 ```
 
-Line 3 is missing from both runs, and line 11 is reported although the page title does contain "Storage"; [Writing the link form](#writing-the-link-form) explains both. Lines 13 and 15 are `ok` and, like every `ok`, are counted in the summary rather than listed.
+Line 3 is missing from both runs, and line 11 is reported although the page title does contain "Storage"; [Writing the link form](#writing-the-link-form) explains both. Lines 13, 15 and 18 are `ok` (line 18 answers the 404 it expects) and, like every `ok`, are counted in the summary rather than listed.
 
 <!-- doctest
 kill $(cat ../server.pid)
@@ -316,11 +331,11 @@ kill $(cat ../server.pid)
 
 | State | Severity | Meaning |
 |---|---|---|
-| `ok` | none | status below 400, no redirect, title matches |
-| `dead` | error | status 400 or above, or the request failed |
+| `ok` | none | status below 400, or the one `expect=` names; no redirect; title matches |
+| `dead` | error | status 400 or above, or with `expect=`, any status other than it |
 | `url moved` | warning | the final URL after redirects differs from `href` |
 | `retitled` | warning | the page title no longer contains `title` |
-| `unverifiable` | warning | not checked: no `--resolve` |
+| `unverifiable` | warning | not checked: no `--resolve`, `resolve.enabled` off, or the request got no answer |
 
 ### Cache and rate
 
@@ -332,13 +347,14 @@ ttl = "7d"             # whole number with m, h, d or w
 rate_per_minute = 30
 ```
 
+Only an HTTP answer is cached. On a machine that cannot reach the host, `--resolve` reports the link `unverifiable` with the request's error and caches nothing for it, so the next run with a network checks it again.
+
 ### Writing the link form
 
-Three things to know, all seen in testing:
+Two things to know, both seen in testing:
 
 - **No spaces inside a link target.** Markdown ends a link at a space, so `[x](ds:url?href=…&title="Storage guide")` is not a link at all and the directive is silently ignored, as line 3 above was. Write the space as `%20` or `+`, or use the comment form, where quotes work: `<!-- ds:url href=… title="Storage guide" -->`.
 - **No quotes around `title` in the link form.** They are kept as part of the value, so `title="Storage"` looks for a title containing `"Storage"` with the quote marks and reports `retitled`, as line 11 above shows. Write `title=Storage`.
-- **A network failure is cached as `dead`.** On a machine that cannot reach the host, `--resolve` reports every link `dead … returned 0` and keeps that result for `url.ttl`, so links stay dead after the network returns. Delete `.ds/urls.json` to check again.
 
 ## Secrets: addresses, never values
 
@@ -481,7 +497,7 @@ To be told when a hop changes, cite that hop's def from the runbook, since a `ds
 
 ### A truth on one machine
 
-A value that lives only in a file outside git, such as a local `.env.prod`, can still be declared with a remote def and `local=true`. It is reported as `unverifiable` (a warning), which is the honest state for something CI cannot read:
+A value that lives only in a file outside git, such as a local `.env.prod`, can still be declared with a remote def and `local=true`. Where the file is absent, as in CI, it is reported as `unverifiable` (a warning), which is the honest state for something that machine cannot read:
 
 ```markdown file=docs/payments.md append=true
 
@@ -500,16 +516,28 @@ docs/payments.md
 …
 ```
 
-The warning appears on the machine holding the file as well:
+On the machine holding the file, `ds check` reads it and the def is `ok` once its `pick=` finds the key there, so the warning goes away and the def counts among the `ok` findings (here it is still `uncovered`, since no page cites it). Nothing read from the file is hashed into the ledger or stored, since the ledger is shared and the file is not:
 
 ```console
 $ printf 'STRIPE_KEY=op://Platform/stripe-prod/credential\n' > .env.prod
-$ ds scan
-…
 $ ds check
 docs/payments.md
-  7	warning  unverifiable       local=true def is only readable on its own machine
-…
+  7	info     uncovered          defined but never cited or covered
+      fix: prod-env-file-x4y5z6a7 is defined but nothing cites or covers it; cite it from a page or remove the def
+1 info, 3 none
+```
+
+A file that is there but lacks the key is `pick failed`, an error, because that is a mistake on the machine that can see it:
+
+```console
+$ printf 'OTHER=1\n' > .env.prod
+$ ds check
+docs/payments.md
+  7	error    pick failed        .env.prod is present here but pick=env:STRIPE_KEY failed: pick: nothing matched: env STRIPE_KEY
+      fix: fix the def's file= or pick= at docs/payments.md:7
+  7	info     uncovered          defined but never cited or covered
+      fix: prod-env-file-x4y5z6a7 is defined but nothing cites or covers it; cite it from a page or remove the def
+1 error, 1 info, 2 none
 ```
 
 <!-- doctest
@@ -524,15 +552,16 @@ ds scan
 
 ### The shipped plugins
 
-The install script and the release archives include five, each wrapping a CLI that must be installed and logged in:
+The install script and the release archives include six. Five wrap a CLI that must be installed and logged in; `ds-resolve-env` reads its own environment:
 
 | Executable | Wraps | Answers |
 |---|---|---|
 | `ds-resolve-github` | `gh secret list --json name` | existence only; GitHub never returns values |
-| `ds-resolve-onepassword` | `op read --no-newline <ref>` | existence and hash |
+| `ds-resolve-onepassword` | `op read --no-newline <ref>` | existence and hash; a signed-out or locked `op` is an error (`unverifiable`), and only `op` saying the vault, item or field does not exist is `resolve failed` |
 | `ds-resolve-aws` | `aws secretsmanager get-secret-value --secret-id <arn>` | existence and hash |
 | `ds-resolve-gcp` | `gcloud secrets versions access latest --secret <name>` | existence and hash |
-| `ds-resolve-vault` | `vault kv get -field=<field> <path>`; the address is `<mount>/<path>#<field>`, with `value` as the default field | existence and hash |
+| `ds-resolve-vault` | `vault kv get -field=<field> <path>`; the address is `vault:<mount>/<path>#<field>`, the prefix dropped before the call, with `value` as the default field | existence and hash |
+| `ds-resolve-env` | the environment `ds check` runs in; the address is a variable name, from a `source=env` def | existence and hash; an unset variable is an error (`unverifiable`) |
 
 The examples below put a directory of stand-ins first on PATH: the [stand-in resolver](#write-your-own-resolver) as `ds-resolve-github` and `ds-resolve-aws`, answering from a file of `address value` lines, and a stand-in `op` reading the same file, so the shipped 1Password plugin runs for real.
 
@@ -571,41 +600,36 @@ printf 'op://Platform/stripe-prod/credential sk_live_one\narn:aws:secretsmanager
 export FAKE_SECRETS=../secrets.txt
 -->
 
-`ds` looks up a plugin by the provider name the address implies: `github`, `1password`, `aws`, `gcp`, `vault`, or whatever `source=` names. For `op://` addresses that name is `1password`, so it runs `ds-resolve-1password`, while the shipped executable is `ds-resolve-onepassword`. A run before fixing that, with no plugin for `env` either:
+`ds` asks the plugin for the provider the address implies: `github`, `1password`, `aws`, `gcp`, `vault`, or whatever `source=` names. The executable is `ds-resolve-<provider>`, except for `1password`, whose plugin is `ds-resolve-onepassword`. A `source=env` hop is answered by `ds-resolve-env`, which hashes the variable from the environment `ds check` runs in.
+
+`--resolve` asks; the repository must also consent. Without `[resolve] enabled = true`, it says so on stderr and contacts nothing:
 
 ```console
-$ PATH="$PWD/../plugins:$PATH" ds check --resolve
-.env.tpl
-  1	warning  unverifiable       provider 1password not reachable: procplugin: plugin executable not found: ds-resolve-1password
-      fix: external link checks need --resolve with network access
-internal/pay/stripe.go
-  6	warning  unverifiable       provider env not reachable: procplugin: plugin executable not found: ds-resolve-env
-      fix: external link checks need --resolve with network access
-2 warning, 2 none
+$ PATH="$PWD/../plugins:$PATH" ds check --resolve 2>&1 | head -1
+resolve.enabled is false; no provider or link was contacted
 ```
-
-A plugin that is missing makes its hop `unverifiable`, a warning, rather than failing the check. The `fix:` line on these findings mentions external links; for a secret it means the plugin. Until the names agree, link one to the other where the plugins are installed:
-
-```sh
-ln -s "$(command -v ds-resolve-onepassword)" "$(dirname "$(command -v ds-resolve-onepassword)")/ds-resolve-1password"
-```
-
-<!-- doctest
-ln -s "$(command -v ds-resolve-onepassword)" ../plugins/ds-resolve-1password
--->
-
-The shipped 1Password plugin reports an address as not existing whenever `op read` fails, so a locked or signed-out `op` shows up as `resolve failed` rather than `unverifiable`. No `ds-resolve-env` ships, so `source=env` hops stay `unverifiable` under `--resolve`.
 
 ### Configure it
 
 ```toml file=.ds/config.toml append=true
 
 [resolve]
-providers = ["1password", "aws", "github"]   # only these are consulted
-store_hash = true                            # keep truth hashes in .ds/hashes.json to detect rotation
+enabled = true                                      # --resolve contacts providers and links
+providers = ["1password", "aws", "env", "github"]   # only these are consulted
+store_hash = true                                   # keep truth hashes in .ds/hashes.json to detect rotation
 ```
 
-`--resolve` is the switch that turns resolution on; the `enabled` key in `[resolve]` is read but does not change what `--resolve` does. A provider outside `providers` is `unverifiable` with the reason, which is how to quiet `env`.
+A provider outside `providers` is `unverifiable` with the reason. So is a hop whose plugin is missing, or whose CLI is signed out or locked: only a provider saying the address does not exist makes `resolve failed`. An environment variable that is not set where `ds check` runs is `unverifiable` too, since its absence on one machine says nothing about the deployment:
+
+```console
+$ PATH="$PWD/../plugins:$PATH" ds check --resolve
+internal/pay/stripe.go
+  6	warning  unverifiable       provider env not reachable: procplugin: plugin reported an error: STRIPE_KEY is not set in the environment ds check runs in
+      fix: install the ds-resolve plugin for env on PATH and log in to the CLI it wraps, or leave env out of resolve.providers; the message says what failed
+1 warning, 2 none
+```
+
+The runs below set it, as the deploy job that runs `--resolve` would.
 
 ### What it reports
 
@@ -619,38 +643,50 @@ STRIPE_AWS=arn:aws:secretsmanager:eu-west-1:123456789012:secret:stripe   # ds:de
 ds scan
 -->
 
-On the first run everything matches, and the truth's hash is stored:
+On the first run every hop matches, the environment variable included, and the truth's hash is stored:
 
 ```console
-$ PATH="$PWD/../plugins:$PATH" ds check --resolve
+$ STRIPE_KEY=sk_live_one PATH="$PWD/../plugins:$PATH" ds check --resolve
 .env.tpl
   2	info     uncovered          defined but never cited or covered
       fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
-internal/pay/stripe.go
-  6	warning  unverifiable       provider env not reachable: provider env is not in resolve.providers
-      fix: external link checks need --resolve with network access
-1 warning, 1 info, 2 none
+1 info, 2 none
 $ cat .ds/hashes.json
 {
   "op-stripe-key-p9c2v7ld": "a245b332a780393cd4fafdcb467e7bb40ae2880f160782704d5bc2fdcab6bd8f"
 }
 ```
 
-Then the 1Password item is rotated and the AWS copy is not:
+Then the 1Password item is rotated and neither copy is synced. Each copy that still holds the old value is a `stale copy`, and the stored hash is left as it was, so the next run says the same until the syncs run:
 
 <!-- doctest
 perl -pi -e 's/^(op:\S+) sk_live_one/$1 sk_live_two/' ../secrets.txt
 -->
 
 ```console
-$ PATH="$PWD/../plugins:$PATH" ds check --resolve
+$ STRIPE_KEY=sk_live_one PATH="$PWD/../plugins:$PATH" ds check --resolve
 .env.tpl
   1	warning  rotated            op-stripe-key-p9c2v7ld was rotated since its hash was stored
       fix: the truth op-stripe-key-p9c2v7ld changed since its stored hash; run the syncs of its copies and ack the runbooks
-  2	error    out of sync        aws-stripe-key-c3d4e5f6 differs from truth op-stripe-key-p9c2v7ld
-      fix: aws-stripe-key-c3d4e5f6 differs from its truth op-stripe-key-p9c2v7ld; run the sync (scripts/push-aws.sh) and ack the runbooks that cite the chain
+  2	error    stale copy         aws-stripe-key-c3d4e5f6 still holds the value from before op-stripe-key-p9c2v7ld was rotated
+      fix: aws-stripe-key-c3d4e5f6 still holds the value op-stripe-key-p9c2v7ld had before it was rotated; run the sync (scripts/push-aws.sh)
+  2	info     uncovered          defined but never cited or covered
+      fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
+internal/pay/stripe.go
+  6	error    stale copy         app-stripe-key-m4w8k2qn still holds the value from before op-stripe-key-p9c2v7ld was rotated
+      fix: app-stripe-key-m4w8k2qn still holds the value op-stripe-key-p9c2v7ld had before it was rotated; run the sync (no sync= declared)
+2 error, 1 warning, 1 info, 2 none
+```
+
+A copy that holds neither value is `out of sync`, the cause unknown:
+
+```console
+$ STRIPE_KEY=sk_live_typo PATH="$PWD/../plugins:$PATH" ds check --resolve
 …
-1 error, 2 warning, 1 info, 2 none
+internal/pay/stripe.go
+  6	error    out of sync        app-stripe-key-m4w8k2qn differs from truth op-stripe-key-p9c2v7ld
+      fix: app-stripe-key-m4w8k2qn differs from its truth op-stripe-key-p9c2v7ld; run the sync (no sync= declared) and ack the runbooks that cite the chain
+2 error, 1 warning, 1 info, 2 none
 ```
 
 And with the GitHub secret deleted:
@@ -660,7 +696,7 @@ perl -pi -e 's/^STRIPE_KEY present/OTHER present/' ../secrets.txt
 -->
 
 ```console
-$ PATH="$PWD/../plugins:$PATH" ds check --resolve
+$ STRIPE_KEY=sk_live_one PATH="$PWD/../plugins:$PATH" ds check --resolve
 …
 .github/workflows/deploy.yml
   7	error    resolve failed     ${{ secrets.STRIPE_KEY }} does not exist at github
@@ -676,8 +712,9 @@ perl -pi -e 's/^OTHER present/STRIPE_KEY present/' ../secrets.txt
 |---|---|---|
 | `resolve failed` | error | the provider says the address does not exist |
 | `out of sync` | error | a copy's hash differs from its truth's |
+| `stale copy` | error | after a rotation, a copy still holds the truth's previous value; the stored hash is kept until no copy does, so this and `rotated` repeat until the sync runs |
 | `rotated` | warning | the truth's hash differs from the one stored in `.ds/hashes.json` (needs `store_hash`) |
-| `unverifiable` | warning | the plugin is missing, not allowed, failed, or broke the protocol |
+| `unverifiable` | warning | the plugin is missing, not allowed, failed (a signed-out CLI, an unset variable), or broke the protocol |
 
 GitHub hops are existence-only, since GitHub lists names and never values, so they can be `resolve failed` but never `out of sync`. Run `--resolve` on a scheduled job where the provider CLIs are logged in, not on pull requests.
 
@@ -737,8 +774,9 @@ chmod +x ../leaky/ds-resolve-aws
 -->
 
 ```console
-$ PATH="$PWD/../leaky:$PWD/../plugins:$PATH" ds check --resolve
+$ STRIPE_KEY=sk_live_one PATH="$PWD/../leaky:$PWD/../plugins:$PATH" ds check --resolve
 .env.tpl
+…
   2	warning  unverifiable       provider aws not reachable: procplugin: resolver reply carried more than existence and hash: unexpected field(s) value
 …
 ```
@@ -789,18 +827,22 @@ export GOWORK=off
 export GOFLAGS=-mod=mod
 -->
 
-Built and put first on PATH, it holds the rotated value, so the AWS copy now agrees with its truth and the `out of sync` finding is gone:
+Built and put first on PATH, it holds the rotated value, and the variable is set to it as well, so every copy agrees with its truth. The stale copies are gone and the new hash is stored; this run still says `rotated`, and the next one does not:
 
 ```console
 $ go -C ../goresolver build -o ../gobin/ds-resolve-aws .
-$ PATH="$PWD/../gobin:$PWD/../plugins:$PATH" ds check --resolve
+$ STRIPE_KEY=sk_live_two PATH="$PWD/../gobin:$PWD/../plugins:$PATH" ds check --resolve
+.env.tpl
+  1	warning  rotated            op-stripe-key-p9c2v7ld was rotated since its hash was stored
+      fix: the truth op-stripe-key-p9c2v7ld changed since its stored hash; run the syncs of its copies and ack the runbooks
+  2	info     uncovered          defined but never cited or covered
+      fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
+1 warning, 1 info, 2 none
+$ STRIPE_KEY=sk_live_two PATH="$PWD/../gobin:$PWD/../plugins:$PATH" ds check --resolve
 .env.tpl
   2	info     uncovered          defined but never cited or covered
       fix: aws-stripe-key-c3d4e5f6 is defined but nothing cites or covers it; cite it from a page or remove the def
-internal/pay/stripe.go
-  6	warning  unverifiable       provider env not reachable: provider env is not in resolve.providers
-      fix: external link checks need --resolve with network access
-1 warning, 1 info, 2 none
+1 info, 2 none
 ```
 
 The same protocol serves other plugin kinds: `ds-pick-<scheme>` for a new `pick=` scheme and `ds-<verb>` for a new directive verb, each listed in config (`[plugins] picks = […]`, `verbs = […]`), and `ds-records-<source>` for a `ds:table` source named in `[records] source`. The request and reply shapes for each are in [the spec](../SPEC.md#374-process-plugins-for-any-language).

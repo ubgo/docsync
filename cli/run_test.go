@@ -32,6 +32,12 @@ func TestRunExecution(t *testing.T) {
 		"<!-- ds:run cmd=\"sleep 5\" -->",
 		"<!-- ds:run cmd=\"printf ''\" expect=rows -->",
 		"<!-- ds:run expect=ok -->",
+		"<!-- ds:run cmd=\"sleep 0.5; echo done\" timeout=5s expect=done -->",
+		"<!-- ds:run cmd=\"echo hello; exit 3\" expect=hello -->",
+		"<!-- ds:run cmd=\"echo 200\" expect=200 -->",
+		"<!-- ds:run cmd=\"echo 404\" expect=200 -->",
+		"<!-- ds:run cmd=\"echo HTTP/1.1 301 Moved; echo HTTP/2 404; echo x-id: 7\" expect=404 -->",
+		"<!-- ds:run cmd=\"echo hi\" timeout=soon -->",
 		"",
 	}, "\n"))
 	write(t, dir, "docs/notallowed.md", "<!-- ds:run cmd=\"echo nope\" -->\n")
@@ -54,6 +60,15 @@ func TestRunExecution(t *testing.T) {
 		"runbooks/r.md:7  run FAILED: sleep 5",
 		"runbooks/r.md:8  run FAILED: printf ''",
 		"runbooks/r.md:9  run skipped: needs one of",
+		// bug 86: timeout= on the directive is applied (5s beats the 300ms
+		// run.timeout), a substring is not enough when the command
+		// failed, and expect=<status> reads the last status reported.
+		"runbooks/r.md:10  run ok: sleep 0.5; echo done",
+		"runbooks/r.md:11  run FAILED: echo hello; exit 3",
+		"runbooks/r.md:12  run ok: echo 200",
+		"runbooks/r.md:13  run FAILED: echo 404",
+		"runbooks/r.md:14  run ok: echo HTTP/1.1 301",
+		"runbooks/r.md:15  run FAILED: timeout=soon must be a positive duration",
 		"docs/notallowed.md:1  run skipped: cmd= is allowed only",
 	} {
 		if !strings.Contains(r.out, want) {
@@ -64,7 +79,7 @@ func TestRunExecution(t *testing.T) {
 		t.Errorf("failed runs must fail the check: %d", r.code)
 	}
 	runs, err := NewStore(dir).LoadRuns()
-	if err != nil || len(runs) != 6 || !strings.Contains(runs["runbooks/r.md:2"].Output, "hello world") || !strings.Contains(runs["runbooks/r.md:7"].Output, "timed out") {
+	if err != nil || len(runs) != 11 || !strings.Contains(runs["runbooks/r.md:2"].Output, "hello world") || !strings.Contains(runs["runbooks/r.md:7"].Output, "timed out") {
 		t.Errorf("runs = %+v %v", runs, err)
 	}
 	// render shows the recorded result.
@@ -108,6 +123,7 @@ func TestRunExecution(t *testing.T) {
 	}
 }
 
+// promise:url-offline-unverifiable
 func TestURLResolve(t *testing.T) {
 	t.Parallel()
 	hits := 0
@@ -131,25 +147,46 @@ func TestURLResolve(t *testing.T) {
 		"See [dead](ds:url?href=" + srv.URL + "/gone).",
 		"See [unreachable](ds:url?href=http://127.0.0.1:1/x).",
 		"See [bad](ds:url?href=://nope).",
+		"See [gone on purpose](ds:url?href=" + srv.URL + "/gone&expect=404).",
+		"See [not created](ds:url?href=" + srv.URL + "/ok&expect=201).",
+		"See [typo](ds:url?href=" + srv.URL + "/ok&expect=abc).",
 		"",
 	}, "\n"))
-	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[url]\nttl = \"7d\"\nrate_per_minute = 60000\n")
+	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[resolve]\nenabled = true\n[url]\nttl = \"7d\"\nrate_per_minute = 60000\n")
 	client := srv.Client()
 	var out, errb bytes.Buffer
 	code := Run([]string{"check", "--resolve"}, WithDir(dir), WithIO(nil, &out, &errb), WithVCS(v), WithHTTPClient(client), WithClock(func() time.Time { return clock }))
 	text := out.String()
-	for _, want := range []string{"retitled", "url moved", "dead"} {
+	for _, want := range []string{"retitled", "url moved", "/gone returned 404", "/ok returned 200, expected 201", "expect=abc is not an HTTP status", "://nope cannot be requested"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s%s", want, text, errb.String())
 		}
 	}
-	if code != ExitFindings || strings.Contains(text, "unverifiable") {
+	if code != ExitFindings {
 		t.Errorf("resolve = %d\n%s", code, text)
+	}
+	// A network failure is unverifiable, not dead, and is not cached: a run
+	// offline used to report every link dead and keep that for url.ttl
+	// (bug 87). expect= is read: a 404 that is expected is ok (bug 87).
+	if got := stateAt(t, jsonCheck(t, dir, v, client, clock), "docs/links.md", 5, ""); got != "unverifiable" {
+		t.Errorf("unreachable link = %q, want unverifiable", got)
+	}
+	if got := stateAt(t, jsonCheck(t, dir, v, client, clock), "docs/links.md", 7, ""); got != "ok" {
+		t.Errorf("expected 404 = %q, want ok", got)
 	}
 	firstHits := hits
 	cache, err := NewStore(dir).LoadURLs()
-	if err != nil || len(cache) != 5 || cache[srv.URL+"/ok"].Title != "TOAST docs" || cache[srv.URL+"/moved"].Final != srv.URL+"/ok" || cache[srv.URL+"/gone"].Status != 404 {
+	if _, cached := cache["http://127.0.0.1:1/x"]; err != nil || cached || cache[srv.URL+"/ok"].Title != "TOAST docs" || cache[srv.URL+"/moved"].Final != srv.URL+"/ok" || cache[srv.URL+"/gone"].Status != 404 {
 		t.Errorf("cache = %+v %v", cache, err)
+	}
+	// A transport failure an older build cached is never served from the
+	// cache, however fresh: the link is asked again.
+	cache["http://127.0.0.1:1/x"] = URLEntry{Error: "connection refused", CheckedAt: clock}
+	if err := NewStore(dir).SaveURLs(cache); err != nil {
+		t.Fatal(err)
+	}
+	if got := stateAt(t, jsonCheck(t, dir, v, client, clock), "docs/links.md", 5, ""); got != "unverifiable" {
+		t.Errorf("a cached transport failure was served as %q", got)
 	}
 	// Within the ttl the cache answers; nothing is fetched again.
 	out.Reset()
@@ -158,7 +195,7 @@ func TestURLResolve(t *testing.T) {
 		t.Errorf("cache miss: hits %d -> %d", firstHits, hits)
 	}
 	// Past the ttl (an empty ttl means the default) it refetches.
-	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[url]\nttl = \"\"\nrate_per_minute = 60000\n")
+	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[resolve]\nenabled = true\n[url]\nttl = \"\"\nrate_per_minute = 60000\n")
 	Run([]string{"check", "--resolve"}, WithDir(dir), WithIO(nil, &out, &errb), WithVCS(v), WithHTTPClient(client), WithClock(func() time.Time { return clock.Add(30 * 24 * time.Hour) }))
 	if hits <= firstHits {
 		t.Error("expired cache must refetch")
@@ -182,7 +219,7 @@ func TestURLResolve(t *testing.T) {
 	// sleeps between two live requests.
 	dir2, v2 := initialised(t)
 	write(t, dir2, "docs/links.md", "See [a](ds:url?href="+srv.URL+"/ok). See [b](ds:url?href="+srv.URL+"/gone).\n")
-	write(t, dir2, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[url]\nrate_per_minute = 6000\n")
+	write(t, dir2, ".ds/config.toml", "[scan]\ncode = [\"**\"]\ndocs = [\"docs/**\"]\n[resolve]\nenabled = true\n[url]\nrate_per_minute = 6000\n")
 	if r := run(t, dir2, v2, "check", "--resolve"); r.code != ExitFindings || !strings.Contains(r.out, "dead") {
 		t.Errorf("default client = %+v", r)
 	}
@@ -367,4 +404,13 @@ func TestRunShellIsConfigurableAndRequired(t *testing.T) {
 	if got, _ := os.ReadFile(log); string(got) != "[-c][echo hi]\n[scripts/smoke.sh]\n" {
 		t.Errorf("the shell was started with %q", got)
 	}
+}
+
+// jsonCheck runs `check --resolve --json` with an injected HTTP client and
+// clock and returns stdout.
+func jsonCheck(t *testing.T, dir string, v fakeVCS, client *http.Client, now time.Time) string {
+	t.Helper()
+	var out, errb bytes.Buffer
+	Run([]string{"check", "--resolve", "--json"}, WithDir(dir), WithIO(nil, &out, &errb), WithVCS(v), WithHTTPClient(client), WithClock(func() time.Time { return now }))
+	return out.String()
 }

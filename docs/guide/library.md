@@ -359,7 +359,8 @@ Every input is a functional option to `docsync.New`. `WithFS` is the only requir
 | `WithRepo(name)` | this repository's name inside a workspace |
 | `WithMerged(...)`, `WithMergedRefs(...)`, `WithPreviousForeign(...)`, `WithForeignSnapshot()`, `WithRemoved(...)` | the merged workspace view: other repos' defs, their citations of this repo, the committed foreign snapshot, and repos removed from the workspace (see [Cross-repo workspaces](cross-repo.md)) |
 | `WithResolver(check.Resolver)`, `WithStoredHashes(map)` | secret address checks under `Resolve`, and the stored truth hashes that let a run report `rotated` (see [Secrets, runs and URLs](secrets-and-runs.md)) |
-| `WithURLCheck(func(href) check.URLResult)` | answers `ds:url` under `Resolve` |
+| `WithURLCheck(func(href) check.URLResult)` | answers `ds:url` under `Resolve`; a result with `Checked` false is `unverifiable` (no answer, and not to be cached), one with `Checked` true and `Err` set is a `problem` (an href no request can be made from) |
+| `WithLocalReader(func(path string) ([]byte, error))` | reads a `local=true` def's target on the machine running `check`: a target it reads whose `pick=` finds something is `ok`, one it cannot read stays `unverifiable`. Nothing read is hashed or stored. The CLI passes `os.ReadFile` under the repository root |
 | `WithTestResults(map)` | published CI outcomes for `assert=true` citations |
 | `WithRecords(func(args) ([]map[string]string, error))` | a record source for `ds:table`; `records.Frontmatter(fsys, dir)` is the built-in one |
 | `WithSnapshot(func(id, sha) (string, bool))` | block content at a commit, for `at=` snapshots |

@@ -379,7 +379,7 @@ ds check [flags]
 | `--explain` | Before the findings, print every directive the scan matched, with its tier and carrier. |
 | `--env string` | The environment for citations that have no `env=`. Defaults to `[env] default`. |
 | `--run` | Execute `ds:run` directives, where `[run] enabled` and `[run] allow` permit. See [Secrets and runs](secrets-and-runs.md). |
-| `--resolve` | Reach providers and the network: `ds:url` links and secret addresses through `ds-resolve-<provider>` plugins. |
+| `--resolve` | Reach providers and the network: `ds:url` links and secret addresses through `ds-resolve-<provider>` plugins. Acts only with `[resolve] enabled = true`; otherwise it says so on stderr and contacts nothing. |
 | `--frozen` | Resolve foreign blocks from the committed `.ds/foreign.tsv` instead of syncing. This is the default when the `CI` environment variable is set. |
 | `--sync` | Sync the workspace index first, even under `CI`. `--frozen --sync` is a usage error. |
 

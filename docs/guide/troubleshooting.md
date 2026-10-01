@@ -150,18 +150,19 @@ This is every state in `check.StateValues`, with the severity and fix the code a
 | `translation stale` | error | the source paragraph of a `translates=true` citation changed | update the translation, then ack |
 | `unsourced` | warning | a secret def with no `from=` and no `truth=true` | declare where it comes from, or mark it the truth |
 | `chain broken` | error | a chain has zero or several `truth=true` defs, a `from=` names an undefined id, or a `from=` cycle | fix the chain |
-| `unverifiable` | warning | could not be checked here: a `local=true` def, a `ds:url` without `--resolve`, a resolver plugin missing or failing, an `at=` snapshot with no git to look it up, a `ds:table` or `ds:cfg query=` with no record source | nothing required; run where it can be checked, or configure `[records]` |
+| `unverifiable` | warning | could not be checked here: a `local=true` def whose file is absent here, a `ds:url` without `--resolve` or whose request got no answer, a resolver plugin missing, not logged in, or failing, an `at=` snapshot with no git to look it up, a `ds:table` or `ds:cfg query=` with no record source | nothing required; run where it can be checked, or configure `[records]` |
 | `skipped` | info | a `ds:run` not executed because `--run` was not given | pass `--run` where runs are enabled |
 | `orphan` | warning | a page's `covers` names an id that is not defined | remove it from `covers`, or restore the def |
 | `uncovered` | info | a def nothing cites or covers | cite it, or remove the def |
 | `unknown` | warning (error with `--strict`) | an unknown verb or key in a directive | fix the spelling, or register the verb |
 | `problem` | error | the scan could not use a directive: a duplicated id, a bare directive outside a comment, a missing key, a def in a generated file | as the message says; see below |
-| `dead` | error | a `ds:url` returned 400 or above, or the request failed | update or remove the link |
+| `dead` | error | a `ds:url` returned 400 or above, or a status other than its `expect=` | update or remove the link |
 | `retitled` | warning | a `ds:url` page title no longer contains `title=` | confirm it is still the right page |
 | `url moved` | warning | a `ds:url` redirects | update the link |
 | `undocumented export` | error | `[policy] require_doc` covers the file and an exported symbol in it has no def | `ds def <file>#<symbol>` and cite it |
 | `resolve failed` | error | with `--resolve`, a secret address does not exist at its provider | fix the address |
 | `out of sync` | error | with `--resolve`, a copy's hash differs from its truth's | run the sync job, then ack the runbooks |
+| `stale copy` | error | with `--resolve`, after the truth was rotated, a copy still holds its previous value | run the sync job of that copy |
 | `rotated` | warning | with `--resolve` and `store_hash`, the truth changed since its hash was stored | run the syncs of its copies, ack the runbooks |
 | `stale` | error | a repo-mode copy was rendered from an older version of its block | `ds refresh` |
 | `tampered` | error | a repo-mode copy was edited by hand | edit the source block, then `ds refresh` |
@@ -606,9 +607,9 @@ ds: workspace index unreachable and no cached copy
 
 In a fresh checkout with `workspace` set to a git URL, run `ds sync` once to clone the index into `.ds/index/`. After that, a failed fetch only warns and the cached copy is used.
 
-### Every external link is dead
+### Every external link is unverifiable
 
-A `ds check --resolve` run on a machine that cannot reach the hosts records each link as `dead … returned 0` and caches it for `url.ttl` (seven days by default). Delete `.ds/urls.json` and run again once the network is back.
+A `ds check --resolve` run on a machine that cannot reach the hosts reports each link `unverifiable` with the request's error (`external link not checked: … connection refused`) and caches nothing for it, so the next run with a network checks every link again. Builds before this one reported such links `dead … returned 0` and cached that for `url.ttl`; the cache entries they left are ignored, so nothing needs deleting.
 
 ### ds:run stops with "the shell is not on PATH"
 

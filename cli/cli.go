@@ -436,6 +436,17 @@ type loaded struct {
 func (ld loaded) flush() error { return ld.st.SaveCache(ld.cache) }
 
 // system loads the store and builds the library System for this tree.
+// readLocal reads a `local=true` def's target on this machine, for check
+// to tell a present file from an absent one (bug 85). A relative path is
+// under the repository root and an absolute one is taken as written,
+// because a local target is by nature a file outside git.
+func (a *App) readLocal(path string) ([]byte, error) {
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(a.dir, filepath.FromSlash(path))
+	}
+	return os.ReadFile(path)
+}
+
 func (a *App) system() (loaded, error) {
 	st := NewStore(a.dir)
 	cfg, err := a.loadConfig(st)
@@ -497,6 +508,7 @@ func (a *App) system() (loaded, error) {
 	if a.snapshot != nil {
 		opts = append(opts, docsync.WithSnapshot(a.snapshot))
 	}
+	opts = append(opts, docsync.WithLocalReader(a.readLocal))
 	if a.resolveHook != nil {
 		opts = append(opts, docsync.WithResolver(a.resolveHook), docsync.WithStoredHashes(a.storedHashes))
 	}
