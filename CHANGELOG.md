@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-01
+
+A release of the `ds` binary and the `cli` module (0.1.3), and of the library (0.1.1), which adds `run.shell` to the config. The end-to-end matrices now run on Linux and on Windows under Git Bash as well as on macOS.
+
 ### Added
 
 - `[run] shell` names the shell that `ds:run` commands and the `[review]` command run under (default `sh`).
