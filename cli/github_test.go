@@ -281,7 +281,7 @@ func TestGitHubComment(t *testing.T) {
 	t.Setenv(githubEventPath, filepath.Join(dir, "event.json"))
 	t.Setenv(envGitHubAPIURL, srv.URL)
 	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"[\"]\ndocs = [\"docs/**\"]\n")
-	if r := runGH("--report", report, "--dry-run"); r.code != ExitError {
+	if r := runGH("--report", report); r.code != ExitError {
 		t.Errorf("label with broken tree = %+v", r)
 	}
 }

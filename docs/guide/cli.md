@@ -670,7 +670,7 @@ ds review [--ai] [--out file]
 | Flag | Does |
 |---|---|
 | `--ai` | Pipe the worklist as JSON into `[review] command` and print the unified diff it writes to stdout. |
-| `--out string` | Write the patch to a file. Only valid with `--ai`. |
+| `--out string` | Write the output to a file instead of stdout: the worklist, or with `--ai` the patch. |
 
 After the session is raised to two hours in the code only:
 
@@ -685,8 +685,9 @@ $ ds review
       otherwise:  edit the sentence at docs/auth.md:3, then ack
 $ ds review --ai
 ds: usage: --ai needs [review] command in .ds/config.toml
-$ ds review --out review.patch
-ds: usage: --out writes the patch, which only --ai produces
+$ ds review --out ../review.txt
+$ head -1 ../review.txt
+- [ ] docs/auth.md:3  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
 ```
 
 `[review] command` (see [Configuration](configuration.md#review)) receives a JSON document on stdin with `instructions` and an `items` list (one per finding) and must print a unified diff. It runs under `[run] shell` (default `sh`). Here a stand-in script, kept outside the repository so its text is not scanned, prints a fixed patch:
@@ -833,14 +834,14 @@ internal/auth/session.go:14-19 @ 3d17fb2
 Prints a page together with every block it cites, or a block together with every sentence about it, within a token budget. This is the "what do I need to read before editing this" command, for people and agents alike.
 
 ```text
-ds context <doc>|<id> [--budget N] [--mode auto|full|diff|value] [--since ack] [--json]
+ds context <doc>|<id> [--budget N] [--mode auto|full|diff|value] [--since ack|<commit>] [--json]
 ```
 
 | Flag | Does |
 |---|---|
 | `--budget int` | Token budget; `0` (the default) is unbounded. Blocks that do not fit are left out and named on an `omitted` line. |
 | `--mode string` | `auto` (default) picks per block; `full` prints bodies, `diff` the change since the baseline, `value` the one-line value. |
-| `--since string` | `ack`: in auto mode, show a diff instead of the body for a block that changed since its ack. |
+| `--since string` | The baseline for diffs. `ack`: the diff since each sentence's ack, the one `check` reports. A commit: the diff since that commit. In auto mode a changed block is shown as that diff and an unchanged one shrinks to its location; any other value is an error. |
 | `--json` | Machine output. |
 
 ```console
@@ -860,10 +861,10 @@ const SessionTTL = 120 * time.Minute
 ## 2.  cites sessionttl-r7xkm5bw (full, 16 tokens)
 A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
 
-25 tokens used of 0
+25 tokens used, no budget
 ```
 
-In `diff` mode a block whose earlier body is not available prints its location with `(no diff available)`.
+With an id, every citation is listed: a sentence in full, and a citation in block position (`<!-- ds:block id=… -->`), which has no sentence, by its place. In `diff` mode a block with no change since the baseline prints its location with `(no diff available)`.
 
 ### ds map
 
@@ -1087,9 +1088,9 @@ ds render <doc> [--at commit] [--env name] [--out file]
 $ ds render docs/auth.md
 # Auth
 
-A session lasts [90 minutes](internal/auth/session.go#L10-L10).
+A session lasts [90 minutes](../internal/auth/session.go#L10-L10).
 
-[Login](internal/auth/session.go#L14-L19) returns a token for the user, and refuses an empty password with [ErrEmpty](internal/auth/errors.go#L7-L7).
+[Login](../internal/auth/session.go#L14-L19) returns a token for the user, and refuses an empty password with [ErrEmpty](../internal/auth/errors.go#L7-L7).
 ```
 
 With `[check] permalink` set, links use that template instead (see [Configuration](configuration.md#check)):
@@ -1105,7 +1106,9 @@ $ ds render docs/auth.md | grep 'A session'
 A session lasts [90 minutes](https://github.com/org/demo/blob/0f6d00f/internal/auth/session.go#L10-L10).
 ```
 
-`--at` takes the page text from the given commit. In the current build, the line numbers in its links, and the commit in a permalink, still come from the current tree rather than from that commit, so check them before publishing an old version of a page.
+A link is relative to the page, so `docs/auth.md` links `../internal/auth/session.go`, which resolves on GitHub and on any host serving the tree. In a `permalink` template, `{file}` is the path from the repository root and `{rel}` the path from the page.
+
+`--at` renders the page as it was at a commit: its text, the values and code of the blocks it cites, their line numbers, and the commit in a permalink all come from that commit. A page the commit does not have is an error that says so.
 
 ### ds export hugo
 
@@ -1167,11 +1170,13 @@ ds github comment [--pr N] [--report file] [--ack-label name] [--dry-run]
 | `--ack-label string` | The label under which every finding is acked for the reviewer who applied it. Default `docs-acked`; empty disables. |
 | `--dry-run` | Print the comment bodies instead of posting. |
 
-It needs `GITHUB_TOKEN` and `GITHUB_REPOSITORY` in the environment, even with `--dry-run`. Its exit code is the check's.
+Posting needs `GITHUB_TOKEN`, `GITHUB_REPOSITORY` and a pull request number. `--dry-run` needs none of them: it takes the repository for its links from `GITHUB_REPOSITORY`, or from `origin` when that is a github.com URL, and otherwise writes `OWNER/REPO` and says so. A `docs-acked` label applied in the event acks nothing under `--dry-run`. Its exit code is the check's.
 
 ~~~console
-$ ds github comment --dry-run --pr 7
-ds: github comment needs GITHUB_TOKEN and GITHUB_REPOSITORY, and a pull request number (--pr or GITHUB_EVENT_PATH)
+$ ds github comment --dry-run
+warning: GITHUB_REPOSITORY is unset and origin is not a GitHub URL; links use OWNER/REPO
+<!-- docsync:doc=docs/auth.md -->
+…
 $ GITHUB_TOKEN=x GITHUB_REPOSITORY=org/demo ds github comment --dry-run --pr 7
 <!-- docsync:doc=docs/auth.md -->
 ### docsync: `docs/auth.md`
@@ -1392,7 +1397,7 @@ $ cat docs/code.md
 # Login code
 
 <!-- ds:block id=login-j3nq87mh -->
-**Login** · [`internal/auth/session.go:14-19`](internal/auth/session.go#L14-L19)
+**Login** · [`internal/auth/session.go:14-19`](../internal/auth/session.go#L14-L19)
 
 ```go
 func Login(ctx context.Context, user, password string) (string, error) {
@@ -1447,7 +1452,7 @@ ds undo [--list] [--dry-run] [--force] [--orphan]
 | `--force` | Reverse a write that is already committed. |
 | `--orphan` | Reverse even when that removes a def that sentences still cite (here or, in a workspace, in other repositories). |
 
-Every run says what the next entry is, so you do not undo one step too many. An entry is committed when the line it wrote is still at the same line in `HEAD`, so a def whose line has since moved (entries 6 and 7 below, after `Login` gained an import block) is listed as `uncommitted` although it was committed; `undo` stops at the first committed entry before reaching it.
+Every run says what the next entry is, so you do not undo one step too many. An entry is committed when the line it wrote is anywhere in that file in `HEAD`, so a def whose line has since moved (entries 6 and 7 below, after `Login` gained an import block) is still committed; the commit shown is the one that wrote the line.
 
 ```console
 $ ds undo --list
@@ -1457,8 +1462,8 @@ $ ds undo --list
 3  def     internal/auth/errors.go:10          empty-password-m4k8q2xz  just now  committed 285bed3
 4  def     internal/auth/logout.go:4           logout-d3dzzyqr          just now  committed 285bed3
 5  def     internal/auth/errors.go:6           empty-password-rsh5d7az  just now  committed 285bed3 · cited by docs/auth.md:5
-6  def     internal/auth/session.go:10         login-j3nq87mh           just now  uncommitted · cited by docs/api.md:3, docs/api.md:5, docs/auth.md:5
-7  def     internal/auth/session.go:6          sessionttl-r7xkm5bw      just now  uncommitted · cited by docs/auth.md:3
+6  def     internal/auth/session.go:10         login-j3nq87mh           just now  committed 285bed3 · cited by docs/api.md:3, docs/api.md:5, docs/auth.md:5
+7  def     internal/auth/session.go:6          sessionttl-r7xkm5bw      just now  committed 285bed3 · cited by docs/auth.md:3
 $ ds undo --dry-run
 would undo rename docs/auth.md:3 +1 more (--dry-run)
   docs/auth.md:3

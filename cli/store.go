@@ -260,6 +260,20 @@ func (s *Store) loadShards() (map[string]ledger.Ledger, error) {
 	return shards, nil
 }
 
+// shardedOnDisk reports that the ledger is stored as .ds/ledger/*.tsv.
+func (s *Store) shardedOnDisk() bool {
+	info, err := os.Stat(s.path(LedgerDir))
+	return err == nil && info.IsDir()
+}
+
+// sameBody reports two encoded ledger or refs files equal below their
+// header line, which carries when they were written and nothing else.
+func sameBody(a, b []byte) bool {
+	_, a, _ = bytes.Cut(a, []byte("\n"))
+	_, b, _ = bytes.Cut(b, []byte("\n"))
+	return bytes.Equal(a, b)
+}
+
 // SaveLedger writes ledger and refs atomically. With shard set the ledger
 // goes to .ds/ledger/<top-level dir>.tsv, one file per directory, and the
 // single-file ledger is removed so the two never disagree.
@@ -480,7 +494,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: "1.26" }
       - run: go install github.com/ubgo/docsync/cli/cmd/ds@latest
-      - run: ds check --json > docsync.json || (cat docsync.json; exit 1)
+      - run: ds check --json > "$RUNNER_TEMP/docsync.json" || (cat "$RUNNER_TEMP/docsync.json"; exit 1)
 `
 
 // agentsFragment is section 25 of the spec as a file an agent config can

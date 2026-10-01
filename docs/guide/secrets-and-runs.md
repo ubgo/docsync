@@ -435,9 +435,9 @@ $ ds render docs/payments.md
 
 Stripe credentials:
 
-- `app-stripe-key-m4w8k2qn` env `STRIPE_KEY` — [internal/pay/stripe.go:7](internal/pay/stripe.go#L7-L7)
-  - from `gh-stripe-key-r4t6x2mb` github `${{ secrets.STRIPE_KEY }}` — [.github/workflows/deploy.yml:7](.github/workflows/deploy.yml#L7-L7) · synced by `scripts/sync-secrets.sh`
-    - from `op-stripe-key-p9c2v7ld` 1password `op://Platform/stripe-prod/credential` — [.env.tpl:1](.env.tpl#L1-L1) · **truth**
+- `app-stripe-key-m4w8k2qn` env `STRIPE_KEY` — [internal/pay/stripe.go:7](../internal/pay/stripe.go#L7-L7)
+  - from `gh-stripe-key-r4t6x2mb` github `${{ secrets.STRIPE_KEY }}` — [.github/workflows/deploy.yml:7](../.github/workflows/deploy.yml#L7-L7) · synced by `scripts/sync-secrets.sh`
+    - from `op-stripe-key-p9c2v7ld` 1password `op://Platform/stripe-prod/credential` — [.env.tpl:1](../.env.tpl#L1-L1) · **truth**
 
 The app reads STRIPE_KEY from its environment.
 ```

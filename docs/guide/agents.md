@@ -230,7 +230,7 @@ $ ds review --ai
 - **Go to definition** from a cite jumps to the block in the source file.
 - **Diagnostics**: renaming or deleting a defined symbol in an open buffer produces a warning before you save, for example `SessionTTL renamed to SessionLifetime (sess-ttl); 1 dependent(s) cite it`.
 
-The server reads the repository from its working directory, walking up to the nearest `.ds/config.toml`; it does not use the client's `rootUri`. Start it inside the repository, or pass `--dir`:
+The server serves the workspace the client names in `initialize` (its first workspace folder, else `rootUri`, else `rootPath`), walking up from there to the nearest `.ds/config.toml`; with none named, it starts from its working directory. A workspace that is not a directory is reported in the editor's log. `--dir` overrides the client:
 
 ```sh
 ds --dir /path/to/repo lsp

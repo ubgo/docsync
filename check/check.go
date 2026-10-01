@@ -725,6 +725,17 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 			return
 		}
 		expected, ok, _ := render.Fragment(def, ref, r.in.Prefix, r.in.Opts.MaxLines)
+		if ok && textnorm.NormalizeString(expected) != textnorm.NormalizeString(ref.Region.Text) && legacyCopy(def, ref, r.in.Prefix, r.in.Opts.MaxLines) {
+			// Written by a build whose links were relative to the
+			// repository root (bug 64): nobody edited it, so it is not
+			// tampered; refresh rewrites it with links that resolve.
+			f := base
+			f.State = StateStale
+			f.Message = "copy has links relative to the repository root, which do not resolve from the page"
+			f.Remedy = Remedy{Fix: fmt.Sprintf(remedyStale, ref.Pos.File, ref.Pos.Start, def.ID)}
+			r.emit(f)
+			return
+		}
 		if ok && textnorm.NormalizeString(expected) != textnorm.NormalizeString(ref.Region.Text) {
 			f := base
 			f.State = StateTampered
@@ -1040,6 +1051,15 @@ func (r *runner) vanished(id string) match.Change {
 	return match.Change{}
 }
 
+// legacyCopy reports that a repo-mode copy is exactly what a build before
+// page-relative links (bug 64) wrote: the fragment rendered as if the page
+// sat at the repository root, where the two forms agree.
+func legacyCopy(def block.Block, ref block.Reference, prefix string, maxLines int) bool {
+	ref.Pos.File = ""
+	legacy, ok, _ := render.Fragment(def, ref, prefix, maxLines)
+	return ok && textnorm.NormalizeString(legacy) == textnorm.NormalizeString(ref.Region.Text)
+}
+
 func orMissing(s string) string {
 	if s == "" {
 		return "no result recorded"
@@ -1172,10 +1192,14 @@ func (r *runner) claim(ref block.Reference, base Finding) {
 		r.emit(f)
 		return
 	}
-	// The latest ack of this claim renews the review date.
-	if a, ok := r.claimRenewal(ref); ok && a.At.After(t) {
-		t = a.At
+	// The latest ack of this claim renews the review date, and, while what
+	// the claim is about still hashes as it did then, accepts its changes.
+	renewal, renewed := r.claimRenewal(ref)
+	if renewed && renewal.At.After(t) {
+		t = renewal.At
 	}
+	about := ClaimAbout(ref)
+	reviewedAbout := renewed && renewal.BlockHash != "" && renewal.BlockHash == AboutHash(about, r.in.Defs, r.in.Merged)
 	f := base
 	if r.in.Now.After(t.Add(d)) {
 		f.State = StateExpired
@@ -1184,12 +1208,11 @@ func (r *runner) claim(ref block.Reference, base Finding) {
 		r.emit(f)
 		return
 	}
-	for _, id := range ref.Directive().List(keyAbout) {
-		id = strings.Trim(id, "[]")
+	for _, id := range about {
 		r.referenced[id] = true
 		// A claim about an id is about every environment of it.
 		for _, c := range r.changesOfID[id] {
-			if c.State == match.StateChanged && c.Flags {
+			if c.State == match.StateChanged && c.Flags && !reviewedAbout {
 				f.State = StateExpired
 				f.ID = id
 				f.Classes = c.Classes
@@ -1498,6 +1521,41 @@ func plural(n int, word string) string {
 		return fmt.Sprintf("%d %s", n, word)
 	}
 	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// ClaimAbout lists the ids a claim's about= names, brackets trimmed.
+func ClaimAbout(ref block.Reference) []string {
+	var ids []string
+	for _, id := range ref.Directive().List(keyAbout) {
+		ids = append(ids, strings.Trim(id, "[]"))
+	}
+	return ids
+}
+
+// AboutHash fingerprints what a claim is about: every current hash of every
+// id in ids, across environments and repositories. The ack that renews a
+// claim records it, and check then holds a changed about= block as reviewed
+// while the fingerprint still matches. Without it, renewing a claim whose
+// block had changed printed "renewed" and left the claim expired until the
+// next `ds scan` recorded the new hash (bug 72). Empty when ids is empty.
+func AboutHash(ids []string, defs ...[]block.Block) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	var parts []string
+	for _, set := range defs {
+		for _, b := range set {
+			if want[b.ID] {
+				parts = append(parts, b.ID+"\x00"+b.Env()+"\x00"+b.Hash)
+			}
+		}
+	}
+	sort.Strings(parts)
+	return textnorm.HashLines(append(append([]string{}, ids...), parts...))
 }
 
 // claimRenewal is the newest ack that renewed this claim: the one recorded

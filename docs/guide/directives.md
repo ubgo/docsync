@@ -648,9 +648,9 @@ The guard is [`SaveSession`](ds:block?id=store-savesession-m6twuucd). It returns
 $ ds render docs/sessions.md
 # Sessions
 
-The guard is [`SaveSession`](store/store.go#L15-L20). It returns early when the id is empty.
+The guard is [`SaveSession`](../store/store.go#L15-L20). It returns early when the id is empty.
 
-**the guard** · [`store/store.go:15-20`](store/store.go#L15-L20)
+**the guard** · [`store/store.go:15-20`](../store/store.go#L15-L20)
 
 ```go
 func (s *Store) SaveSession(ctx context.Context, sess Session) error {
@@ -740,7 +740,7 @@ docs/sessions.md
 4 error
 ```
 
-`at=` is a snapshot and `ds check` reports it as `ok` with "snapshot pinned". The snapshot's code is produced by `ds render --at <commit>`; a plain `ds render` prints the as-of badge and link and notes `no snapshot for … rendering the link only`.
+`at=` is a snapshot and `ds check` reports it as `ok` with "snapshot pinned". `ds render` shows the block as it was at that commit, with an "as of" badge and a link to the lines it occupied then; it reads the file and `.ds/ledger.tsv` from that commit, so it needs the ledger committed there. Where either is missing it prints the badge and the link and notes `no snapshot for … rendering the link only`.
 
 ## ds:cfg — put a value in a sentence
 
@@ -751,7 +751,7 @@ git init -q -b main .
 ds init
 -->
 
-`ds:cfg` inlines the current value of a one-line def. Link form only. The link text is the last known value, so the raw markdown still reads well; the build replaces it.
+`ds:cfg` inlines the current value of a one-line def. Link form only: `<!-- ds:cfg id=… -->` on a line of its own is a scan problem that fails `ds check`, because `ds render` cannot put a value there. The link text is the last known value, so the raw markdown still reads well; the build replaces it.
 
 ```go file=store/limits.go
 package store
@@ -912,13 +912,11 @@ docs/claims.md
 2 error, 1 none
 ```
 
-Renew a claim with `ds ack --doc <doc> --line <n> --note '…'`. For an `about=` claim, run `ds scan` after the ack so the finding clears:
+Renew a claim with `ds ack --doc <doc> --line <n> --note '…'`. For an `about=` claim the ack also records what the listed blocks are now, so the change it accepts stops expiring the claim, and the next change to them expires it again:
 
 ```
 $ ds ack --doc docs/claims.md --line 7 --note 'cap still applies'
 renewed the claim at docs/claims.md:7 (human)
-$ ds scan
-2 files, 1 defs, 3 refs, 0 problems, 0 skipped
 $ ds check
 docs/claims.md
   5	error    expired            claim reviewed 2026-01-01 expired after 30d

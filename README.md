@@ -281,7 +281,7 @@ These are deliberate and recorded so the spec can catch up rather than drift:
 - Merged workspace references carry `doc_repo` in findings, additively, so a repo can tell which other repo's page depends on its block.
 - Config keys can be one def per environment: duplicates are keyed by id and `env=` together.
 - `ds:run` outcomes live in `.ds/runs.json`, url checks in `.ds/urls.json`, notify state in `.ds/notified.json`, stored truth hashes in `.ds/hashes.json`, and the source-write journal in `.ds/journal.tsv`; the spec named the behaviours and left the files to the implementation.
-- Repo-mode copies end with `<!-- /ds:block hash=… -->` carrying the short block hash, which is how `check` tells `stale` (source moved on) from `tampered` (copy edited) without storing anything else; permalinks inside a committed copy are repo-relative so a new commit does not touch every copy.
+- Repo-mode copies end with `<!-- /ds:block hash=… -->` carrying the short block hash, which is how `check` tells `stale` (source moved on) from `tampered` (copy edited) without storing anything else; permalinks inside a committed copy are relative to the page and carry no commit, so a new commit does not touch every copy.
 - Secret resolvers are process plugins only (`ds-resolve-<provider>`); `resolve.providers` in config limits which are consulted, and a plugin reply carrying anything but existence and a hash is refused by the host.
 - The MCP server lives in the `cli` module (`ds mcp`) rather than a separate `mcp` module; it is a thin JSON-RPC loop over the same library calls and would only add a module boundary today.
 - The HTTP record source lives in the `cli` module, since the root must stay free of `net/http`; the SQLite source is its own module because of its driver.

@@ -638,6 +638,9 @@ func (a *App) ackCmd() *cobra.Command {
 		Use:   "ack <id>...",
 		Short: "record that the sentences citing these ids are still true at the current hash",
 		RunE: func(cmd *cobra.Command, ids []string) error {
+			// noteFor holds the note= a commit-message ack gave its id; it
+			// wins over --note and the commit subject.
+			noteFor := map[string]string{}
 			if doc != "" {
 				d, err := a.repoPath(doc)
 				if err != nil {
@@ -686,11 +689,19 @@ func (a *App) ackCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				found := ackDirectives(cfg.Prefix, msg)
+				found, err := ackDirectives(cfg.Prefix, msg)
+				if err != nil {
+					return fmt.Errorf("commit %s: %w", fromCommit, err)
+				}
 				if len(found) == 0 {
 					return fmt.Errorf("%w: commit %s carries no %s:ack id=…", ErrUsage, fromCommit, cfg.Prefix)
 				}
-				ids = append(ids, found...)
+				for _, ca := range found {
+					ids = append(ids, ca.ID)
+					if ca.Note != "" {
+						noteFor[ca.ID] = ca.Note
+					}
+				}
 				all = true
 				if note == "" {
 					note, _, _ = strings.Cut(msg, "\n")
@@ -738,7 +749,7 @@ func (a *App) ackCmd() *cobra.Command {
 					}
 				}
 				for _, t := range targets {
-					reqs = append(reqs, docsync.AckRequest{ID: id, Doc: t.File, Line: t.Start, Actor: a.actor(actor), ActorKind: kind, DelegatedBy: delegatedBy, Note: note, Claim: id == "" && !page, Page: page})
+					reqs = append(reqs, docsync.AckRequest{ID: id, Doc: t.File, Line: t.Start, Actor: a.actor(actor), ActorKind: kind, DelegatedBy: delegatedBy, Note: orDefault(noteFor[id], note), Claim: id == "" && !page, Page: page})
 				}
 			}
 			if len(reqs) == 0 {
@@ -827,18 +838,65 @@ func preview(s string) string {
 	return string(r[:sentencePreviewWidth-1]) + "…"
 }
 
-// ackDirectives extracts ids from `<prefix>:ack id=<id>` occurrences in
-// text. The prefix is the configured one, as for every other directive: a
-// repository changes it precisely because `ds:` already appears in its
-// prose, and a commit message that only mentioned `ds:ack id=x` acked x
-// across every doc.
-func ackDirectives(prefix, text string) []string {
-	re := regexp.MustCompile(`(?:^|[^A-Za-z0-9_])` + regexp.QuoteMeta(prefix) + `:ack\s+id=([A-Za-z0-9_-]+)`)
-	var ids []string
-	for _, m := range re.FindAllStringSubmatch(text, -1) {
-		ids = append(ids, m[1])
+// commitAck is one `<prefix>:ack id=… [note=…]` in a commit message.
+type commitAck struct {
+	ID   string
+	Note string // "" when the directive gives none
+}
+
+// Keys a commit-message ack takes.
+const (
+	commitAckID   = "id"
+	commitAckNote = "note"
+)
+
+// commitAckKeys is the closed set of keys a commit-message ack accepts.
+var commitAckKeys = []string{commitAckID, commitAckNote}
+
+// ErrCommitAckKey is a key on a commit-message ack that is not in
+// commitAckKeys. note= used to be read past without a word, so the note a
+// developer wrote never reached the ack log (bug 73); any key that does
+// nothing is refused rather than ignored.
+var ErrCommitAckKey = fmt.Errorf("%w: an ack in a commit message takes only %s", ErrUsage, strings.Join(commitAckKeys, "= and ")+"=")
+
+// commitAckRE finds `<prefix>:ack` and the run of key=value pairs after
+// it; a value is quoted, or runs to whitespace, a comma or a parenthesis,
+// so an ack in running prose ("(ds:ack id=x)") ends where the prose resumes.
+func commitAckRE(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`(?:^|[^A-Za-z0-9_])` + regexp.QuoteMeta(prefix) + `:ack((?:\s+[A-Za-z_]+=(?:"[^"]*"|'[^']*'|[^\s"'(),]+))+)`)
+}
+
+// commitAckPairRE splits that run into key and value.
+var commitAckPairRE = regexp.MustCompile(`([A-Za-z_]+)=("[^"]*"|'[^']*'|[^\s"'(),]+)`)
+
+// commitAckIDRE is the shape of an id an ack in prose may name.
+var commitAckIDRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// ackDirectives extracts every `<prefix>:ack id=<id> [note=…]` in text. The
+// prefix is the configured one, as for every other directive: a repository
+// changes it precisely because `ds:` already appears in its prose, and a
+// commit message that only mentioned `ds:ack id=x` acked x across every
+// doc. An ack with no usable id is not an ack and is skipped.
+func ackDirectives(prefix, text string) ([]commitAck, error) {
+	var out []commitAck
+	for _, m := range commitAckRE(prefix).FindAllStringSubmatch(text, -1) {
+		var ca commitAck
+		for _, kv := range commitAckPairRE.FindAllStringSubmatch(m[1], -1) {
+			v := strings.Trim(kv[2], `"'`)
+			switch kv[1] {
+			case commitAckID:
+				ca.ID = v
+			case commitAckNote:
+				ca.Note = v
+			default:
+				return nil, fmt.Errorf("%w; %s:ack has %s=", ErrCommitAckKey, prefix, kv[1])
+			}
+		}
+		if commitAckIDRE.MatchString(ca.ID) {
+			out = append(out, ca)
+		}
 	}
-	return ids
+	return out, nil
 }
 
 // recordAcks builds every ack against the current hashes and appends them
@@ -912,6 +970,14 @@ func (a *App) refreshCmd() *cobra.Command {
 				return nil
 			}
 			l, r := sys.Snapshot(rep.Scan)
+			// Nothing to record: the files stay as they are. Rewriting them
+			// anyway changed only the header's scanned_at, so every refresh
+			// dirtied two committed files and a second refresh was never a
+			// no-op (bug 77).
+			if sameBody(l.Bytes(), ld.prev.Bytes()) && sameBody(r.Bytes(), ld.refs.Bytes()) && st.shardedOnDisk() == ld.cfg.Ledger.Shard {
+				fmt.Fprintf(out, "%d moved; ledger unchanged\n", moved)
+				return ld.flush()
+			}
 			if err := st.SaveLedgerSharded(l, r, ld.cfg.Ledger.Shard); err != nil {
 				return err
 			}
@@ -969,12 +1035,9 @@ func (a *App) renderCmd() *cobra.Command {
 			}
 			ropts := docsync.RenderOptions{Env: env}
 			if at != "" {
-				a.snapshot = a.snapshotAt(at)
-				src, err := a.vcs.Show(at, doc)
-				if err != nil {
-					return fmt.Errorf("%s at %s: %w", doc, at, err)
+				if err := a.renderAt(doc, at); err != nil {
+					return err
 				}
-				ropts.Source = src
 			}
 			ld, err := a.system()
 			if err != nil {
@@ -1075,6 +1138,9 @@ func (a *App) contextCmd() *cobra.Command {
 					return err
 				}
 			}
+			if opts.OldBody, err = a.contextSince(cmd.Context(), sys, opts.Since); err != nil {
+				return err
+			}
 			c, err := sys.Context(cmd.Context(), target, opts)
 			if err != nil {
 				return err
@@ -1089,12 +1155,12 @@ func (a *App) contextCmd() *cobra.Command {
 			for _, o := range c.Omitted {
 				fmt.Fprintf(out, "omitted %s: %s\n", o.ID, o.Reason)
 			}
-			fmt.Fprintf(out, "%d tokens used of %d\n", c.UsedTokens, c.BudgetTokens)
+			fmt.Fprintln(out, tokensLine(c.UsedTokens, c.BudgetTokens))
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&opts.Budget, flagBudget, 0, "token budget; 0 is unbounded")
-	cmd.Flags().StringVar(&opts.Since, flagSince, "", "ack, or a commit: return diffs since then")
+	cmd.Flags().StringVar(&opts.Since, flagSince, "", "ack, or a commit: diff each cited block against its body then")
 	cmd.Flags().StringVar(&opts.Mode, flagMode, docsync.ModeAuto, "auto|full|diff|value")
 	cmd.Flags().BoolVar(&asJSON, flagJSON, false, "machine output")
 	return cmd

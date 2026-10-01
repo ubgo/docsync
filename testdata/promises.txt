@@ -149,3 +149,6 @@ prune-by-hash	test	a targeted `--hash … --force` for a value that should never
 ds-dir-not-scanned	test	The `.ds/` directory is never scanned
 agent-bounded	test	`ack` is refused unless it names the human who delegated the run
 agent-bounded	test	`run`, `resolve`, `undo`, `publish` and `adopt` are not exposed to agents at all
+context-since-checked	test	any other value is refused
+commit-ack-keys	test	any other key is refused.
+ack-scope-named	test	An id with neither `--doc` and `--line` nor `--all` is refused, so no sentence is approved without being named.

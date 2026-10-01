@@ -137,6 +137,7 @@ type System struct {
 	storedHashes map[string]string
 	tests        map[string]check.TestOutcome
 	snapshot     func(id, sha string) (string, bool)
+	snapshotAt   func(id, sha string) (block.Block, bool)
 	records      func(args map[string]string) ([]map[string]string, error)
 }
 
@@ -358,6 +359,14 @@ func WithTestResults(m map[string]check.TestOutcome) Option {
 // WithSnapshot supplies block bodies at a commit for `at=` rendering.
 func WithSnapshot(f func(id, sha string) (string, bool)) Option {
 	return func(s *System) error { s.snapshot = f; return nil }
+}
+
+// WithSnapshotBlock supplies the whole block at a commit for `at=`
+// rendering: its body and where it was, so the caption and link of a
+// snapshot name the lines the code occupied at that commit rather than
+// today's. It takes precedence over WithSnapshot when both are given.
+func WithSnapshotBlock(f func(id, sha string) (block.Block, bool)) Option {
+	return func(s *System) error { s.snapshotAt = f; return nil }
 }
 
 // WithRecords supplies a record source for `ds:table`.
@@ -762,7 +771,7 @@ func (s *System) Render(ctx context.Context, doc string, opts RenderOptions) ([]
 	in := render.Input{Doc: doc, Src: src, Defs: append(append([]block.Block{}, res.Defs...), s.merged...)}
 	ropts := render.Options{
 		Prefix: s.cfg.Prefix, Permalink: s.cfg.Check.Permalink, Commit: s.commit, MaxLines: s.cfg.Include.MaxLines,
-		Env: env, Now: s.now(), Snapshot: s.snapshot, Records: s.records, Runs: opts.Runs, Verbs: s.renderVerbs(res.Defs),
+		Env: env, Now: s.now(), Snapshot: s.snapshot, SnapshotBlock: s.snapshotAt, Records: s.records, Runs: opts.Runs, Verbs: s.renderVerbs(res.Defs),
 	}
 	if s.renderer != nil {
 		nodes, notes := render.RenderNodes(in, ropts)

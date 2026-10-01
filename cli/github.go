@@ -59,7 +59,29 @@ const (
 )
 
 // ErrGitHubEnv names the missing environment.
-var ErrGitHubEnv = errors.New("github comment needs GITHUB_TOKEN and GITHUB_REPOSITORY, and a pull request number (--pr or GITHUB_EVENT_PATH)")
+var ErrGitHubEnv = errors.New("github comment needs GITHUB_TOKEN and GITHUB_REPOSITORY, and a pull request number (--pr or GITHUB_EVENT_PATH); --dry-run needs none of them")
+
+// placeholderRepo stands in for owner/name in a dry run's links when
+// neither GITHUB_REPOSITORY nor origin names the repository.
+const placeholderRepo = "OWNER/REPO"
+
+// githubRemoteHosts are the URL prefixes origin may use for a repository on
+// github.com; the owner/name follows.
+var githubRemoteHosts = []string{"git@github.com:", "ssh://git@github.com/", "https://github.com/", "http://github.com/", "git://github.com/"}
+
+// githubRepoFromRemote returns owner/name from a github.com remote URL, or
+// "" for any other remote.
+func githubRepoFromRemote(remote string) string {
+	for _, h := range githubRemoteHosts {
+		if rest, ok := strings.CutPrefix(remote, h); ok {
+			rest = strings.TrimSuffix(strings.TrimSuffix(rest, "/"), ".git")
+			if owner, name, ok := strings.Cut(rest, "/"); ok && owner != "" && name != "" && !strings.Contains(name, "/") {
+				return rest
+			}
+		}
+	}
+	return ""
+}
 
 // prEvent is the subset of the pull_request event payload used here.
 type prEvent struct {
@@ -114,7 +136,18 @@ func (a *App) githubCmd() *cobra.Command {
 			if gh.client == nil {
 				gh.client = &http.Client{Timeout: urlTimeout}
 			}
-			if gh.token == "" || gh.repo == "" || pr == 0 {
+			// --dry-run posts nothing, so it needs no token and no pull
+			// request; it used to demand both, which made it useless for
+			// previewing a comment anywhere but inside the CI job (bug 69).
+			// The repository only shapes the links, so it falls back to
+			// origin, then to a placeholder the output names.
+			if dry && gh.repo == "" {
+				if gh.repo = githubRepoFromRemote(a.vcs.RemoteURL()); gh.repo == "" {
+					gh.repo = placeholderRepo
+					fmt.Fprintf(a.stderr, "warning: %s is unset and origin is not a GitHub URL; links use %s\n", envGitHubRepository, placeholderRepo)
+				}
+			}
+			if !dry && (gh.token == "" || gh.repo == "" || pr == 0) {
 				return ErrGitHubEnv
 			}
 			sha := ev.PullRequest.Head.SHA
@@ -149,7 +182,9 @@ func (a *App) githubCmd() *cobra.Command {
 			if ackLabel != "" && present && !applied && rep.ExitCode != 0 {
 				fmt.Fprintf(out, "label %s is on the pull request, but it acks only when it is applied: re-apply it to accept these findings\n", ackLabel)
 			}
-			if applied {
+			if applied && dry {
+				fmt.Fprintf(out, "label %s was applied: a real run would ack every finding above; nothing acked (--dry-run)\n", ackLabel)
+			} else if applied {
 				n, err := a.ackAll(ld, rep, actorGitHub+ev.Sender.Login, fmt.Sprintf("label %s on pull request #%d", ackLabel, pr))
 				if err != nil {
 					return err

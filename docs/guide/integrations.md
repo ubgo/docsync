@@ -35,7 +35,7 @@ Sessions expire after 30 minutes.
 
 Every session write goes through SaveSession:
 
-**SaveSession** · [`store/session.go:7-9`](store/session.go#L7-L9)
+**SaveSession** · [`store/session.go:7-9`](../store/session.go#L7-L9)
 
 ```go
 func SaveSession(id string) error {
@@ -198,7 +198,7 @@ Three settings in that file are there because the build fails without them:
 
 - **`beforeDefaultRemarkPlugins`, not `remarkPlugins`.** The transformer replaces the page's whole tree with the rendered one. Registered under `remarkPlugins`, which run after Docusaurus's own remark plugins, every page then fails to render with `Cannot read properties of undefined (reading 'length')`. Running it before the defaults lets Docusaurus process the rendered page as if it had been written that way.
 - **`markdown: { format: 'detect' }`.** Docusaurus parses `.md` files as MDX by default, and MDX rejects HTML comments, so a page with a block-form directive such as `<!-- ds:block id=sess-save -->` fails to parse before the plugin ever sees it. With `detect`, `.md` files are CommonMark and `.mdx` files stay MDX. Link-form directives (`[30](ds:cfg?id=sess-ttl)`) parse either way.
-- **`onBrokenLinks: 'warn'`.** A rendered block carries a caption linking to its source, such as `store/session.go#L7-L9`, a path relative to the repository root that does not exist in the site. With the default `throw`, Docusaurus stops the build on it.
+- **`onBrokenLinks: 'warn'`.** A rendered block carries a caption linking to its source, such as `../store/session.go#L7-L9`, a path relative to the page that resolves in the repository but not in the site, which holds only the docs. With the default `throw`, Docusaurus stops the build on it.
 
 `cwd` must be the repository root, because the plugin passes each page's path relative to it to `ds render`. Pages are rendered from the file on disk, so the docs must live inside that repository.
 

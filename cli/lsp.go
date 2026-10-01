@@ -191,6 +191,7 @@ func (s *lspServer) handle(req rpcRequest) (resp rpcResponse, reply bool, notes 
 	path := s.relPath(p.TextDocument.URI)
 	switch req.Method {
 	case "initialize":
+		notes = s.adoptRoot(req.Params)
 		resp.Result = map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync":   lspSyncFull,
@@ -200,6 +201,7 @@ func (s *lspServer) handle(req rpcRequest) (resp rpcResponse, reply bool, notes 
 			},
 			"serverInfo": map[string]any{"name": mcpServerName, "version": docsync.SpecVersion},
 		}
+		return resp, true, notes
 	case "initialized", "$/cancelRequest":
 		return resp, false, nil
 	case "shutdown":

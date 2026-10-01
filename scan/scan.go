@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -55,6 +56,7 @@ const (
 	SkipLongLine  SkipReason = "long-line"    // a non-prose line past MaxLineChars, taken as minified
 	SkipBinary    SkipReason = "binary"       // holds a NUL byte
 	SkipReadError SkipReason = "read-error"   // could not be stat'd or read
+	SkipOwnOutput SkipReason = "ds-output"    // a report ds itself wrote (IsOwnOutput)
 )
 
 // Unreadable reports whether a file was skipped because of its form — too
@@ -72,7 +74,7 @@ func (r SkipReason) Unreadable() bool {
 }
 
 // SkipReasonValues is the canonical order.
-var SkipReasonValues = []SkipReason{SkipExcluded, SkipNotIn, SkipTooLarge, SkipLongLine, SkipBinary, SkipReadError}
+var SkipReasonValues = []SkipReason{SkipExcluded, SkipNotIn, SkipTooLarge, SkipLongLine, SkipBinary, SkipReadError, SkipOwnOutput}
 
 // Sentinel problem errors produced at the scan level (extractor problems keep
 // their own sentinels).
@@ -111,6 +113,13 @@ var (
 	ErrRemoteSkipped = errors.New("scan: remote def target is not readable as text")
 	ErrPick          = errors.New("scan: pick failed")
 	ErrNoInclude     = errors.New("scan: no include patterns; nothing would be scanned")
+	// ErrCfgBlockForm is `<!-- ds:cfg id=… -->` on a line of its own. cfg
+	// puts a value inside a sentence, so it is link form only (§9.3); the
+	// block form scanned and checked as a citation while render refused it
+	// and left the comment in the page, so a page that passed check
+	// published without its value (bug 67). It is reported here so check
+	// fails where render would.
+	ErrCfgBlockForm = errors.New("scan: ds:cfg is link form only; write [value](ds:cfg?id=…) in the sentence")
 )
 
 // Options configures a scan. Include and Exclude are compiled glob sets;
@@ -290,6 +299,10 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 					results[i] = fileResult{path: p, skip: reason}
 					continue
 				}
+				if IsOwnOutput(src) {
+					results[i] = fileResult{path: p, skip: SkipOwnOutput}
+					continue
+				}
 				if !extract.IsProse(ex) && hasLongLine(src, opts.MaxLineChars) {
 					results[i] = fileResult{path: p, skip: SkipLongLine}
 					continue
@@ -378,6 +391,9 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 		}
 		for _, ref := range found.Refs {
 			ref.Reference.Pos.File = p
+			if ref.Reference.Verb == extract.VerbCfg && ref.Reference.Carrier == block.CarrierBlock {
+				res.Problems = append(res.Problems, Problem{Pos: ref.Reference.Pos, Err: ErrCfgBlockForm})
+			}
 			res.Refs = append(res.Refs, ref.Reference)
 		}
 		for _, pr := range found.Problems {
@@ -465,6 +481,32 @@ func readContent(fsys fs.FS, p string) ([]byte, SkipReason) {
 	}
 	// Line numbers are unchanged: the mark sits in front of line 1.
 	return textnorm.TrimBOM(src), ""
+}
+
+// ownJSONRE matches a report printed by any `--json` command: an object
+// whose first key is the envelope's json_format (§26.2).
+var ownJSONRE = regexp.MustCompile(`^\s*\{\s*"json_format"\s*:`)
+
+// ownAuditPrefix and ownAuditKey mark a line of `ds audit --export`: one
+// ack row as JSON, whose fields come in a fixed order from ledger.Ack.
+const (
+	ownAuditPrefix = `{"At":"`
+	ownAuditKey    = `"ActorKind":"`
+)
+
+// IsOwnOutput reports a file ds itself wrote: a `--json` report, or an
+// ack log exported by `ds audit --export`. Both quote sentences, citations
+// included, so scanned with the default `code = ["**"]` a report saved
+// inside the repository became a phantom citation of every block it
+// mentioned (bug 75), and `rename` rewrote the ids in an exported audit
+// record (bug 74). The test is the content, not the name, because the user
+// names the file.
+func IsOwnOutput(src []byte) bool {
+	if ownJSONRE.Match(src) {
+		return true
+	}
+	first, _, _ := bytes.Cut(src, []byte("\n"))
+	return bytes.HasPrefix(first, []byte(ownAuditPrefix)) && bytes.Contains(first, []byte(ownAuditKey))
 }
 
 // hasLongLine reports a line past max, the scanner's sign of minified code.

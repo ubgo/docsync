@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -230,6 +231,13 @@ func survivors(citers []string, id string, batch []undoEntry) []string {
 // than a stored commit id, so it stays correct across amends and rebases. A
 // repo with no git, or no commits, has no history to protect and every write
 // there counts as uncommitted.
+//
+// A written line is found anywhere in HEAD's file, not only at the line it
+// was written to: a def committed and then pushed down by lines added above
+// it is still in history, and was listed as "uncommitted" (bug 71). A
+// deletion has no written line to look for and is judged at its line. The
+// commit named is the one that introduced the line, where the VCS can say
+// (introducer); it used to be HEAD, whatever commit had made the write.
 func (a *App) historyStatus(e docsync.Edit) (undoStatus, string) {
 	head, err := a.vcs.Head()
 	if err != nil || head == "" {
@@ -240,10 +248,38 @@ func (a *App) historyStatus(e docsync.Edit) (undoStatus, string) {
 		return statusUncommitted, head
 	}
 	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
-	if e.Line >= 1 && e.Line <= len(lines) && lines[e.Line-1] == e.New {
-		return statusCommitted, head
+	committed := e.Line >= 1 && e.Line <= len(lines) && lines[e.Line-1] == e.New
+	if !e.Delete && e.New != "" && !committed {
+		committed = slices.Contains(lines, e.New)
 	}
-	return statusUncommitted, head
+	if !committed {
+		return statusUncommitted, head
+	}
+	if in, ok := a.vcs.(introducer); ok && !e.Delete {
+		if sha, err := in.Introduced(e.File, e.New); err == nil && sha != "" {
+			return statusCommitted, sha
+		}
+	}
+	return statusCommitted, head
+}
+
+// introducer is the optional VCS upgrade that names the commit which first
+// added a line of text to a file, for `undo --list`. Git implements it; a
+// VCS without it names HEAD.
+type introducer interface {
+	Introduced(path, text string) (string, error)
+}
+
+// Introduced returns the short sha of the oldest commit that changed how
+// many times text occurs in path (git's pickaxe), which for a line written
+// once is the commit that added it.
+func (g Git) Introduced(path, text string) (string, error) {
+	out, err := g.run("log", "--format=%h", "--abbrev=7", "--reverse", "-S"+text, "--", path)
+	if err != nil {
+		return "", err
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	return first, nil
 }
 
 // citations maps an id to the sentences that cite it: this repo's reverse

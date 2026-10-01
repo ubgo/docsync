@@ -2,14 +2,18 @@ package docsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/extract"
+	"github.com/ubgo/docsync/internal/difflib"
 	"github.com/ubgo/docsync/internal/linerange"
+	"github.com/ubgo/docsync/internal/textnorm"
 	"github.com/ubgo/docsync/ledger"
 	"github.com/ubgo/docsync/match"
 	"github.com/ubgo/docsync/render"
@@ -36,9 +40,19 @@ const (
 // ModeValues is the canonical list callers may pass.
 var ModeValues = []string{ModeAuto, ModeFull, ModeDiff, ModeValue}
 
-// SinceAck asks Context for diffs since the last ack; any other Since value
-// is a commit the caller's OldContent hook understands.
+// SinceAck asks Context for diffs since the last ack; any other non-empty
+// Since value is a commit, answered through ContextOptions.OldBody.
 const SinceAck = "ack"
+
+// ErrContextMode is a ContextOptions.Mode outside ModeValues. It used to
+// be accepted and served as a bare location, so a typo returned less than
+// asked for without a word.
+var ErrContextMode = errors.New("context: unknown mode")
+
+// ErrSinceCommit is a Since that names a commit with no OldBody hook to
+// read the commit. Since was a commit nothing ever read: any value was
+// accepted and the diff was the one since the last scan (bug 61).
+var ErrSinceCommit = errors.New("context: since a commit needs OldBody, the body of a block at that commit")
 
 // Omission reasons.
 const (
@@ -382,8 +396,15 @@ func notOK(m map[check.State]int) int {
 // ContextOptions bounds `ds context` (§26.4).
 type ContextOptions struct {
 	Budget int
-	Since  string
-	Mode   string
+	// Since is the baseline a diff is taken against: "" (the last scan),
+	// SinceAck (the last ack, the same diff `check` reports), or a commit,
+	// which needs OldBody.
+	Since string
+	Mode  string
+	// OldBody returns a cited block's body at the commit Since names, in
+	// the form the scan gives it (false when the block did not exist
+	// there). The library reads no history; the caller's VCS does.
+	OldBody func(b block.Block) (string, bool)
 }
 
 // ContextItem is one ranked piece of context.
@@ -418,6 +439,12 @@ type ContextResult struct {
 // sentence about it, ranked and budgeted. Order is deterministic for
 // identical inputs so prompt caches hit.
 func (s *System) Context(ctx context.Context, target string, opts ContextOptions) (ContextResult, error) {
+	if opts.Mode != "" && !slices.Contains(ModeValues, opts.Mode) {
+		return ContextResult{}, fmt.Errorf("%w %q; one of %s", ErrContextMode, opts.Mode, strings.Join(ModeValues, ", "))
+	}
+	if opts.Since != "" && opts.Since != SinceAck && opts.OldBody == nil {
+		return ContextResult{}, ErrSinceCommit
+	}
 	rep, err := s.Check(ctx, CheckOptions{})
 	if err != nil {
 		return ContextResult{}, err
@@ -446,9 +473,18 @@ func (s *System) contextReport(rep Report, target string, opts ContextOptions) C
 		changes[c.Key()] = c
 	}
 	stateOf := map[string]check.State{}
+	// ackDiff is each id's diff since its ack, as `check --json` reports
+	// it: the baseline --since ack promises. The scan-to-scan change is
+	// empty once a scan has recorded the new body, which is how --since ack
+	// printed a whole unchanged-looking body and --mode diff "(no diff
+	// available)" for a block check showed a diff for (bug 62).
+	ackDiff := map[string]string{}
 	for _, f := range rep.Findings {
 		if f.ID != "" && rank(f.State) > rank(stateOf[f.ID]) {
 			stateOf[f.ID] = f.State
+		}
+		if f.ID != "" && f.Diff != "" && ackDiff[f.ID] == "" {
+			ackDiff[f.ID] = f.Diff
 		}
 	}
 	type cand struct {
@@ -460,13 +496,22 @@ func (s *System) contextReport(rep Report, target string, opts ContextOptions) C
 	if bs, isID := byID[target]; isID {
 		// A block and every sentence about it.
 		b := bs[0]
-		item := s.blockItem(b, changes[match.BlockKey(b)], stateOf[b.ID], opts)
+		item := s.blockItem(b, changes[match.BlockKey(b)], ackDiff[b.ID], stateOf[b.ID], opts)
 		cands = append(cands, cand{item: item, urg: rank(stateOf[b.ID]) + 1, ord: 0})
 		for i, r := range res.Refs {
-			if r.ID != target || r.Sentence == "" {
+			if r.ID != target {
 				continue
 			}
-			cands = append(cands, cand{item: ContextItem{Why: "cites " + target, File: r.Pos.File, Lines: [2]int{r.Pos.Start, r.Pos.Start}, Mode: ModeFull, Content: r.Sentence, Tokens: Tokens(r.Sentence)}, ord: i + 1})
+			// A citation in block position (`<!-- ds:block id=… -->`) has no
+			// sentence of its own; it is listed by where it is, so the
+			// bundle names every place that depends on the block. Skipping
+			// it returned the block alone for a block cited only that way
+			// (bug 63).
+			content, mode := r.Sentence, ModeFull
+			if content == "" {
+				content, mode = fmt.Sprintf("%s:%d shows it in block position", r.Pos.File, r.Pos.Start), ModeLine
+			}
+			cands = append(cands, cand{item: ContextItem{Why: "cites " + target, File: r.Pos.File, Lines: [2]int{r.Pos.Start, r.Pos.Start}, Mode: mode, Content: content, Tokens: Tokens(content)}, ord: i + 1})
 		}
 	} else {
 		seen := map[string]bool{}
@@ -481,7 +526,7 @@ func (s *System) contextReport(rep Report, target string, opts ContextOptions) C
 				continue
 			}
 			b := bs[0]
-			cands = append(cands, cand{item: s.blockItem(b, changes[match.BlockKey(b)], stateOf[b.ID], opts), urg: rank(stateOf[b.ID]), ord: i})
+			cands = append(cands, cand{item: s.blockItem(b, changes[match.BlockKey(b)], ackDiff[b.ID], stateOf[b.ID], opts), urg: rank(stateOf[b.ID]), ord: i})
 		}
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
@@ -496,7 +541,12 @@ func (s *System) contextReport(rep Report, target string, opts ContextOptions) C
 			if c.urg == 0 {
 				reason = ReasonUnchanged
 			}
-			out.Omitted = append(out.Omitted, Omitted{ID: c.item.ID, Reason: reason})
+			// A sentence has no id of its own; it is named by where it is.
+			name := c.item.ID
+			if name == "" {
+				name = fmt.Sprintf("%s:%d", c.item.File, c.item.Lines[0])
+			}
+			out.Omitted = append(out.Omitted, Omitted{ID: name, Reason: reason})
 			continue
 		}
 		c.item.Rank = len(out.Items) + 1
@@ -507,19 +557,42 @@ func (s *System) contextReport(rep Report, target string, opts ContextOptions) C
 }
 
 // blockItem picks the content mode for a cited block (§26.4 --mode auto).
-func (s *System) blockItem(b block.Block, c match.Change, st check.State, opts ContextOptions) ContextItem {
+//
+// The diff is taken against opts.Since: the last scan when empty (falling
+// back to the diff since the ack, the one `check` reports, when the scan
+// has already recorded the new body), the last ack for SinceAck, and the
+// body at a commit, read through opts.OldBody, otherwise.
+func (s *System) blockItem(b block.Block, c match.Change, ackDiff string, st check.State, opts ContextOptions) ContextItem {
 	item := ContextItem{ID: b.ID, File: b.Pos.File, Lines: [2]int{b.Pos.Start, b.Pos.End}}
 	why := "cited, unchanged"
 	if st != "" && st != check.StateOK {
 		why = string(st)
 	}
 	item.Why = why
-	changed := c.State == match.StateChanged
+	var diff string
+	switch opts.Since {
+	case "":
+		diff = c.Diff
+		if diff == "" {
+			diff = ackDiff
+		}
+	case SinceAck:
+		diff = ackDiff
+	default:
+		if old, ok := opts.OldBody(b); ok && textnorm.NormalizeString(old) != textnorm.NormalizeString(b.Content) {
+			diff = difflib.Unified(old, b.Content, 0)
+		}
+	}
+	changed := c.State == match.StateChanged || diff != ""
 	mode := opts.Mode
 	if mode == ModeAuto {
 		switch {
-		case changed && c.Diff != "" && opts.Since == SinceAck:
+		case diff != "" && opts.Since != "":
 			mode = ModeDiff
+		case opts.Since != "" && !isValue(b):
+			// §26.4: with a baseline, an unchanged block shrinks to its
+			// location; the caller asked what changed.
+			mode = ModeLine
 		case isValue(b):
 			mode = ModeValue
 		case strings.Count(b.Content, "\n") < s.cfg.Include.MaxLines || changed:
@@ -530,12 +603,12 @@ func (s *System) blockItem(b block.Block, c match.Change, st check.State, opts C
 	}
 	switch mode {
 	case ModeDiff:
-		if c.Diff == "" {
+		if diff == "" {
 			mode = ModeLine
 			item.Content = location(b) + " (no diff available)"
 			break
 		}
-		item.Content = c.Diff
+		item.Content = diff
 	case ModeValue:
 		if v, ok := render.Value(b); ok {
 			item.Content = v
@@ -784,6 +857,11 @@ func (s *System) Ack(res scan.Result, req AckRequest) (ledger.Ack, error) {
 			return ledger.Ack{}, fmt.Errorf("%w: %s", ErrNotFound, ref.ID)
 		}
 		a.BlockHash = b.Hash
+	}
+	if ref.Verb == extract.VerbClaim {
+		// A claim's hash is what it is about, so the renewal also accepts
+		// a change to those blocks (bug 72).
+		a.BlockHash = check.AboutHash(check.ClaimAbout(*ref), res.Defs, s.merged)
 	}
 	if !req.Preview {
 		s.observeAck(a)

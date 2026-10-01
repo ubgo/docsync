@@ -331,7 +331,10 @@ func (m *mcpServer) call(name string, raw json.RawMessage) (mcpCallResult, error
 			payload, err = sys.Why(res, args.ID)
 		}
 	case ToolContext:
-		payload, err = sys.Context(ctx, args.Target, docsync.ContextOptions{Budget: args.Budget, Since: args.Since, Mode: args.Mode})
+		opts := docsync.ContextOptions{Budget: args.Budget, Since: args.Since, Mode: args.Mode}
+		if opts.OldBody, err = m.app.contextSince(ctx, sys, args.Since); err == nil {
+			payload, err = sys.Context(ctx, args.Target, opts)
+		}
 	case ToolCheck:
 		payload, err = sys.Check(ctx, docsync.CheckOptions{Strict: args.Strict, Env: args.Env})
 	case ToolImpact:

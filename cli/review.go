@@ -63,12 +63,6 @@ func (a *App) reviewCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if outPath != "" && !ai {
-				// --out writes the patch the review command returns, and
-				// there is none without --ai. Accepting it and printing the
-				// worklist anyway left the file the caller asked for unwritten.
-				return fmt.Errorf("%w: --%s writes the patch, which only --%s produces", ErrUsage, flagOut, flagAI)
-			}
 			rep, err := ld.sys.Check(cmd.Context(), docsync.CheckOptions{})
 			if err != nil {
 				return err
@@ -85,10 +79,14 @@ func (a *App) reviewCmd() *cobra.Command {
 				}
 				items = append(items, it)
 			}
-			out := cmd.OutOrStdout()
+			// --out takes whatever review produces: the worklist, or with
+			// --ai the patch. It used to be refused without --ai, which the
+			// help did not say, so the one output a person can always get
+			// could not be saved (bug 70).
 			if !ai {
-				printWorklist(out, items)
-				return nil
+				var buf bytes.Buffer
+				printWorklist(&buf, items)
+				return a.writeOut(cmd, outPath, buf.Bytes())
 			}
 			command := ld.cfg.Review.Command
 			if command == "" {
@@ -99,16 +97,22 @@ func (a *App) reviewCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if outPath != "" {
-				return os.WriteFile(a.userPath(outPath), patch, filePerm)
-			}
-			_, err = out.Write(patch)
-			return err
+			return a.writeOut(cmd, outPath, patch)
 		},
 	}
 	cmd.Flags().BoolVar(&ai, flagAI, false, "send the worklist to [review] command and print its patch")
-	cmd.Flags().StringVar(&outPath, flagOut, "", "write the patch to a file")
+	cmd.Flags().StringVar(&outPath, flagOut, "", "write the output (the worklist, or with --ai the patch) to a file instead of stdout")
 	return cmd
+}
+
+// writeOut writes b to path when one was given, relative to where the user
+// is, and to the command's stdout otherwise.
+func (a *App) writeOut(cmd *cobra.Command, path string, b []byte) error {
+	if path != "" {
+		return os.WriteFile(a.userPath(path), b, filePerm)
+	}
+	_, err := cmd.OutOrStdout().Write(b)
+	return err
 }
 
 // reviewBudget bounds the context sent per finding.

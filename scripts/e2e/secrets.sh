@@ -50,7 +50,8 @@ sweep() { # $1 describes the state
              "context docs/d.md" "context key-k7m2p4xq" "read key-k7m2p4xq" "why key-k7m2p4xq" \
              "why key-k7m2p4xq --history" "find key" "find --json key" "locate key-k7m2p4xq" \
              "blame docs/d.md 3" "status" "report" "triage" "graph" "review" "map" "impact" "audit" \
-             "export hugo --out out"; do
+             "export hugo --out out" "render docs/d.md --at HEAD" "context docs/d.md --since HEAD" \
+             "context key-k7m2p4xq --since HEAD" "context docs/d.md --mode diff" "context docs/d.md --since ack"; do
     # $cmd is split into words on purpose: it is a command and its arguments.
     o=$(ds $cmd 2>&1; cat out/*.json 2>/dev/null)
     /bin/rm -f out/*.json

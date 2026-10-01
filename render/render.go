@@ -13,6 +13,7 @@ package render
 import (
 	"fmt"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -44,8 +45,8 @@ type RunResult struct {
 // without Records a `ds:table` renders its `empty=` text.
 type Options struct {
 	Prefix string
-	// Permalink is a template with {sha} {file} {start} {end}; empty renders
-	// a repo-relative `file#Lstart-Lend`.
+	// Permalink is a template with {sha} {file} {rel} {start} {end}; empty
+	// renders DefaultPermalink, a link relative to the page.
 	Permalink string
 	Commit    string
 	MaxLines  int
@@ -57,6 +58,11 @@ type Options struct {
 	Link func(b block.Block) string
 	// Snapshot returns the block's content at a commit, for `at=`.
 	Snapshot func(id, sha string) (string, bool)
+	// SnapshotBlock returns the whole block at a commit, for `at=`: its
+	// content, and the position its caption and link name. It takes
+	// precedence over Snapshot; with only Snapshot, the link names where
+	// the block is today.
+	SnapshotBlock func(id, sha string) (block.Block, bool)
 	// Records answers `ds:table`: rows as maps keyed by column.
 	Records func(args map[string]string) ([]map[string]string, error)
 	// Runs maps a doc line to the last `ds:run` result recorded there.
@@ -142,8 +148,13 @@ const (
 // DefaultMaxLines mirrors include.max_lines (§9.2).
 const DefaultMaxLines = 40
 
-// DefaultPermalink is used when Options.Permalink is empty.
-const DefaultPermalink = "{file}#L{start}-L{end}"
+// DefaultPermalink is used when Options.Permalink is empty. It names the
+// file relative to the rendered page ({rel}), not to the repository root
+// ({file}): a link resolves against the page that holds it, so a
+// root-relative billing/x.go written into docs/billing.md pointed at
+// docs/billing/x.go, which does not exist, on GitHub and on any static host
+// that serves the tree as it is (bug 64).
+const DefaultPermalink = "{rel}#L{start}-L{end}"
 
 // langByExt maps file extensions to fence info strings.
 var langByExt = map[string]string{
@@ -183,7 +194,7 @@ func RenderNodes(in Input, opts Options) ([]Node, []Note) {
 	if opts.Permalink == "" {
 		opts.Permalink = DefaultPermalink
 	}
-	r := &renderer{opts: opts, defs: map[string][]block.Block{}}
+	r := &renderer{opts: opts, doc: in.Doc, defs: map[string][]block.Block{}}
 	for _, b := range in.Defs {
 		r.defs[b.ID] = append(r.defs[b.ID], b)
 	}
@@ -248,6 +259,7 @@ func RenderNodes(in Input, opts Options) ([]Node, []Note) {
 
 type renderer struct {
 	opts  Options
+	doc   string // the page being rendered, repository-relative; {rel} is relative to its directory
 	defs  map[string][]block.Block
 	notes []Note
 }
@@ -387,6 +399,11 @@ func (r *renderer) inlineVerb(n int, d directive.Directive, text, orig string) s
 			r.note(n, "%s is not defined; link left as text", id)
 			return text
 		}
+		if at := d.Args[keyAt]; at != "" && r.opts.SnapshotBlock != nil {
+			if old, ok := r.opts.SnapshotBlock(id, at); ok {
+				b.Pos = old.Pos
+			}
+		}
 		return "[" + text + "](" + r.link(b, d.Args[keyAt]) + ")"
 	case extract.VerbCfg:
 		if id == "" {
@@ -480,8 +497,14 @@ func (r *renderer) blockCode(n int, d directive.Directive, id string) (string, b
 	badge := ""
 	if sha != "" {
 		badge = " · as of `" + sha + "`"
-		snap, ok := r.opts.Snapshot != nil, false
-		if snap {
+		ok := false
+		switch {
+		case r.opts.SnapshotBlock != nil:
+			var old block.Block
+			if old, ok = r.opts.SnapshotBlock(id, sha); ok {
+				content, b.Pos = old.Content, old.Pos
+			}
+		case r.opts.Snapshot != nil:
 			content, ok = r.opts.Snapshot(id, sha)
 		}
 		if !ok {
@@ -675,8 +698,32 @@ func (r *renderer) link(b block.Block, sha string) string {
 	if sha == "" {
 		sha = r.opts.Commit
 	}
-	rep := strings.NewReplacer("{sha}", sha, "{file}", b.Pos.File, "{start}", strconv.Itoa(b.Pos.Start), "{end}", strconv.Itoa(b.Pos.End))
+	// A block merged from another repository has no path relative to this
+	// page; its file stays as published.
+	rel := b.Pos.File
+	if b.Args[block.KeyRepo] == "" {
+		rel = relativeTo(r.doc, b.Pos.File)
+	}
+	rep := strings.NewReplacer("{sha}", sha, "{file}", b.Pos.File, "{rel}", rel, "{start}", strconv.Itoa(b.Pos.Start), "{end}", strconv.Itoa(b.Pos.End))
 	return rep.Replace(r.opts.Permalink)
+}
+
+// relativeTo returns file, a repository-relative slash path, relative to
+// the directory holding doc: from docs/a/page.md, billing/x.go is
+// ../../billing/x.go and docs/a/y.go is y.go. Paths are compared element by
+// element, so docs2/ is never mistaken for a child of docs/.
+func relativeTo(doc, file string) string {
+	dir := path.Dir(doc)
+	if dir == "." {
+		return file
+	}
+	from := strings.Split(dir, "/")
+	to := strings.Split(file, "/")
+	common := 0
+	for common < len(from) && common < len(to)-1 && from[common] == to[common] {
+		common++
+	}
+	return strings.Repeat("../", len(from)-common) + strings.Join(to[common:], "/")
 }
 
 // Value returns a block's single-line value: its content when it is exactly
@@ -846,7 +893,7 @@ func rawComment(l string) (string, bool) {
 // ok is false when the reference cannot render (missing def, secret, out of
 // range); notes carry why.
 func Fragment(b block.Block, ref block.Reference, prefix string, maxLines int) (text string, ok bool, notes []Note) {
-	r := &renderer{opts: Options{Prefix: prefix, MaxLines: maxLines, Permalink: DefaultPermalink}, defs: map[string][]block.Block{b.ID: {b}}}
+	r := &renderer{opts: Options{Prefix: prefix, MaxLines: maxLines, Permalink: DefaultPermalink}, doc: ref.Pos.File, defs: map[string][]block.Block{b.ID: {b}}}
 	if r.opts.MaxLines <= 0 {
 		r.opts.MaxLines = DefaultMaxLines
 	}
