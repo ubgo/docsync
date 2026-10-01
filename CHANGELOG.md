@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `task vscode:try` opens a small demo repository in a VS Code window running the docsync extension from `editors/vscode`, with a cited value that has changed, so the code lens, hover, go-to-definition and `ds:` links can be tried without installing anything; `task vscode:package` builds the installable `.vsix`.
+
 ### Fixed
 
 - The VS Code extension never started: VS Code's language client runs the server as `ds lsp --stdio`, and `ds lsp` rejected the flag and exited. `ds lsp` now accepts `--stdio`, and the extension no longer asks for it, so it also works with an older `ds` (bug 130).
