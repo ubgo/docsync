@@ -6,14 +6,28 @@ This page shows how to make `ds check` a gate: in GitHub Actions, in GitLab or a
 
 The whole gate is one command. `ds check` exits `0` when nothing is wrong, `1` when there is at least one error-severity finding, and `2` on a usage or setup error, so any CI system can fail a job on it without parsing anything.
 
+The examples on this page use a repository whose `store/session.go` defines `sess-ttl` (a constant, changed from 30 to 45 since it was cited) and `sess-save` (a function), both cited from `docs/sessions.md`.
+
+<!-- doctest
+git init -q -b main .
+ds init
+mkdir -p store docs
+printf 'package store\n\n// ds:def id=sess-ttl owner=@auth stability=stable\nconst SessionTTL = 30\n\n// ds:def id=sess-save owner=@auth stability=stable\nfunc SaveSession(id string) error {\n\treturn nil\n}\n' > store/session.go
+printf '# Sessions\n\nSessions expire after [30](ds:cfg?id=sess-ttl) minutes.\n\nEvery session write goes through SaveSession:\n\n\074!\055\055 ds:block id=sess-save \055\055\076\n' > docs/sessions.md
+ds scan
+git add -A
+git commit -qm init
+sed -i.bak 's/= 30/= 45/' store/session.go
+rm -f store/session.go.bak
+-->
+
 ```console
-$ ds check
+$ ds check; echo $?
 docs/sessions.md
   3	error    unacked            sess-ttl changed (body) since this sentence was first cited
       still true: ds ack sess-ttl --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 1 error, 1 none
-$ echo $?
 1
 ```
 
@@ -48,9 +62,8 @@ When the environment variable `CI` is set, which every major CI system does, `ds
 - Asking for both is a usage error:
 
 ```console
-$ ds check --frozen --sync
+$ ds check --frozen --sync; echo $?
 ds: usage: --frozen and --sync ask for opposite things
-$ echo $?
 2
 ```
 
@@ -116,11 +129,11 @@ Two things to know:
 
 ### Previewing the comment
 
-`ds github comment` reads a saved report and needs `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, and a pull request number (`--pr`, or the event file at `GITHUB_EVENT_PATH`). `--dry-run` prints the comment bodies instead of posting them:
+`ds github comment` reads a saved report and needs `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, and a pull request number (`--pr`, or the event file at `GITHUB_EVENT_PATH`). `--dry-run` prints the comment bodies instead of posting them. Save the report outside the repository, as the action does: a JSON file inside it is scanned like any other file, and the sentences quoted in it read as citations.
 
 ```console
-$ ds check --json > report.json
-$ GITHUB_TOKEN=x GITHUB_REPOSITORY=acme/api ds github comment --report report.json --pr 7 --dry-run
+$ ds check --json > ../report.json
+$ GITHUB_TOKEN=x GITHUB_REPOSITORY=acme/api ds github comment --report ../report.json --pr 7 --dry-run
 <!-- docsync:doc=docs/sessions.md -->
 ### docsync: `docs/sessions.md`
 
@@ -148,12 +161,15 @@ All three ship with `on: workflow_dispatch:` only, so they run when started from
 
 ### Pull requests from forks
 
-A pull request from a fork can change anything in the repository, including `ds:run` commands, resolver configuration, and the `[review]` command. `ds` therefore refuses to execute any of them when the GitHub event says the head repository is not the base repository:
+A pull request from a fork can change anything in the repository, including `ds:run` commands, resolver configuration, and the `[review]` command. `ds` therefore refuses to execute any of them when the GitHub event says the head repository is not the base repository. Here `event.json` is a `pull_request` event from `someone/api` against `acme/api`:
+
+<!-- doctest
+printf '{"repository":{"full_name":"acme/api"},"pull_request":{"head":{"repo":{"full_name":"someone/api"}}}}' > event.json
+-->
 
 ```console
-$ GITHUB_EVENT_PATH=event.json ds check --run
+$ GITHUB_EVENT_PATH=event.json ds check --run; echo $?
 ds: --run and --resolve are disabled on pull requests from forks
-$ echo $?
 2
 ```
 
@@ -205,6 +221,7 @@ repos:
 
 Both hooks are informational: they always exit `0`, and pre-commit hides the output of a passing hook, which is why `verbose: true` is there. With a staged change to a cited constant:
 
+<!-- doctest:skip pre-commit clones the hook repository from GitHub, which needs the network -->
 ```console
 $ pre-commit run
 docsync impact of staged changes.........................................Passed
@@ -223,6 +240,11 @@ literals (0)
 ```
 
 `ds report --literals` only reports values of three characters or more, so a doc that types `8081` next to a defined port is caught while `30` is not:
+
+<!-- doctest
+printf '\n// ds:def id=api-port\nconst Port = 8081\n' >> store/session.go
+printf '# Ops\n\nThe API listens on 8081.\n' > docs/ops.md
+-->
 
 ```console
 $ ds report --literals
@@ -259,14 +281,19 @@ Its memory of what it already sent lives in `.ds/notified.json`, which is machin
 ```console
 $ CI=true ds doctor
 …
-notify          WARN  no state on this runner; dedupe and escalation will not work. Cache .ds/notified.json between runs (see the nightly workflow template)
+notify         WARN  no state on this runner; dedupe and escalation will not work. Cache .ds/notified.json between runs (see the nightly workflow template)
 ```
 
 The nightly template restores the file with `actions/cache` before running `ds notify`. Do the same on any CI that runs it.
 
 ## ds:run on Windows runners
 
-`ds check --run` executes `ds:run` commands under `sh` (`sh -c <command>`), looked up on `PATH`. On Windows, `sh` comes from Git for Windows; make sure the directory holding its `sh.exe` is on the runner's `PATH` for the step that runs `ds check --run`. When the shell is missing, the check stops before running anything:
+`ds check --run` executes `ds:run` commands under `sh` (`sh -c <command>`), looked up on `PATH`. On Windows, `sh` comes from Git for Windows; make sure the directory holding its `sh.exe` is on the runner's `PATH` for the step that runs `ds check --run`. When the shell is missing (below, `[run] shell` names one that is not installed), the check stops before running anything:
+
+<!-- doctest
+printf '\n\074!\055\055 ds:run cmd="echo hi" expect=ok \055\055\076\n' >> docs/sessions.md
+printf '\n[run]\nenabled = true\nallow = ["docs/**"]\nshell = "nosuchsh"\n' >> .ds/config.toml
+-->
 
 ```console
 $ ds check --run

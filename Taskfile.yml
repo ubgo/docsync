@@ -30,6 +30,7 @@ tasks:
       - task: extract:diff
         vars: { REF: HEAD }
       - task: e2e
+      - task: docs:test
       - task: xbuild
 
   cli:
@@ -113,6 +114,15 @@ tasks:
     deps: [cli:build]
     cmds:
       - sh scripts/e2e/run.sh
+
+  docs:test:
+    desc: 'Run every example in docs/guide against the built ds and fail where a page shows output ds no longer prints (PAGE=docs/guide/x.md for one page)'
+    deps: [cli:build]
+    cmds:
+      # The guide is the outside check the unit tests never had: written as a
+      # user runs ds, with the page as the oracle. Running it keeps the docs
+      # and the binary from drifting apart in either direction.
+      - cd cli && go run ./internal/doctest -bin ../bin -dir ../docs/guide -root .. {{.PAGE}}
 
   perf:
     desc: 'Time the built ds binary against the SPEC section 33 targets on a generated repo of FILES files (default 100000): scan under 60s, incremental check under 2s, impact --staged under 1s'

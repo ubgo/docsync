@@ -29,9 +29,54 @@ This page describes `.ds/config.toml`: every section and key `ds` accepts, its t
 
 ## The file
 
+The examples on this page run in a small repository: a Go file with two defs and a page that cites them.
+
+```text file=go.mod
+module example.com/demo
+
+go 1.22
+```
+
+```go file=internal/auth/session.go
+package auth
+
+import "time"
+
+// SessionTTL is how long a login lasts.
+// ds:def id=sessionttl-r7xkm5bw owner=@auth
+const SessionTTL = 30 * time.Minute
+
+// Login checks a password and returns a session token.
+// ds:def id=login-j3nq87mh owner=@auth stability=api
+func Login(user, password string) (string, error) {
+	if password == "" {
+		return "", ErrEmpty
+	}
+	return "tok-" + user, nil
+}
+```
+
+```markdown file=docs/auth.md
+# Auth
+
+A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).
+
+[Login](ds:block?id=login-j3nq87mh) returns a session token.
+```
+
+<!-- doctest
+git init -q -b main .
+ds init
+ds scan
+git add -A
+git commit -qm init
+cp .ds/config.toml ../good.toml
+-->
+
 `ds init` writes a starting config, and every command finds the repository by looking for `.ds/config.toml` in the current directory and its parents:
 
-```toml
+```console
+$ cat .ds/config.toml
 spec = "1.0"
 prefix = "ds"
 
@@ -66,7 +111,11 @@ A table header may appear more than once, and the keys from both places are merg
 
 The config is checked in full every time a command loads it. A mistake stops the command with exit code `2` and a message that names the key, rather than running with a value nobody chose. `ds doctor` shows the same message as a `FAIL` row.
 
-**An unknown key is an error**, with its line number. This catches a misspelled key, which would otherwise be silently ignored:
+**An unknown key is an error**, with its line number. This catches a misspelled key, which would otherwise be silently ignored. With `fuzzy_threshold` misspelled:
+
+<!-- doctest
+perl -pi -e 's/fuzzy_threshold/fuzy_threshold/' .ds/config.toml
+-->
 
 ```console
 $ ds check
@@ -75,32 +124,76 @@ $ ds doctor
 config	FAIL	check: config: unknown key: fuzy_threshold (line 15)
 ```
 
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
+
 An unknown table is reported the same way (`colour: config: unknown key: colour (line 21)`).
 
-**A value of the wrong type is an error**:
+**A value of the wrong type is an error**. With `max_lines = "40"`:
+
+<!-- doctest
+perl -pi -e 's/max_lines = 40/max_lines = "40"/' .ds/config.toml
+-->
 
 ```console
 $ ds check
 ds: include: max_lines: config: wrong value type: want integer (line 12)
 ```
 
-**A closed set must hold one of its values** (`include.mode`, `check.unacked`, `check.sentence`, the `notify.snapshot` tiers and classes):
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
+
+**A closed set must hold one of its values** (`include.mode`, `check.unacked`, `check.sentence`, the `notify.snapshot` tiers and classes). With `unacked = "warning"`:
+
+<!-- doctest
+perl -pi -e 's/unacked = "error"/unacked = "warning"/' .ds/config.toml
+-->
 
 ```console
 $ ds check
 ds: config: invalid value: check.unacked "warning"
 ```
 
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
+
 Other checks made at load time: `spec` must be `"1.0"`; `prefix` must be a lowercase identifier; at least one of `scan.code` and `scan.docs` must be non-empty; `check.fuzzy_threshold` must be above 0 and at most 1; `include.max_lines`, `scan.limits.*` and `url.rate_per_minute` must be at least 1; `agents.max_defs_per_run` must not be negative; and `env.default`, when set, must be listed in `env.known` if that list is non-empty.
+
+<!-- doctest
+perl -pi -e 's/spec = "1.0"/spec = "2.0"/' .ds/config.toml
+-->
 
 ```console
 $ ds check
 ds: config: spec version not supported by this tool: file says "2.0", tool implements "1.0"
+```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+perl -pi -e 's/prefix = "ds"/prefix = "My-Docs"/' .ds/config.toml
+-->
+
+```console
 $ ds check
 ds: config: invalid value: prefix "My-Docs" must be a lowercase identifier
+```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+perl -pi -e 's/^default = ""$/default = "prod"\nknown = ["staging"]/' .ds/config.toml
+-->
+
+```console
 $ ds check
 ds: config: invalid value: env.default "prod" is not in env.known
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 ### Durations
 
@@ -111,12 +204,35 @@ Duration keys use one of two forms, and a value that does not parse is an error 
 | `run.timeout` | A positive Go duration. | `300ms`, `30s`, `2m` |
 | `url.ttl`, `check.snapshot_max_age`, `notify.escalate_after`, `notify.snapshot.digest_after`, `sources.<name>.ttl` | A whole number followed by `m` (minutes), `h` (hours), `d` (days) or `w` (weeks). Months and years are not accepted, because their length varies; write `90d`. | `90m`, `24h`, `7d`, `2w` |
 
+```toml file=.ds/config.toml append=true
+
+[url]
+ttl = "7 days"
+```
+
 ```console
 $ ds check
 ds: config: invalid value: url.ttl "7 days"
+```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
+
+```toml file=.ds/config.toml append=true
+
+[run]
+timeout = "1d"
+```
+
+```console
 $ ds check
 ds: config: invalid value: run.timeout "1d" must be a positive duration such as 30s
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 `run.timeout` does not accept `d`, and the other keys do not accept `s`.
 
@@ -155,11 +271,18 @@ exclude = ["**/testdata/**", "**/*_test.go", "dist/**"]
 generated = ["**/*.pb.go", "**/gen/**"]
 ```
 
-A def in a generated file:
+A def in a generated file (the config from `init` marks `**/gen/**` as generated):
+
+```go file=gen/x.go
+package gen
+
+// ds:def id=x-k3m8x2pq
+const X = 1
+```
 
 ```console
 $ ds scan
-4 files, 2 defs, 1 refs, 1 problems, 0 skipped
+4 files, 3 defs, 2 refs, 1 problems, 0 skipped
   gen/x.go:3  scan: ds:def in a generated file will be overwritten by the next generation
 ```
 
@@ -170,17 +293,34 @@ $ ds scan
 | `max_file_kb` | integer | `512` | Files larger than this, in KB, are skipped. |
 | `max_line_chars` | integer | `2000` | A file with a longer line is skipped, unless it is prose. |
 
-`ds scan` counts skipped files. A skipped file that held defs or citations at the last scan is also named, and `check` reports it as an `unscanned` error, with its last recorded state kept, so a file that grows past the limit is not silently dropped:
+`ds scan` counts skipped files. A skipped file that held defs or citations at the last scan is also named, and `check` reports it as an `unscanned` error, with its last recorded state kept, so a file that grows past the limit is not silently dropped. With a 1 KB limit, after `gen/x.go` grows past it:
+
+```toml file=.ds/config.toml append=true
+
+[scan.limits]
+max_file_kb = 1
+```
+
+<!-- doctest
+perl -e 'print "// filler line\n" x 100' >> gen/x.go
+-->
 
 ```console
 $ ds scan
-2 files, 1 defs, 1 refs, 0 problems, 2 skipped
+3 files, 2 defs, 2 refs, 0 problems, 1 skipped
 warning: gen/x.go not scanned (too-large); its last recorded state is kept
 $ ds check
 gen/x.go
   1	error    unscanned          could not be scanned (too-large); 0 citations and 1 block are not being checked
       fix: gen/x.go could not be scanned (too-large): raise [scan.limits] max_file_kb, or split the file; until it is, the citations in it are not checked and its blocks are kept as they were last seen
+…
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+rm -r gen
+ds scan
+-->
 
 ```toml
 [scan.limits]
@@ -203,14 +343,30 @@ mode = "repo"
 max_lines = 40
 ```
 
-With `max_lines = 3`:
+A page that renders `Login`, which is six lines, under `max_lines = 3`:
+
+```markdown file=docs/code.md
+# Login code
+
+<!-- ds:block id=login-j3nq87mh -->
+```
+
+<!-- doctest
+perl -pi -e 's/max_lines = 40/max_lines = 3/' .ds/config.toml
+-->
 
 ```console
 $ ds check
 docs/code.md
   3	error    too-large          rendering 6 lines exceeds the cap of 3
       fix: add lines=a-b to show a fragment, or cite it with a link instead of rendering it
+…
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+rm docs/code.md
+-->
 
 ## check
 
@@ -233,23 +389,47 @@ permalink = "https://github.com/org/repo/blob/{sha}/{file}#L{start}-L{end}"
 snapshot_max_age = "30d"
 ```
 
-`unacked = "warn"`:
+With `unacked = "warn"`, after the session length changes in the code:
+
+<!-- doctest
+perl -pi -e 's/unacked = "error"/unacked = "warn"/' .ds/config.toml
+-->
 
 ```console
-$ ds check
+$ perl -pi -e 's/30 \* time/60 * time/' internal/auth/session.go
+$ ds check; echo "exit $?"
 docs/auth.md
-  3	warning  unacked            sessionttl-r7xkm5bw changed (unknown) since this sentence was acked
+  3	warning  unacked            sessionttl-r7xkm5bw changed (body) since this sentence was first cited
+      still true: ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'
+      otherwise:  edit the sentence at docs/auth.md:3, then ack
+1 warning, 1 none
+exit 0
+$ ds check --strict; echo "exit $?"
 …
-1 warning, 1 info, 6 none
-$ echo $?
-0
+exit 1
 ```
 
-With `permalink` set, `ds render` writes:
+<!-- doctest
+cp ../good.toml .ds/config.toml
+perl -pi -e 's/60 \* time/30 * time/' internal/auth/session.go
+-->
 
-```text
-A session lasts [90 minutes](https://github.com/org/demo/blob/0f6d00f/internal/auth/session.go#L10-L10).
+With `permalink` set, `ds render` writes links from the template:
+
+```toml file=.ds/config.toml append=true
+
+[check]
+permalink = "https://github.com/org/demo/blob/{sha}/{file}#L{start}-L{end}"
 ```
+
+```console
+$ ds render docs/auth.md | grep 'A session'
+A session lasts [30 minutes](https://github.com/org/demo/blob/0f6d00f/internal/auth/session.go#L7-L7).
+```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 ## policy
 
@@ -262,14 +442,32 @@ A session lasts [90 minutes](https://github.com/org/demo/blob/0f6d00f/internal/a
 require_doc = ["pkg/api/**"]
 ```
 
-A declaration counts as exported when a line declares a name that starts with a capital letter using `func`, `type`, `export function`, `export class`, `pub fn` or `def`.
+A declaration counts as exported when a line declares a name that starts with a capital letter using `func`, `type`, `export function`, `export class`, `pub fn` or `def`. With the policy on `internal/auth/**` and a new exported function there:
+
+```toml file=.ds/config.toml append=true
+
+[policy]
+require_doc = ["internal/auth/**"]
+```
+
+```go file=internal/auth/refresh.go
+package auth
+
+// Refresh renews a session.
+func Refresh() {}
+```
 
 ```console
 $ ds check
 internal/auth/refresh.go
   4	error    undocumented export Refresh is exported under a require_doc path and has no def
       fix: policy.require_doc covers internal/auth/refresh.go; run `ds def internal/auth/refresh.go#Refresh` and cite it from a page
+…
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 ## owners
 
@@ -285,10 +483,27 @@ internal/auth/refresh.go
 "@platform" = ["carol"]
 ```
 
+Without an `[owners]` table nothing is reported as orphaned. Once it lists teams, an owner used in a def but missing from it is:
+
+```console
+$ ds report --orphaned-owners
+orphaned owners (0):
+```
+
+```toml file=.ds/config.toml append=true
+
+[owners]
+"@platform" = ["carol"]
+```
+
 ```console
 $ ds report --orphaned-owners
 orphaned owners (1): @auth
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 ## secret
 
@@ -301,6 +516,18 @@ orphaned owners (1): @auth
 paths = ["**/.env*", "**/secrets/**"]
 ```
 
+With that in the config and a key defined in an env file:
+
+```toml file=.ds/config.toml append=true
+
+[secret]
+paths = ["**/.env*", "**/secrets/**"]
+```
+
+```text file=.env.prod
+API_KEY=abc123 # ds:def id=apikey-k3m8x2pa
+```
+
 ```console
 $ ds read apikey-k3m8x2pa
 
@@ -308,7 +535,13 @@ $ ds check
 .env.prod
   1	warning  unsourced          secret with no declared source
       fix: apikey-k3m8x2pa is a secret with no from= and no truth=true; declare where it is copied from or mark it the truth
+…
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+rm .env.prod
+-->
 
 Chains, `from=` and `truth=true` are covered in [Secrets and runs](secrets-and-runs.md).
 
@@ -365,6 +598,21 @@ shell = "sh"
 DATABASE_URL = "$STAGING_DATABASE_URL"
 ```
 
+With running enabled for one runbook:
+
+```toml file=.ds/config.toml append=true
+
+[run]
+enabled = true
+allow = ["docs/runbooks/**"]
+```
+
+```markdown file=docs/runbooks/smoke.md
+# Smoke
+
+Run the smoke test: <!-- ds:run cmd="echo hello" expect=ok -->
+```
+
 ```console
 $ ds check --run
 docs/runbooks/smoke.md:3  run ok: echo hello
@@ -373,10 +621,19 @@ docs/runbooks/smoke.md:3  run ok: echo hello
 
 When the shell is missing, `check --run` and `review --ai` stop instead of skipping, and nothing is recorded as run:
 
+```toml file=.ds/config.toml append=true
+shell = "nosuchsh"
+```
+
 ```console
 $ ds check --run
 ds: the shell is not on PATH: nosuchsh (on Windows, Git for Windows provides sh; or name another shell with [run] shell in .ds/config.toml)
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+rm -r docs/runbooks
+-->
 
 A repository with nothing to run never needs the shell.
 
@@ -464,10 +721,22 @@ on_deleted = "immediate"
 owner = "@docs"
 ```
 
+Naming a class in both lists:
+
+```toml file=.ds/config.toml append=true
+
+[notify.snapshot]
+immediate = ["body"]
+```
+
 ```console
 $ ds check
 ds: config: invalid value: notify.snapshot "body" is in both immediate and digest
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 ## agents
 
@@ -490,10 +759,23 @@ max_defs_per_run = 20
 
 These apply when `ds def` mints an id. A value outside the allowed range is reported then, not when the config loads:
 
+```toml file=.ds/config.toml append=true
+
+[id]
+suffix_length = 4
+```
+
 ```console
-$ ds def internal/auth/logout.go:9 --dry-run
+$ ds doctor
+config          ok    spec 1.0, prefix ds
+…
+$ ds def internal/auth/refresh.go#Refresh --dry-run
 ds: id: suffix length out of range: 4 not in [6,32]
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
 
 Changing them does not touch existing ids. The workspace file has its own `[workspace.id]` section with the same two keys; see [Cross-repo](cross-repo.md).
 
@@ -503,17 +785,24 @@ Changing them does not touch existing ids. The workspace file has its own `[work
 |---|---|---|---|
 | `shard` | boolean | `false` | Write the ledger as one file per top-level directory, `.ds/ledger/<dir>.tsv`, instead of one `.ds/ledger.tsv`. For large repositories, where one ledger file conflicts on every merge. |
 
-```toml
+```toml file=.ds/config.toml append=true
+
 [ledger]
 shard = true
 ```
 
 ```console
 $ ds scan
-8 files, 4 defs, 8 refs, 0 problems, 0 skipped
+4 files, 2 defs, 2 refs, 0 problems, 0 skipped
 $ ls .ds/ledger
 internal.tsv
 ```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+rm -r .ds/ledger
+ds scan
+-->
 
 ## plugins
 
@@ -550,7 +839,7 @@ The parser accepts these keys, so a config written from the [specification's exa
 
 Every key that has an effect, with a comment on what it does. This file loads, and `ds doctor` and `ds check` run against it:
 
-```toml
+```toml file=.ds/config.toml
 # .ds/config.toml
 spec = "1.0"                        # must be "1.0"
 prefix = "ds"                       # directives are ds:def, ds:block?id=…
@@ -644,12 +933,14 @@ picks = []                          # ds-pick-<scheme> executables
 ```console
 $ ds doctor
 config             ok    spec 1.0, prefix ds
-glob internal/**   ok    3 files
+glob internal/**   ok    2 files
 glob cmd/**        WARN  matches no files
 glob go.mod        ok    1 files
-glob docs/**/*.md  ok    4 files
+glob docs/**/*.md  ok    1 files
 glob README.md     WARN  matches no files
 …
+$ ds check
+2 none
 ```
 
 The workspace file, `ds-workspace.toml`, is a separate file in the index repository with its own keys (`name`, `repos`, `index`, `default_branch`, `stale_after_commits`, and `[workspace.id]` and `[workspace.env]`); it is described in [Cross-repo](cross-repo.md).

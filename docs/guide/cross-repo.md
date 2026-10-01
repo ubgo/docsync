@@ -2,7 +2,7 @@
 
 This page shows how a citation in one repository is checked against a block defined in another: a docs repository publishes its blocks, a code repository cites them, and each side hears when the other changes. It is for teams whose docs, specs, and services live in separate repositories, and for anyone deciding how CI should treat upstream changes.
 
-Every command and output below was captured from two throwaway git repositories, `docs` and `api`, sharing an index directory. The ids are the ones `ds def` minted there.
+Every command and output below was captured from two throwaway git repositories, `docs` and `api`, sharing an index directory. The ids are the ones `ds def` minted there; yours will differ.
 
 ## The pieces
 
@@ -21,8 +21,15 @@ Ids are unique across the workspace, so a citation never names the repository: `
 
 The index here is a plain directory next to both repositories. A workspace file is optional, but with one `ds publish` refuses any repository it does not list, which is what keeps a fork from overwriting the real repository's ledger.
 
-```toml
-# index/ds-workspace.toml
+<!-- doctest
+mkdir -p ../index ../docs/spec ../api/retry
+git -C ../docs init -q -b main .
+git -C ../api init -q -b main .
+ds --dir ../docs init
+ds --dir ../api init
+-->
+
+```toml file=../index/ds-workspace.toml
 [workspace]
 name = "platform"
 repos = ["github.com/org/docs", "github.com/org/api"]
@@ -31,21 +38,51 @@ default_branch = "main"
 
 The keys are `name` and `repos` (both required), `default_branch` (the only branch `publish` runs from; `main` when unset), and `[workspace.id]` and `[workspace.env]` tables. `index` and `stale_after_commits` are accepted but change nothing in this build: each repository finds the index through its own `workspace` key, and the only staleness warning is by age (`index for docs is N days old` after seven days without a publish). A repository's name in the index is the last segment of its URL, so two listed repositories with the same last segment are refused when the file loads. Without a git remote, a repository's name is its directory name, and `publish` requires that name to be listed.
 
-Each repository then points at the index from its own config. The key is top-level, so it goes above the first `[table]`:
+Each repository then points at the index from its own config. The key is top-level, so it goes above the first `[table]`. This is the config `ds init` wrote in the docs repository, with that one line added:
 
-```toml
-# .ds/config.toml
+```toml file=../docs/.ds/config.toml
 spec = "1.0"
 prefix = "ds"
 workspace = "../index"
+
+[scan]
+code = ["**"]
+docs = ["**/*.md"]
+exclude = ["**/testdata/**", "**/node_modules/**", "**/vendor/**", "dist/**", "public/**"]
+generated = ["**/*.pb.go", "**/gen/**", "**/*_gen.go", "**/*_gen.ts"]
+
+[include]
+mode = "build"
+max_lines = 40
+
+[check]
+fuzzy_threshold = 0.8
+unacked = "error"
+
+[env]
+default = ""
 ```
 
-A relative path is resolved against the repository root.
+<!-- doctest
+cp ../docs/.ds/config.toml ../api/.ds/config.toml
+-->
+
+The `api` repository gets the same line. A relative path is resolved against the repository root.
 
 ## Publish from the docs repository
 
+The docs repository starts with one spec page:
+
+```markdown file=../docs/spec/retries.md
+# Retries
+
+## Backoff
+
+A failed call is retried at most 5 times, doubling the wait each time.
+```
+
 ```console
-$ cd docs
+$ cd ../docs
 $ ds def 'spec/retries.md#Backoff' --label backoff
 backoff-zztatnzq
 $ cat spec/retries.md
@@ -73,7 +110,7 @@ Publish after committing: the published ledger records the commit it was scanned
 
 The citing side writes an ordinary citation. Here it is a comment on the constant that implements the spec:
 
-```go
+```go file=../api/retry/retry.go
 package retry
 
 // MaxAttempts follows the retry spec: implements ds:block?id=backoff-zztatnzq
@@ -119,7 +156,7 @@ An author edits the spec in the docs repository. Before committing, `ds impact` 
 
 ```console
 $ cd ../docs
-$ # edit spec/retries.md: "at most 5 times" becomes "at most 3 times"
+$ perl -pi -e 's/at most 5 times/at most 3 times/' spec/retries.md
 $ ds impact
 retry/retry.go (1)
   3  unacked  backoff-zztatnzq
@@ -187,10 +224,11 @@ retry/retry.go
 The sync summary marks each cited block `+` newly cited, `~` content changed, `>` moved with the same content, or `-` no longer published. Fix the code, ack the sentence, scan, commit, and republish so the docs repository sees the ack:
 
 ```console
-$ # edit retry/retry.go: MaxAttempts = 3
+$ perl -pi -e 's/= 5/= 3/' retry/retry.go
 $ ds ack backoff-zztatnzq --doc retry/retry.go --line 3 --note 'spec lowered retries to 3; constant updated'
 acked backoff-zztatnzq at retry/retry.go:3 (human)
 $ ds scan && git add -A && git commit -qm 'follow spec'
+1 files, 0 defs, 1 refs, 0 problems, 0 skipped
 $ CI=true ds check
 1 none
 $ ds publish
@@ -215,6 +253,22 @@ $ rm .ds/foreign.tsv; ds check --frozen
 ds: .ds/foreign.tsv not found; run `ds sync` to record the foreign blocks this repo cites
 ```
 
+<!-- doctest
+git show HEAD:.ds/foreign.tsv > .ds/foreign.tsv
+cd ../docs
+printf '\n## Timeouts\n\nEach attempt times out after 2 seconds.\n' >> spec/retries.md
+ds def 'spec/retries.md#Timeouts' --label timeout
+ds scan
+git add -A
+git commit -qm timeouts
+ds publish
+cd ../api
+printf '\n// AttemptTimeout: implements ds:block?id=%s\nconst AttemptTimeout = 2\n' $(grep -o 'timeout-[a-z0-9]*' ../docs/spec/retries.md) >> retry/retry.go
+ds scan
+git add -A
+git commit -qm timeout
+-->
+
 ```console
 $ CI=true ds check           # a new cross-repo citation, committed before anyone synced
 retry/retry.go
@@ -222,6 +276,12 @@ retry/retry.go
       fix: run `ds sync` and commit foreign.tsv to record it; if no repo in the workspace publishes timeout-peqncuha, fix the id in retry/retry.go:6
 1 error, 1 none
 ```
+
+<!-- doctest
+ds sync
+git add -A
+git commit -qm sync
+-->
 
 Both are fixed the same way: `ds sync`, then commit `.ds/foreign.tsv`. CI never syncs for you, because a build that turns red for a change outside its own diff cannot be bisected. To be warned when the snapshot gets old, set `snapshot_max_age` under `[check]`, for example `"30d"`; `ds check --frozen` then prints a warning naming `check.snapshot_max_age`, and the exit code is unchanged even with `--strict`.
 
@@ -233,14 +293,34 @@ Point `workspace` at a git URL instead of a directory and `ds` clones it into `.
 workspace = "https://github.com/org/ds-index"
 ```
 
+Here the index is a bare git repository on disk, reached through a `file://` URL, and the publishing repository is a third one, `handbook`, listed in that index's workspace file:
+
+<!-- doctest
+git init -q --bare -b main ../index.git
+git clone -q ../index.git ../seed
+printf '[workspace]\nname = "platform"\nrepos = ["github.com/org/handbook"]\n' > ../seed/ds-workspace.toml
+git -C ../seed add -A
+git -C ../seed commit -qm workspace
+git -C ../seed push -q origin main
+mkdir -p ../handbook
+git -C ../handbook init -q -b main .
+ds --dir ../handbook init
+perl -pi -e 's|^prefix = "ds"$|prefix = "ds"\nworkspace = "file://'"$(cd .. && pwd -P)"'/index.git"|' ../handbook/.ds/config.toml
+printf '# Handbook\n\n## On call\n\nPages go to the primary first.\n' > ../handbook/oncall.md
+-->
+
 ```console
+$ cd ../handbook
 $ ds sync
-cloned file:///…/index.git into .ds/index
-REPO  COMMIT   PUBLISHED             DEFS  REFS
-docs  be3c811  2026-10-01T03:35:52Z  0     0
+cloned file://…
+REPO  COMMIT  PUBLISHED  DEFS  REFS
 foreign.tsv: no change to record
+$ ds def 'oncall.md#On call' --label oncall
+oncall-q2w3e4r5
+$ ds scan && git add -A && git commit -qm handbook
+1 files, 1 defs, 0 refs, 0 problems, 0 skipped
 $ ds publish
-published docs: 1 defs, 0 refs, 0 test outcomes into .ds/index
+published handbook: 1 defs, 0 refs, 0 test outcomes into .ds/index
 pushed
 ```
 
@@ -251,7 +331,8 @@ Run `ds sync` once in a fresh checkout before anything else. Until the clone exi
 A release branch can publish its own view of the blocks, so release notes cite what shipped rather than what `main` says today. `publish` refuses a branch that is not the default; `--branch` publishes it under its own directory:
 
 ```console
-$ git checkout -b release-1
+$ cd ../docs
+$ git switch -q -c release-1
 $ ds publish
 ds: publish runs only on the default branch (§21); pass --force to override: on "release-1", default is "main"
 $ ds publish --branch
@@ -262,13 +343,31 @@ $ find ../index/repos -maxdepth 2 | sort
 ../index/repos/docs/blocks
 ../index/repos/docs/ledger.tsv
 ../index/repos/docs/refs.tsv
+$ git switch -q main
 ```
 
 A citation selects the branch with `branch=`:
 
-```markdown
+```markdown file=../api/docs/release-1.md
+# Release 1 notes
+
 Release 1 retries a failed call [three times](ds:block?id=backoff-zztatnzq&branch=release-1).
 ```
+
+<!-- doctest
+cd ../api
+ds scan
+ds sync
+git add -A
+git commit -qm release-notes
+cd ../docs
+perl -pi -e 's/at most 3 times/at most 4 times/' spec/retries.md
+ds scan
+git add -A
+git commit -qm four
+ds publish
+cd ../api
+-->
 
 After `main` changed the same block again, only the citation of `main` flags:
 
@@ -292,6 +391,35 @@ By default the repository never holds a copy of a block; `ds render` and the sit
 [include]
 mode = "repo"
 ```
+
+This example is a fourth, single repository, `limits`, with no workspace:
+
+```go file=../limits/limits.go
+package limits
+
+// ds:def id=maxbody-k7m2p4xq
+func MaxBody() int {
+	return 1 << 20
+}
+```
+
+```markdown file=../limits/docs/limits.md
+# Limits
+
+The request body cap:
+
+<!-- ds:block id=maxbody-k7m2p4xq -->
+
+Larger bodies are rejected.
+```
+
+<!-- doctest
+cd ../limits
+git init -q -b main .
+ds init
+perl -pi -e 's/^mode = "build"/mode = "repo"/' .ds/config.toml
+ds scan
+-->
 
 `ds refresh` then writes each block-position citation's current content between the directive and a closing marker that carries the block's short hash:
 
@@ -317,14 +445,25 @@ func MaxBody() int {
 Larger bodies are rejected.
 ~~~~
 
+<!-- doctest
+git add -A
+git commit -qm limits
+perl -pi -e 's/1 << 20/2 << 20/' limits.go
+ds scan
+-->
+
 `ds check` compares each copy with its source. A copy whose source moved on is `stale`; a copy someone edited by hand is `tampered`. Both are fixed by `ds refresh`, which never needs a human to type a fence:
 
 ```console
-$ ds check
+$ ds check                    # after MaxBody changed to 2 << 20 and a scan
 docs/limits.md
   5	error    stale              copy rendered from eb672b, block is now cde7f3
       fix: the copy at docs/limits.md:5 was rendered from an older maxbody-k7m2p4xq; run `ds refresh`
 1 error
+$ ds refresh
+1 repo-mode copies rewritten
+0 moved; ledger updated
+$ perl -pi -e 's/2 << 20/4 << 20/' docs/limits.md
 $ ds check                    # after editing inside the copy
 docs/limits.md
   5	error    tampered           copy differs from what refresh would write

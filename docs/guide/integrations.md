@@ -14,7 +14,35 @@ Every integration runs the `ds` binary; none of them reimplements docsync. Insta
 
 The examples use a repository whose `store/session.go` defines `sess-save` (a function) and `sess-ttl` (a constant), cited from `docs/sessions.md`.
 
+<!-- doctest
+git init -q -b main .
+ds init
+mkdir -p store docs
+printf 'package store\n\n// ds:def id=sess-ttl owner=@auth stability=stable\nconst SessionTTL = 30\n\n// ds:def id=sess-save owner=@auth stability=stable\nfunc SaveSession(id string) error {\n\treturn nil\n}\n' > store/session.go
+printf '# Sessions\n\nSessions expire after [30](ds:cfg?id=sess-ttl) minutes.\n\nEvery session write goes through SaveSession:\n\n\074!\055\055 ds:block id=sess-save \055\055\076\n' > docs/sessions.md
+ds scan
+git add -A
+git commit -qm init
+-->
+
 For any other static site generator, `ds render <doc>` prints a page with every directive expanded to plain markdown (the code, the value, the table), and `ds status --json` gives the state of every cited sentence. Both integrations below are built on those two commands.
+
+~~~console
+$ ds render docs/sessions.md
+# Sessions
+
+Sessions expire after 30 minutes.
+
+Every session write goes through SaveSession:
+
+**SaveSession** · [`store/session.go:7-9`](store/session.go#L7-L9)
+
+```go
+func SaveSession(id string) error {
+	return nil
+}
+```
+~~~
 
 ## Hugo
 
@@ -27,6 +55,22 @@ Run this in the repository that holds the docs, with `--out` pointing at the sit
 ```console
 $ ds export hugo --out site/data/docsync
 exported 2 blocks and 2 references to site/data/docsync
+```
+
+```console
+$ cat site/data/docsync/status.json
+{
+  "json_format": 1,
+  …
+  "refs": [
+    {
+      "doc": "docs/sessions.md",
+      "line": 3,
+      "id": "sess-ttl",
+      "state": "ok",
+      "severity": "none"
+    },
+…
 ```
 
 It writes two files:

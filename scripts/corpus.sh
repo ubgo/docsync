@@ -81,7 +81,12 @@ invariants() {
   mkdir -p "$W"
   # A copy, so a corpus repository is never written to. Its own .ds/ is
   # dropped: this gate scans from scratch rather than trusting a baseline.
-  (cd "$dir" && tar cf - --exclude .git --exclude .ds . ) | (cd "$W" && tar xf -)
+  # The copy is of the last commit, not the working tree: a corpus
+  # repository is someone's live project, and their half-finished edits
+  # (a docs move in progress, copies not yet refreshed) failed this gate for
+  # reasons that had nothing to do with docsync.
+  git -C "$dir" archive --format=tar HEAD | (cd "$W" && tar xf -)
+  /bin/rm -rf "$W/.ds"
   cd "$W" || return 1
   git init -q .; git config user.email t@t; git config user.name t
   # Committed before anything is anchored: git ls-files below needs an index,

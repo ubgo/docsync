@@ -2,7 +2,7 @@
 
 This page lists every `ds` command: what it is for, its flags, its exit codes and a real run of it. It is for people who already know the basic loop from [Getting started](getting-started.md) and want the exact behaviour of a command, or a flag they have not used yet.
 
-The examples come from one small Go repository: a `docs/auth.md` page cites three blocks in `internal/auth/` (`SessionTTL`, `Login` and `ErrEmpty`), and a later `docs/api.md` cites `Login` twice. Ids such as `sessionttl-r7xkm5bw` are random, so yours will differ.
+The examples run in order in one small Go repository, shown in [The example repository](#the-example-repository): `ds def` marks three blocks in `internal/auth/` (`SessionTTL`, `Login` and `ErrEmpty`), a `docs/auth.md` page cites them, and a later `docs/api.md` cites `Login` twice. Ids such as `sessionttl-r7xkm5bw` have a random suffix, so yours will differ; use the ones your own `ds def` prints.
 
 ## Contents
 
@@ -11,6 +11,7 @@ The examples come from one small Go repository: a `docs/auth.md` page cites thre
   - [Exit codes](#exit-codes)
   - [Machine output](#machine-output)
   - [Dry runs and writes](#dry-runs-and-writes)
+- [The example repository](#the-example-repository)
 - [Setting up](#setting-up): [`init`](#ds-init), [`doctor`](#ds-doctor), [`def`](#ds-def), [`adopt`](#ds-adopt), [`scan`](#ds-scan)
 - [The everyday loop](#the-everyday-loop): [`check`](#ds-check), [`impact`](#ds-impact), [`ack`](#ds-ack), [`triage`](#ds-triage), [`review`](#ds-review)
 - [Investigating](#investigating): [`why`](#ds-why), [`blame`](#ds-blame), [`find`](#ds-find), [`read`](#ds-read), [`locate`](#ds-locate), [`context`](#ds-context), [`map`](#ds-map), [`facts`](#ds-facts), [`graph`](#ds-graph), [`status`](#ds-status), [`audit`](#ds-audit)
@@ -25,6 +26,12 @@ The examples come from one small Go repository: a `docs/auth.md` page cites thre
 
 Every command except `init` looks for `.ds/config.toml` in the directory it was started in and then in each parent, the way git looks for `.git`. So you can run `ds` from any subdirectory of an initialised repository.
 
+<!-- doctest
+mkdir -p ../conv/sub
+cd ../conv
+ds init
+-->
+
 ```console
 $ cd sub && ds doctor
 config         ok    spec 1.0, prefix ds
@@ -33,10 +40,10 @@ $ cd /tmp && ds check
 ds: no .ds/config.toml here or in any parent directory; run `init` first
 ```
 
-The one global flag is `--dir <path>`. It runs the command as if it had been started in that directory, the way `git -C` does, and discovery starts from there:
+The one global flag is `--dir <path>`. It runs the command as if it had been started in that directory, the way `git -C` does, and discovery starts from there, so it may name a subdirectory:
 
 ```console
-$ ds --dir ~/src/demo check
+$ ds --dir sub check
 no references
 ```
 
@@ -53,11 +60,14 @@ Path arguments (`render <doc>`, `blame <doc>`, `def <file>#…`, `--doc`, `--fil
 Commands that only report, such as `impact`, `triage`, `status`, `report`, `map` and `review`, exit `0` whatever they find. Use `check` when you need a gate.
 
 ```console
-$ ds bogus
+$ ds bogus; echo $?
 ds: unknown command "bogus" for "ds"
-$ echo $?
 2
 ```
+
+<!-- doctest
+cd ../repo
+-->
 
 ### Machine output
 
@@ -66,6 +76,61 @@ $ echo $?
 ### Dry runs and writes
 
 Every command that rewrites something a person wrote, sends something, or writes into a shared log has `--dry-run`: `ack`, `adopt`, `def`, `github comment`, `notify`, `prune`, `publish`, `refresh`, `rename` and `undo`. `repair` works the other way round: it prints by default and writes only with `--apply`. Code files are only ever written by `def`, `adopt`, `rename` and `repair`, and `undo` can reverse any of them.
+
+## The example repository
+
+A git repository with a Go module, four declarations in `internal/auth/` and an index page. Nothing is marked yet:
+
+<!-- doctest
+git init -q -b main .
+-->
+
+```text file=go.mod
+module example.com/demo
+
+go 1.22
+```
+
+```go file=internal/auth/session.go
+package auth
+
+import "time"
+
+// SessionTTL is how long a login lasts.
+const SessionTTL = 30 * time.Minute
+
+// Login checks a password and returns a session token.
+func Login(user, password string) (string, error) {
+	if password == "" {
+		return "", ErrEmpty
+	}
+	return "tok-" + user, nil
+}
+```
+
+```go file=internal/auth/errors.go
+package auth
+
+import "errors"
+
+// ErrEmpty is returned for an empty password.
+var ErrEmpty = errors.New("empty password")
+```
+
+```go file=internal/auth/logout.go
+package auth
+
+// Logout ends a session.
+func Logout(token string) error {
+	return nil
+}
+```
+
+```markdown file=docs/index.md
+# Docs
+
+Start with [Auth](auth.md).
+```
 
 ## Setting up
 
@@ -100,6 +165,11 @@ ds: .ds/config.toml already exists; pass --force to overwrite
 
 The config it writes is described in [Configuration](configuration.md). Do not use `--force` to repair a `.gitignore` that `doctor` flags: it overwrites the config and the ledgers too.
 
+<!-- doctest
+git add -A
+git commit -qm init
+-->
+
 ### ds doctor
 
 Checks the config, every scan glob, the extractors, the ledger format, git, and the files in `.ds/` that need to be set up a certain way.
@@ -113,7 +183,7 @@ No flags. Each row is `ok`, `WARN` or `FAIL`. Any `FAIL` makes it exit `2`; a `W
 ```console
 $ ds doctor
 config          ok    spec 1.0, prefix ds
-glob **         ok    4 files
+glob **         ok    5 files
 glob docs/**    ok    1 files
 glob README.md  WARN  matches no files
 extractors      ok    sql, python, javascript, tsx, typescript, go, hcl, toml, yaml, markdown, document, config, code, text
@@ -121,16 +191,25 @@ ledger          ok    format 2
 git             ok    HEAD 3d17fb2
 gitignore       ok    machine-local state excluded
 gitattributes   ok    acks.tsv merges without conflicts
-blocks          ok    3 bodies, 3 live
+blocks          ok    0 bodies, 0 live
 notify          ok    no state yet (first notify will create .ds/notified.json)
 ```
 
 A config that does not load is a `FAIL` row naming the key and line:
 
+<!-- doctest
+cp .ds/config.toml config.good
+perl -pi -e 's/fuzzy_threshold/fuzy_threshold/' .ds/config.toml
+-->
+
 ```console
-$ ds doctor
+$ ds doctor   # after misspelling fuzzy_threshold in .ds/config.toml
 config	FAIL	check: config: unknown key: fuzy_threshold (line 15)
 ```
+
+<!-- doctest
+mv config.good .ds/config.toml
+-->
 
 ### ds def
 
@@ -154,32 +233,70 @@ ds def <file>#<symbol> | <file>:<line> | --fix [flags]
 Running it on a block that already has a def prints the existing id and changes nothing.
 
 ```console
-$ ds def internal/auth/session.go#Login --owner @auth --stability api
-login-j3nq87mh
 $ ds def internal/auth/session.go#SessionTTL --owner @auth --dry-run
 sessionttl-af9apb7y
 would insert at internal/auth/session.go:6:
 // ds:def id=sessionttl-af9apb7y owner=@auth
+$ ds def internal/auth/session.go#SessionTTL --owner @auth
+sessionttl-r7xkm5bw
+$ ds def internal/auth/session.go#Login --owner @auth --stability api
+login-j3nq87mh
 $ ds def internal/auth/errors.go:6 --label empty-password --tags errors
 empty-password-rsh5d7az
+$ ds def internal/auth/logout.go#Logout --owner @auth --stability api
+logout-d3dzzyqr
 $ ds def internal/auth/session.go#Login
 login-j3nq87mh
 ```
 
-The file now holds the directive:
+The file now holds the directives:
 
-```go
+```console
+$ cat internal/auth/session.go
+package auth
+
+import "time"
+
+// SessionTTL is how long a login lasts.
+// ds:def id=sessionttl-r7xkm5bw owner=@auth
+const SessionTTL = 30 * time.Minute
+
 // Login checks a password and returns a session token.
 // ds:def id=login-j3nq87mh owner=@auth stability=api
 func Login(user, password string) (string, error) {
+	if password == "" {
+		return "", ErrEmpty
+	}
+	return "tok-" + user, nil
+}
+```
+
+A page cites the three blocks by those ids:
+
+```markdown file=docs/auth.md
+# Auth
+
+A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).
+
+[Login](ds:block?id=login-j3nq87mh) returns a token for the user, and refuses an empty password with [ErrEmpty](ds:block?id=empty-password-rsh5d7az).
 ```
 
 `--fix` repairs ids that two defs share, which usually comes from copying a block:
 
+```go file=internal/auth/errors.go append=true
+
+// ErrLocked is returned for a locked account.
+// ds:def id=empty-password-rsh5d7az
+var ErrLocked = errors.New("account locked")
+```
+
 ```console
 $ ds def --fix --dry-run
-logout-d3dzzyqr@internal/auth/logout.go:11 -> logout-taw2whnr
+empty-password-rsh5d7az@internal/auth/errors.go:10 -> empty-password-taw2whnr
 1 def(s) would be re-minted (--dry-run)
+$ ds def --fix
+empty-password-rsh5d7az@internal/auth/errors.go:10 -> empty-password-m4k8q2xz
+1 def(s) re-minted; run ds scan
 ```
 
 `ds undo` reverses a `def` that has not been committed yet.
@@ -198,18 +315,29 @@ ds adopt [--dry-run]
 
 A relative link is resolved from the page that holds it. Links it cannot resolve are left alone and listed. Run `ds scan` afterwards; `ds undo` reverses the whole adoption.
 
+```go file=internal/auth/refresh.go
+package auth
+
+// Refresh extends a session.
+func Refresh(token string) (string, error) {
+	return token, nil
+}
+```
+
+```markdown file=docs/refresh.md
+# Refresh
+
+See [Refresh](../internal/auth/refresh.go#Refresh) and [its body](../internal/auth/refresh.go#L4-L6). Also [missing](../internal/auth/nope.go#L1-L2).
+```
+
 ```console
-$ cat docs/logout.md
-# Logout
-
-See [Logout](../internal/auth/logout.go#Logout) and [the body](../internal/auth/logout.go#L4-L6). Also [missing](../internal/auth/nope.go#L1-L2).
 $ ds adopt
-left alone docs/logout.md:3 ../internal/auth/nope.go#L1-L2: file not found: internal/auth/nope.go
+left alone docs/refresh.md:3 ../internal/auth/nope.go#L1-L2: file not found: internal/auth/nope.go
 2 link(s) adopted, 2 edit(s); run ds scan
-$ cat docs/logout.md
-# Logout
+$ cat docs/refresh.md
+# Refresh
 
-See [Logout](ds:block?id=logout-d3dzzyqr) and [the body](ds:block?id=logout-d3dzzyqr). Also [missing](../internal/auth/nope.go#L1-L2).
+See [Refresh](ds:block?id=refresh-p7c2n5tw) and [its body](ds:block?id=refresh-p7c2n5tw). Also [missing](../internal/auth/nope.go#L1-L2).
 ```
 
 ### ds scan
@@ -224,8 +352,13 @@ No flags. A scan records where things are now; it does not approve anything. A f
 
 ```console
 $ ds scan
-4 files, 3 defs, 3 refs, 0 problems, 0 skipped
+8 files, 6 defs, 5 refs, 0 problems, 0 skipped
 ```
+
+<!-- doctest
+git add -A
+git commit -qm defs
+-->
 
 ## The everyday loop
 
@@ -250,16 +383,26 @@ ds check [flags]
 | `--frozen` | Resolve foreign blocks from the committed `.ds/foreign.tsv` instead of syncing. This is the default when the `CI` environment variable is set. |
 | `--sync` | Sync the workspace index first, even under `CI`. `--frozen --sync` is a usage error. |
 
-Exit `1` on any error-severity finding, `0` otherwise.
+Exit `1` on any error-severity finding, `0` otherwise. Change the session length and check:
 
 ```console
-$ ds check
+$ perl -pi -e 's/30 \* time/60 * time/' internal/auth/session.go
+$ ds check; echo "exit $?"
 docs/auth.md
   3	error    unacked            sessionttl-r7xkm5bw changed (body) since this sentence was first cited
       still true: ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/auth.md:3, then ack
-1 error, 2 none
+internal/auth/errors.go
+  10	info     uncovered          defined but never cited or covered
+      fix: empty-password-m4k8q2xz is defined but nothing cites or covers it; cite it from a page or remove the def
+internal/auth/logout.go
+  4	info     uncovered          defined but never cited or covered
+      fix: logout-d3dzzyqr is defined but nothing cites or covers it; cite it from a page or remove the def
+1 error, 2 info, 4 none
+exit 1
 ```
+
+The two `info` findings are the defs minted above that no page cites yet; they never fail a check.
 
 Every finding carries its remedy. The full list of finding states and their severities is in [How it works](how-it-works.md) and in [SPEC §17](../SPEC.md#17-findings).
 
@@ -268,13 +411,11 @@ Every finding carries its remedy. The full list of finding states and their seve
 ```console
 $ ds check --explain
 WHERE                        TIER      WHAT       CARRIER  ID
-internal/auth/errors.go:6    go        def const  comment  empty-password-rsh5d7az
+…
 internal/auth/session.go:6   go        def const  comment  sessionttl-r7xkm5bw
 internal/auth/session.go:10  go        def func   comment  login-j3nq87mh
 docs/auth.md:3               markdown  ds:block   link     sessionttl-r7xkm5bw
-docs/auth.md:5               markdown  ds:block   link     login-j3nq87mh
-docs/auth.md:5               markdown  ds:block   link     empty-password-rsh5d7az
-3 none
+…
 ```
 
 `--json` gives each finding with its sentence, block location, change class and remedy:
@@ -284,16 +425,10 @@ $ ds check --json
 {
   "json_format": 1,
   "generated_at": "2026-10-01T03:32:26.180057Z",
-  "repo": "demo",
+  "repo": "repo",
   "commit": "3d17fb2",
   "summary": {
-    "error": 1,
-    "none": 2
-  },
-  "states": {
-    "ok": 2,
-    "unacked": 1
-  },
+…
   "findings": [
     {
       "state": "unacked",
@@ -303,42 +438,63 @@ $ ds check --json
       "line": 3,
       "sentence": "A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).",
       "id": "sessionttl-r7xkm5bw",
-      …
-      "class": [
-        "body"
-      ],
-      …
+…
       "remedy": {
         "if_still_true": "ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'",
         "if_not": "edit the sentence at docs/auth.md:3, then ack"
       }
     },
-    …
-  ],
+…
   "exit_code": 1
 }
 ```
 
-With `--run`, each `ds:run` result is printed before the findings, and a failed run makes the exit code `1`:
+A `ds:run` directive is executed only with `--run`, and only where the config allows it. In a separate repository with one runbook:
+
+<!-- doctest
+mkdir ../runs
+cd ../runs
+git init -q -b main .
+-->
+
+```markdown file=docs/runbooks/smoke.md
+# Smoke
+
+Run the smoke test: <!-- ds:run cmd="exit 3" expect=ok -->
+```
 
 ```console
+$ ds init
+…
 $ ds check --run
-docs/runbooks/smoke.md:3  run FAILED: exit 3
-8 none
-$ echo $?
-1
+run.enabled is false; nothing executed
+docs/runbooks/smoke.md
+  3	info     skipped            run not executed
+      fix: pass --run to execute ds:run directives where they are enabled
+1 info
 ```
 
-Without `--run`, a `ds:run` directive is reported as `info  skipped  run not executed`. When `[run] enabled` is false, `--run` prints `run.enabled is false; nothing executed` and carries on.
+With running enabled for the runbooks, each result is printed before the findings, and a failed run makes the exit code `1`:
 
-In a workspace, a frozen check fails when the snapshot is missing rather than passing without it:
+```toml file=.ds/config.toml append=true
+
+[run]
+enabled = true
+allow = ["docs/runbooks/**"]
+```
 
 ```console
-$ CI=true ds check
-ds: .ds/foreign.tsv not found; run `ds sync` to record the foreign blocks this repo cites
-$ ds check --frozen --sync
-ds: usage: --frozen and --sync ask for opposite things
+$ ds check --run; echo "exit $?"
+docs/runbooks/smoke.md:3  run FAILED: exit 3
+1 none
+exit 1
 ```
+
+<!-- doctest
+cd ../repo
+-->
+
+In a workspace, `--frozen` fails when the snapshot is missing rather than passing without it; see [`ds sync`](#ds-sync).
 
 ### ds impact
 
@@ -383,15 +539,69 @@ ds ack <id>... [flags]
 | `--from-commit commit` | Read `ds:ack id=…` directives from that commit's message (with your configured prefix). |
 | `--dry-run` | List every sentence that would be acked, quoted, and at which hash, and record nothing. |
 
-An ack is for one sentence. If you rewrite the sentence later, it needs a new ack. You do not need to scan before acking.
+An ack is for one sentence. If you rewrite the sentence later, it needs a new ack. You do not need to scan before acking. Update the sentence, then ack it:
 
 ```console
+$ perl -pi -e 's/30 minutes/60 minutes/' docs/auth.md
 $ ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --dry-run
 would ack sessionttl-r7xkm5bw at docs/auth.md:3 (7446a2c) — "A session lasts [60 minutes](ds:block?id=sessionttl-r7xkm5bw)."
-$ ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note "raised to an hour"
+$ ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --actor alice --note "raised to an hour"
 acked sessionttl-r7xkm5bw at docs/auth.md:3 (human)
 $ ds check
-3 none
+internal/auth/errors.go
+  10	info     uncovered          defined but never cited or covered
+      fix: empty-password-m4k8q2xz is defined but nothing cites or covers it; cite it from a page or remove the def
+internal/auth/logout.go
+  4	info     uncovered          defined but never cited or covered
+      fix: logout-d3dzzyqr is defined but nothing cites or covers it; cite it from a page or remove the def
+2 info, 5 none
+```
+
+`--from-commit` lets the person who made a change approve it in the commit message. It acks every citation of each id named in a `ds:ack id=…` line, with the commit's subject as the note. After a commit that sets the session to 90 minutes and updates the sentence:
+
+<!-- doctest
+ds scan
+git add -A
+git commit -qm hour
+perl -pi -e 's/60 \* time/90 * time/' internal/auth/session.go
+perl -pi -e 's/60 minutes/90 minutes/' docs/auth.md
+ds scan
+git add -A
+git commit -qm "Session lasts 90 minutes" -m "ds:ack id=sessionttl-r7xkm5bw"
+-->
+
+```console
+$ git log -1 --format=%B
+Session lasts 90 minutes
+
+ds:ack id=sessionttl-r7xkm5bw
+
+$ ds check
+docs/auth.md
+  3	error    unacked            sessionttl-r7xkm5bw changed (body) since this sentence was acked
+…
+$ ds ack --from-commit HEAD --actor alice
+acked sessionttl-r7xkm5bw at docs/auth.md:3 (human)
+```
+
+A second page cites `Login`, and then `Login` gains a parameter:
+
+```markdown file=docs/api.md
+# API
+
+Call [Login](ds:block?id=login-j3nq87mh) first.
+
+Every request after [Login](ds:block?id=login-j3nq87mh) carries the token.
+```
+
+<!-- doctest
+ds scan
+git add -A
+git commit -qm api
+-->
+
+```console
+$ perl -pi -e 's/func Login\(user/func Login(ctx context.Context, user/; s/import "time"/import (\n\t"context"\n\t"time"\n)/' internal/auth/session.go
 ```
 
 `--all` with `--dry-run` shows the scope before you commit to it:
@@ -407,19 +617,8 @@ An agent's ack must name a human:
 ```console
 $ ds ack login-j3nq87mh --agent --doc docs/api.md --line 3
 ds: docsync: an agent ack needs delegated_by (§26.7)
-$ ds ack login-j3nq87mh --agent --delegated-by alice --doc docs/api.md --line 3 --note "ctx is plumbing"
+$ ds ack login-j3nq87mh --agent --actor helper --delegated-by alice --doc docs/api.md --line 3 --note "ctx is plumbing"
 acked login-j3nq87mh at docs/api.md:3 (agent)
-```
-
-`--from-commit` lets the person who made the change approve it in the commit message:
-
-```console
-$ git log -1 --format=%B
-Session lasts 90 minutes
-
-ds:ack id=sessionttl-r7xkm5bw note="ninety now"
-$ ds ack --from-commit HEAD
-acked sessionttl-r7xkm5bw at docs/auth.md:3 (human)
 ```
 
 ### ds triage
@@ -437,19 +636,28 @@ ds triage [--ack-group N --note "…"] [--actor string] [--json]
 | `--actor string` | Who is acking. |
 | `--json` | Machine output. |
 
+The two citations of `Login` that are still unacked form one group:
+
 ```console
 $ ds triage
-group 1: 3 sentence(s)
-  docs/api.md:3  login-j3nq87mh
+group 1: 2 sentence(s)
   docs/api.md:5  login-j3nq87mh
   docs/auth.md:5  login-j3nq87mh
   | -func Login(user, password string) (string, error) {
   | +func Login(ctx context.Context, user, password string) (string, error) {
-$ ds triage --ack-group 1 --note "ctx added; prose unaffected"
+$ ds triage --ack-group 1 --actor alice --note "ctx added; prose unaffected"
 acked group 1: 2 sentences
+$ ds triage
+nothing unacked
 ```
 
-The group ack above covered two sentences because the third had already been acked individually. `ds ack --group N` does the same thing as `--ack-group`, and works with `--dry-run`. With nothing to triage it prints `nothing unacked`.
+`ds ack --group N` does the same as `--ack-group`, and works with `--dry-run`.
+
+<!-- doctest
+ds scan
+git add -A
+git commit -qm ctx
+-->
 
 ### ds review
 
@@ -464,15 +672,43 @@ ds review [--ai] [--out file]
 | `--ai` | Pipe the worklist as JSON into `[review] command` and print the unified diff it writes to stdout. |
 | `--out string` | Write the patch to a file. Only valid with `--ai`. |
 
+After the session is raised to two hours in the code only:
+
 ```console
+$ perl -pi -e 's/90 \* time/120 * time/' internal/auth/session.go
 $ ds review
-- [ ] docs/auth.md:3  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was first cited
-      sentence: A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).
+- [ ] docs/auth.md:3  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
+      sentence: A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+      | -const SessionTTL = 90 * time.Minute
+      | +const SessionTTL = 120 * time.Minute
       still true: ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/auth.md:3, then ack
+$ ds review --ai
+ds: usage: --ai needs [review] command in .ds/config.toml
+$ ds review --out review.patch
+ds: usage: --out writes the patch, which only --ai produces
 ```
 
-With `[review] command` set (see [Configuration](configuration.md#review)), the command receives a JSON document on stdin with `instructions` and an `items` list (one per finding) and must print a unified diff:
+`[review] command` (see [Configuration](configuration.md#review)) receives a JSON document on stdin with `instructions` and an `items` list (one per finding) and must print a unified diff. It runs under `[run] shell` (default `sh`). Here a stand-in script, kept outside the repository so its text is not scanned, prints a fixed patch:
+
+```sh file=../review-tool.sh
+cat > /dev/null
+cat <<'EOF'
+--- a/docs/auth.md
++++ b/docs/auth.md
+@@ -1,3 +1,3 @@
+ # Auth
+ 
+-A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
++A session lasts [two hours](ds:block?id=sessionttl-r7xkm5bw).
+EOF
+```
+
+```toml file=.ds/config.toml append=true
+
+[review]
+command = "sh ../review-tool.sh"
+```
 
 ```console
 $ ds review --ai
@@ -485,16 +721,7 @@ $ ds review --ai
 +A session lasts [two hours](ds:block?id=sessionttl-r7xkm5bw).
 ```
 
-The command runs under `[run] shell` (default `sh`). Errors:
-
-```console
-$ ds review --ai
-ds: usage: --ai needs [review] command in .ds/config.toml
-$ ds review --out review.patch
-ds: usage: --out writes the patch, which only --ai produces
-```
-
-Apply the patch yourself (`git apply`), read it, then ack.
+Apply the patch yourself (`git apply`), read it, then ack. The examples below leave the finding open.
 
 ## Investigating
 
@@ -514,9 +741,10 @@ ds why <id> [--chain] [--history] [--json]
 
 ```console
 $ ds why sessionttl-r7xkm5bw --history
-sessionttl-r7xkm5bw  const  internal/auth/session.go:7-7
-  docs/auth.md:3  ds:block  A session lasts [60 minutes](ds:block?id=sessionttl-r7xkm5bw).
-  2026-10-01  t (human)  docs/auth.md:3  raised to an hour
+sessionttl-r7xkm5bw  const  internal/auth/session.go:10-10
+  docs/auth.md:3  ds:block  A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+  2026-10-01  alice (human)  docs/auth.md:3  raised to an hour
+  2026-10-01  alice (human)  docs/auth.md:3  Session lasts 90 minutes
 ```
 
 ### ds blame
@@ -530,9 +758,13 @@ ds blame <doc> <line> [--json]
 ```console
 $ ds blame docs/auth.md 3
 docs/auth.md:3  ds:block sessionttl-r7xkm5bw
-block  internal/auth/session.go:7-7  7446a2c40dfd
-state  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was first cited
+block  internal/auth/session.go:10-10  7446a2c40dfd
+state  unacked  sessionttl-r7xkm5bw changed (body) since this sentence was acked
 change changed [body]
+  | -const SessionTTL = 90 * time.Minute
+  | +const SessionTTL = 120 * time.Minute
+ack    2026-10-01 alice raised to an hour
+ack    2026-10-01 alice Session lasts 90 minutes
 ```
 
 ### ds find
@@ -551,13 +783,12 @@ ds find [query] [--file path] [--tag t] [--json]
 
 ```console
 $ ds find login
-login-j3nq87mh  func  internal/auth/session.go:11-16    cited by 1
-$ ds find --file internal/auth
-empty-password-rsh5d7az  const  internal/auth/errors.go:7-7                     cited by 1
-login-j3nq87mh           func   internal/auth/session.go:11-16                  cited by 1
-sessionttl-r7xkm5bw      const  internal/auth/session.go:7-7    login lifetime  cited by 1
+login-j3nq87mh  func  internal/auth/session.go:14-19    cited by 3
 $ ds find --tag errors
 empty-password-rsh5d7az  const  internal/auth/errors.go:7-7    cited by 1
+$ ds find --file internal/auth/session.go
+login-j3nq87mh       func   internal/auth/session.go:14-19    cited by 3
+sessionttl-r7xkm5bw  const  internal/auth/session.go:10-10    cited by 1
 ```
 
 ### ds read
@@ -576,7 +807,7 @@ An unknown id exits `2` with `not found`.
 
 ```console
 $ ds read sessionttl-r7xkm5bw
-const SessionTTL = 60 * time.Minute
+const SessionTTL = 120 * time.Minute
 $ ds read login-j3nq87mh --lines 2-3
 	if password == "" {
 		return "", ErrEmpty
@@ -594,7 +825,7 @@ ds locate <id>
 
 ```console
 $ ds locate login-j3nq87mh
-internal/auth/session.go:11-16 @ 3d17fb2
+internal/auth/session.go:14-19 @ 3d17fb2
 ```
 
 ### ds context
@@ -615,7 +846,7 @@ ds context <doc>|<id> [--budget N] [--mode auto|full|diff|value] [--since ack] [
 ```console
 $ ds context docs/auth.md --budget 20
 ## 1. sessionttl-r7xkm5bw unacked (value, 9 tokens)
-const SessionTTL = 60 * time.Minute
+const SessionTTL = 120 * time.Minute
 
 ## 2. empty-password-rsh5d7az cited, unchanged (value, 11 tokens)
 var ErrEmpty = errors.New("empty password")
@@ -624,10 +855,10 @@ omitted login-j3nq87mh: unchanged since ack; over budget
 20 tokens used of 20
 $ ds context sessionttl-r7xkm5bw
 ## 1. sessionttl-r7xkm5bw unacked (value, 9 tokens)
-const SessionTTL = 60 * time.Minute
+const SessionTTL = 120 * time.Minute
 
 ## 2.  cites sessionttl-r7xkm5bw (full, 16 tokens)
-A session lasts [30 minutes](ds:block?id=sessionttl-r7xkm5bw).
+A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
 
 25 tokens used of 0
 ```
@@ -644,17 +875,33 @@ ds map [--budget N] [--json]
 
 ```console
 $ ds map
-PAGE          COVERS  CITES  STATE
-docs/auth.md  0       3      ok 2, unacked 1
+PAGE             COVERS  CITES  STATE
+docs/auth.md     0       3      ok 2, unacked 1
+docs/api.md      0       2      ok 2
+docs/refresh.md  0       2      ok 2
 
 DEF                      FILE                            CITED BY  STATE
-sessionttl-r7xkm5bw      internal/auth/session.go:7-7    1         unacked
+sessionttl-r7xkm5bw      internal/auth/session.go:10-10  1         unacked
+empty-password-m4k8q2xz  internal/auth/errors.go:11-11   0         uncovered
+logout-d3dzzyqr          internal/auth/logout.go:5-7     0         uncovered
+login-j3nq87mh           internal/auth/session.go:14-19  3         ok
+refresh-p7c2n5tw         internal/auth/refresh.go:5-7    2         ok
 empty-password-rsh5d7az  internal/auth/errors.go:7-7     1         ok
-login-j3nq87mh           internal/auth/session.go:11-16  1         ok
-57 tokens used, 0 omitted
+115 tokens used, 0 omitted
 ```
 
-With a budget, rows past it are counted rather than printed (`25 tokens used, 5 omitted`).
+With a budget, rows past it are counted rather than printed:
+
+```console
+$ ds map --budget 30
+PAGE             COVERS  CITES  STATE
+docs/auth.md     0       3      ok 2, unacked 1
+docs/api.md      0       2      ok 2
+docs/refresh.md  0       2      ok 2
+
+DEF  FILE  CITED BY  STATE
+24 tokens used, 6 omitted
+```
 
 ### ds facts
 
@@ -670,10 +917,10 @@ ds facts [--cited-by doc] [--json]
 | `--json` | Machine output. |
 
 ```console
-$ ds facts
-ID                       VALUE                                        WHERE                       CITED BY
-empty-password-rsh5d7az  var ErrEmpty = errors.New("empty password")  internal/auth/errors.go:7   1
-sessionttl-r7xkm5bw      const SessionTTL = 60 * time.Minute          internal/auth/session.go:7  1
+$ ds facts --cited-by docs/auth.md
+ID                       VALUE                                        WHERE                        CITED BY
+empty-password-rsh5d7az  var ErrEmpty = errors.New("empty password")  internal/auth/errors.go:7    1
+sessionttl-r7xkm5bw      const SessionTTL = 120 * time.Minute         internal/auth/session.go:10  1
 ```
 
 ### ds graph
@@ -686,15 +933,17 @@ ds graph [--dot] [--json]
 
 ```console
 $ ds graph
+…
 docs/auth.md -cites-> sessionttl-r7xkm5bw
 docs/auth.md -cites-> login-j3nq87mh
 docs/auth.md -cites-> empty-password-rsh5d7az
+…
 $ ds graph --dot
 digraph docsync {
   rankdir=LR;
-  "empty-password-rsh5d7az" [shape=box label="empty-password-rsh5d7az\\nErrEmpty\\nok"];
-  …
+…
   "docs/auth.md" -> "empty-password-rsh5d7az" [label="cites"];
+…
 }
 ```
 
@@ -710,9 +959,11 @@ ds status [--json]
 
 ```console
 $ ds status
+…
 docs/auth.md:3	unacked	sessionttl-r7xkm5bw
 docs/auth.md:5	ok	empty-password-rsh5d7az
 docs/auth.md:5	ok	login-j3nq87mh
+…
 ```
 
 In JSON each row carries `severity` (`none`, `warning`, `error`) and, when the citation has been acked, `note`, `acked_by` and `acked_at`. In a workspace, a `snapshot` object and a first line report how far `.ds/foreign.tsv` is behind upstream; that never changes the exit code. See [Integrations](integrations.md) for the sites that read it.
@@ -735,11 +986,11 @@ ds audit [--id id] [--since date] [--actor-kind human|agent] [--export file] [--
 
 ```console
 $ ds audit --id login-j3nq87mh
-2026-10-01T03:33:51Z	t (agent, delegated by alice)	login-j3nq87mh	docs/api.md:3	ctx is plumbing
-2026-10-01T03:33:51Z	t	login-j3nq87mh	docs/api.md:5	ctx added; prose unaffected
-2026-10-01T03:33:51Z	t	login-j3nq87mh	docs/auth.md:5	ctx added; prose unaffected
-$ ds audit --export audit.jsonl
-exported 4 event(s) to audit.jsonl
+2026-10-01T03:33:51Z	helper (agent, delegated by alice)	login-j3nq87mh	docs/api.md:3	ctx is plumbing
+2026-10-01T03:33:51Z	alice	login-j3nq87mh	docs/api.md:5	ctx added; prose unaffected
+2026-10-01T03:33:51Z	alice	login-j3nq87mh	docs/auth.md:5	ctx added; prose unaffected
+$ ds audit --export ../audit.jsonl
+exported 5 event(s) to ../audit.jsonl
 ```
 
 ## Reporting and publishing pages
@@ -768,27 +1019,50 @@ With no flag it prints every section. Always exits `0`.
 
 ```console
 $ ds report
-uncovered (0)
-unmarked (2)
-  docs/auth.md  changed 2 times, no defs
+uncovered (2)
+  empty-password-m4k8q2xz  internal/auth/errors.go:11
+  logout-d3dzzyqr  internal/auth/logout.go:5
+unmarked (5)
+  docs/auth.md  changed 3 times, no defs
+  docs/api.md  changed 1 times, no defs
+  docs/index.md  changed 1 times, no defs
+  docs/refresh.md  changed 1 times, no defs
   go.mod  changed 1 times, no defs
-stalest (1)
-  docs/auth.md  never acked  3 cites
+stalest (3)
+  docs/refresh.md  never acked  2 cites
+…
 literals (0)
-orphaned owners (0): 
-gaps (3)
-  define blocks in docs/auth.md (changed 2 times, nothing documented)
+orphaned owners (0):
+gaps (8)
+  define blocks in docs/auth.md (changed 3 times, nothing documented)
+  define blocks in docs/api.md (changed 1 times, nothing documented)
+  define blocks in docs/index.md (changed 1 times, nothing documented)
+  define blocks in docs/refresh.md (changed 1 times, nothing documented)
   define blocks in go.mod (changed 1 times, nothing documented)
-  review docs/auth.md (cites never acked)
+  review docs/refresh.md (cites never acked)
+  document or drop empty-password-m4k8q2xz (internal/auth/errors.go)
+  document or drop logout-d3dzzyqr (internal/auth/logout.go)
 freshness per page
-  docs/auth.md  ok 3
+  docs/api.md  ok 2
+  docs/auth.md  ok 2, unacked 1
+  docs/refresh.md  ok 2
 freshness per owner
-  (none)  ok 1
-  @auth  ok 2
+  (none)  ok 3
+  @auth  ok 3, unacked 1
 mean time to ack 0s
+$ ds report --uncovered
+uncovered (2)
+  empty-password-m4k8q2xz  internal/auth/errors.go:11
+  logout-d3dzzyqr  internal/auth/logout.go:5
 ```
 
-An owner used in a def but missing from `[owners]`:
+Once `[owners]` lists teams, an owner used in a def but missing from it is orphaned:
+
+```toml file=.ds/config.toml append=true
+
+[owners]
+"@platform" = ["carol"]
+```
 
 ```console
 $ ds report --orphaned-owners
@@ -813,15 +1087,21 @@ ds render <doc> [--at commit] [--env name] [--out file]
 $ ds render docs/auth.md
 # Auth
 
-A session lasts [30 minutes](internal/auth/session.go#L7-L7).
+A session lasts [90 minutes](internal/auth/session.go#L10-L10).
 
-[Login](internal/auth/session.go#L11-L16) returns a token for the user, and refuses an empty password with [ErrEmpty](internal/auth/errors.go#L7-L7).
+[Login](internal/auth/session.go#L14-L19) returns a token for the user, and refuses an empty password with [ErrEmpty](internal/auth/errors.go#L7-L7).
 ```
 
 With `[check] permalink` set, links use that template instead (see [Configuration](configuration.md#check)):
 
+```toml file=.ds/config.toml append=true
+
+[check]
+permalink = "https://github.com/org/demo/blob/{sha}/{file}#L{start}-L{end}"
+```
+
 ```console
-$ ds render docs/auth.md | sed -n 3p
+$ ds render docs/auth.md | grep 'A session'
 A session lasts [90 minutes](https://github.com/org/demo/blob/0f6d00f/internal/auth/session.go#L10-L10).
 ```
 
@@ -841,7 +1121,7 @@ ds export hugo --out <dir>
 
 ```console
 $ ds export hugo --out site/data/docsync
-exported 4 blocks and 7 references to site/data/docsync
+exported 6 blocks and 7 references to site/data/docsync
 ```
 
 Docusaurus uses its remark plugin and `ds status --json` instead; see [Integrations](integrations.md).
@@ -889,39 +1169,66 @@ ds github comment [--pr N] [--report file] [--ack-label name] [--dry-run]
 
 It needs `GITHUB_TOKEN` and `GITHUB_REPOSITORY` in the environment, even with `--dry-run`. Its exit code is the check's.
 
-```console
+~~~console
+$ ds github comment --dry-run --pr 7
+ds: github comment needs GITHUB_TOKEN and GITHUB_REPOSITORY, and a pull request number (--pr or GITHUB_EVENT_PATH)
 $ GITHUB_TOKEN=x GITHUB_REPOSITORY=org/demo ds github comment --dry-run --pr 7
 <!-- docsync:doc=docs/auth.md -->
 ### docsync: `docs/auth.md`
 
 - [line 3](https://github.com/org/demo/blob/fe90cb5/docs/auth.md#L3) **unacked** `sessionttl-r7xkm5bw`: sessionttl-r7xkm5bw changed (body) since this sentence was acked
   - still true: `ds ack sessionttl-r7xkm5bw --doc docs/auth.md --line 3 --note '…'`; otherwise: edit the sentence at docs/auth.md:3, then ack
-…
-1 error, 6 none
-```
+
+  <details><summary>block diff</summary>
+
+  ```diff
+  -const SessionTTL = 90 * time.Minute
+  +const SessionTTL = 120 * time.Minute
+  ```
+  </details>
+
+1 error, 2 info, 6 none
+~~~
 
 Only the act of applying the label acks. A label still present on a later push has to be removed and applied again.
 
 ## Across repositories
 
-These commands need `workspace` set in `.ds/config.toml`. A workspace and its index are explained in [Cross-repo](cross-repo.md).
+These commands need `workspace` set in `.ds/config.toml`. A workspace and its index are explained in [Cross-repo](cross-repo.md). The examples use three sibling directories: `index` (the index repository, holding `ds-workspace.toml`), `api` (which defines a block) and `docs` (which cites it).
 
-### ds sync
+<!-- doctest
+mkdir ../index ../api ../docs
+cd ../index
+git init -q -b main .
+-->
 
-Fetches the workspace index, rewrites `.ds/foreign.tsv` with the foreign blocks this repository cites, and shows what is published.
-
-```text
-ds sync [--json]
+```toml file=ds-workspace.toml
+[workspace]
+name = "platform"
+repos = ["github.com/org/api", "github.com/org/docs"]
 ```
 
-```console
-$ ds sync
-REPO  COMMIT   PUBLISHED             DEFS  REFS
-api   8cce3db  2026-10-01T03:37:29Z  1     0
-  + port-k3m8x2pq now cited at a7fc04e
+<!-- doctest
+git add -A
+git commit -qm ws
+cd ../api
+git init -q -b main .
+ds init
+perl -pi -e 's/^prefix = "ds"$/prefix = "ds"\nworkspace = "..\/index"/' .ds/config.toml
+-->
+
+```go file=internal/port.go
+package api
+
+// ds:def id=port-k3m8x2pq
+const Port = 8081
 ```
 
-Lines under the table use `+` for a newly cited block, `~` for changed content, `>` for a block that moved with the same content, and `-` for one no longer published. Commit `foreign.tsv` afterwards: it is what `check --frozen` reads.
+<!-- doctest
+ds scan
+git add -A
+git commit -qm api
+-->
 
 ### ds publish
 
@@ -938,19 +1245,66 @@ ds publish [--tests junit.xml] [--branch] [--force] [--dry-run]
 | `--force` | Publish from a non-default branch as if it were the default. |
 | `--dry-run` | Say what would be published and how the index would change, and write nothing. |
 
-It runs only on the default branch, after merge:
+It runs only on the default branch, after merge. In `api`, with `workspace = "../index"` in its config:
 
 ```console
 $ ds publish --dry-run
-would publish api: 1 defs, 0 refs, 0 test outcomes into /path/to/index
+would publish api: 1 defs, 0 refs, 0 test outcomes into …
 index would change: 1 defs added
 $ ds publish
-published api: 1 defs, 0 refs, 0 test outcomes into /path/to/index
-$ git checkout -b release-1 && ds publish
+published api: 1 defs, 0 refs, 0 test outcomes into …
+$ git checkout -q -b release-1 && ds publish
 ds: publish runs only on the default branch (§21); pass --force to override: on "release-1", default is "main"
 ```
 
 When `workspace` names an existing local directory, `publish` writes into it and does not commit. Any other value is cloned into `.ds/index/`, and `publish` pushes to it.
+
+### ds sync
+
+Fetches the workspace index, rewrites `.ds/foreign.tsv` with the foreign blocks this repository cites, and shows what is published.
+
+```text
+ds sync [--json]
+```
+
+In `docs`, with the same `workspace` line and a page that cites the port:
+
+<!-- doctest
+cd ../docs
+git init -q -b main .
+ds init
+perl -pi -e 's/^prefix = "ds"$/prefix = "ds"\nworkspace = "..\/index"/' .ds/config.toml
+-->
+
+```markdown file=docs/ports.md
+# Ports
+
+The API listens on [8081](ds:cfg?id=port-k3m8x2pq).
+```
+
+```console
+$ ds scan
+1 files, 0 defs, 1 refs, 0 problems, 0 skipped
+$ ds sync
+REPO  COMMIT   PUBLISHED             DEFS  REFS
+api   8cce3db  2026-10-01T03:37:29Z  1     0
+  + port-k3m8x2pq now cited at a7fc04e
+```
+
+Lines under the table use `+` for a newly cited block, `~` for changed content, `>` for a block that moved with the same content, and `-` for one no longer published. Commit `foreign.tsv` afterwards: it is what `check --frozen` reads, and `--frozen` is the default under `CI`. Without the snapshot, a frozen check fails rather than passing:
+
+```console
+$ CI=true ds check
+1 none
+$ rm .ds/foreign.tsv && CI=true ds check
+ds: .ds/foreign.tsv not found; run `ds sync` to record the foreign blocks this repo cites
+$ ds check --frozen --sync
+ds: usage: --frozen and --sync ask for opposite things
+```
+
+<!-- doctest
+cd ../repo
+-->
 
 ## Editors and agents
 
@@ -962,7 +1316,7 @@ A language server over stdio: a code lens on every def listing its dependents, h
 ds lsp
 ```
 
-No flags. Editors start it themselves; the VS Code extension in `editors/vscode` does. It announces these capabilities:
+No flags. Editors start it themselves; the VS Code extension in `editors/vscode` does. It announces these capabilities in its `initialize` response:
 
 ```json
 {"codeLensProvider": {"resolveProvider": false}, "definitionProvider": true, "hoverProvider": true, "textDocumentSync": 1}
@@ -993,11 +1347,16 @@ Updates the ledger for blocks that moved, and in `include.mode = "repo"` rewrite
 ds refresh [--dry-run]
 ```
 
+<!-- doctest
+ds scan
+git add -A
+git commit -qm review
+-->
+
+After two lines are added above `Logout`:
+
 ```console
-$ ds check
-docs/logout.md
-  3	none     moved              moved from internal/auth/logout.go:5-7
-…
+$ perl -pi -e 's|^// Logout ends|// Sessions end here.\n\n// Logout ends|' internal/auth/logout.go
 $ ds refresh --dry-run
 moved logout-d3dzzyqr: internal/auth/logout.go:5 -> internal/auth/logout.go:7
 1 moved; nothing written (--dry-run)
@@ -1006,9 +1365,26 @@ moved logout-d3dzzyqr: internal/auth/logout.go:5 -> internal/auth/logout.go:7
 1 moved; ledger updated
 ```
 
-In repo mode, `refresh` writes the fence and `check` reports a hand-edited copy as `tampered`:
+In repo mode, `refresh` writes the code into the page and `check` reports a hand-edited copy as `tampered`. In a separate repository:
+
+<!-- doctest
+mkdir ../repomode
+cp -R internal ../repomode/
+cd ../repomode
+git init -q -b main .
+ds init
+perl -pi -e 's/mode = "build"/mode = "repo"/' .ds/config.toml
+-->
+
+```markdown file=docs/code.md
+# Login code
+
+<!-- ds:block id=login-j3nq87mh -->
+```
 
 ~~~console
+$ grep mode .ds/config.toml
+mode = "repo"
 $ ds refresh
 1 repo-mode copies rewritten
 0 moved; ledger updated
@@ -1020,15 +1396,24 @@ $ cat docs/code.md
 
 ```go
 func Login(ctx context.Context, user, password string) (string, error) {
-…
+	if password == "" {
+		return "", ErrEmpty
+	}
+	return "tok-" + user, nil
+}
 ```
-<!-- /ds:block hash=b127ed -->
-$ sed -i '' 's/nil/err/' docs/code.md   # edit the copy by hand
+<!-- /ds:block hash=6360da -->
+$ perl -pi -e 's/nil$/err/' docs/code.md
 $ ds check
 docs/code.md
   3	error    tampered           copy differs from what refresh would write
       fix: the copy at docs/code.md:3 was edited by hand; edit the source block instead, then `ds refresh`
+…
 ~~~
+
+<!-- doctest
+cd ../repo
+-->
 
 ### ds rename
 
@@ -1062,27 +1447,34 @@ ds undo [--list] [--dry-run] [--force] [--orphan]
 | `--force` | Reverse a write that is already committed. |
 | `--orphan` | Reverse even when that removes a def that sentences still cite (here or, in a workspace, in other repositories). |
 
-Every run says what the next entry is, so you do not undo one step too many.
+Every run says what the next entry is, so you do not undo one step too many. An entry is committed when the line it wrote is still at the same line in `HEAD`, so a def whose line has since moved (entries 6 and 7 below, after `Login` gained an import block) is listed as `uncommitted` although it was committed; `undo` stops at the first committed entry before reaching it.
 
 ```console
 $ ds undo --list
-#  KIND    WHERE                       ID                       AGE        STATE
-1  rename  docs/auth.md:3 +1 more      -                        just now   uncommitted
-2  def     internal/auth/errors.go:6   empty-password-rsh5d7az  2 min ago  committed 4c2b0b5 · cited by docs/auth.md:5
-…
+#  KIND    WHERE                               ID                       AGE       STATE
+1  rename  docs/auth.md:3 +1 more              -                        just now  uncommitted
+2  adopt   internal/auth/refresh.go:4 +1 more  refresh-p7c2n5tw         just now  committed 285bed3
+3  def     internal/auth/errors.go:10          empty-password-m4k8q2xz  just now  committed 285bed3
+4  def     internal/auth/logout.go:4           logout-d3dzzyqr          just now  committed 285bed3
+5  def     internal/auth/errors.go:6           empty-password-rsh5d7az  just now  committed 285bed3 · cited by docs/auth.md:5
+6  def     internal/auth/session.go:10         login-j3nq87mh           just now  uncommitted · cited by docs/api.md:3, docs/api.md:5, docs/auth.md:5
+7  def     internal/auth/session.go:6          sessionttl-r7xkm5bw      just now  uncommitted · cited by docs/auth.md:3
+$ ds undo --dry-run
+would undo rename docs/auth.md:3 +1 more (--dry-run)
+  docs/auth.md:3
+    - A session lasts [90 minutes](ds:block?id=session-ttl-r7xkm5bw).
+    + A session lasts [90 minutes](ds:block?id=sessionttl-r7xkm5bw).
+  internal/auth/session.go:9
+    - // ds:def id=session-ttl-r7xkm5bw owner=@auth
+    + // ds:def id=sessionttl-r7xkm5bw owner=@auth
 $ ds undo
 undid internal/auth/session.go:9
 undid docs/auth.md:3
-next: nothing uncommitted left to undo; the next entry is committed (4c2b0b5): def internal/auth/errors.go:6 empty-password-rsh5d7az
+next: nothing uncommitted left to undo; the next entry is committed …
 $ ds undo
 ds: nothing to undo since the last commit.
-    next entry is committed (4c2b0b5, 2 min ago): def internal/auth/errors.go:6 empty-password-rsh5d7az
+    next entry is committed …
     to reverse it anyway: ds undo --force
-$ ds undo --force --dry-run
-ds: undo would orphan a cited def:
-    empty-password-rsh5d7az is cited by 1 sentence:
-      docs/auth.md:5
-    removing the def will make it `broken`. Re-run with ds undo --force --orphan to proceed.
 ```
 
 ### ds repair
@@ -1100,16 +1492,28 @@ ds repair [--apply] [--json]
 
 ```console
 $ ds repair
+nothing to repair
+```
+
+A JSON file with a bare directive on its first line:
+
+```json file=data.json
+ds:def id=cfg-k4n7p2qx
+{"a": 1}
+```
+
+```console
+$ ds repair
 data.json:1  delete (no comment syntax here)
-  - ds:def id=cfg-abcdefgh
+  - ds:def id=cfg-k4n7p2qx
 1 line(s) would be repaired, 0 need a person (run with --apply to write)
 $ ds repair --apply
 data.json:1  delete (no comment syntax here)
-  - ds:def id=cfg-abcdefgh
+  - ds:def id=cfg-k4n7p2qx
 1 line(s) repaired, 0 need a person; ds undo reverses this, then run ds scan
+$ cat data.json
+{"a": 1}
 ```
-
-On a clean repository it prints `nothing to repair`.
 
 ### ds prune
 
@@ -1129,10 +1533,10 @@ ds prune [--dry-run] [--keep 30d] [--hash h --force] [--index]
 
 ```console
 $ ds prune --dry-run
-.ds/blocks: 7 bodies, 6 live, 0 dead (0 bytes), 1 within the 30d grace period
+.ds/blocks: 10 bodies, 9 live, 0 dead (0 bytes), 1 within the 30d grace period
 removed nothing (--dry-run)
 $ ds prune --keep 0d --dry-run
-.ds/blocks: 7 bodies, 6 live, 1 dead (35 bytes)
+.ds/blocks: 10 bodies, 9 live, 1 dead (35 bytes)
   dead  7446a2c  0h old
 removed nothing (--dry-run)
 ```
@@ -1148,10 +1552,10 @@ ds version [--json]
 ```console
 $ ds version --json
 {
-  "version": "v0.1.3-0.20260930165258-1bef39d4a0f7+dirty",
-  "commit": "1bef39d4a0f767ad660a95371bb4527f2b733fec",
-  "dirty": true,
-  "time": "2026-09-30T16:52:58Z",
+  "version": "v…
+  "commit": "56cc41c1b8f6…
+  "dirty": …
+  "time": "2026-10-01T04:48:39Z",
   "go": "go1.27.1"
 }
 ```
@@ -1160,10 +1564,9 @@ $ ds version --json
 
 ### ds completion
 
-Generates a shell completion script for `bash`, `zsh`, `fish` or `powershell`.
+Generates a shell completion script for `bash`, `zsh`, `fish` or `powershell`. In zsh, `source <(ds completion zsh)` loads it for the current session, and `ds completion <shell> --help` prints how to install it for every session.
 
 ```console
-$ source <(ds completion zsh)
+$ ds completion zsh | head -1
+#compdef ds
 ```
-
-That loads completion for the current session. `ds completion <shell> --help` prints how to install it for every session on that shell.

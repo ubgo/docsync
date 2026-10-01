@@ -2,7 +2,12 @@
 
 This page is the reference for everything you write into source and docs for docsync to read: the directive syntax, ids, each verb with every argument it takes, and what `ds check` reports for it. It is for authors who already ran `ds init` (see [Getting started](getting-started.md)) and want to know exactly what to type; the per-language details of where a `ds:def` goes and what it binds are in [Languages](languages.md).
 
-Every example below was run through `ds scan` and `ds check` in a throwaway repository, and the output shown is what the binary printed.
+Every example below is run against the `ds` binary by the guide's test harness, each section in a fresh repository, and the output shown is what `ds` prints.
+
+<!-- doctest
+git init -q -b main .
+ds init
+-->
 
 ## Contents
 
@@ -39,22 +44,50 @@ ds:<verb> key=value key=value …
 - **Values.** Bare up to the next whitespace. Use `"…"` for a value with spaces and `'…'` for a value that contains double quotes. Lists are comma separated inside one value: `tags=auth,session`. There is no escape character.
 - **Continuation.** In a line comment, a comment line directly below that starts with whitespace and `key=value` folds into the directive above it:
 
-```go
+```go file=store/cont.go
+package store
+
 // ds:def id=cont-func-b5c6d7e8 owner=@auth
 //   desc="dual-write guard, remove after task-120"
 func Cont() {}
 ```
 
-The ledger records both lines' keys (`desc=… id=cont-func-b5c6d7e8 owner=@auth`). Continuation works for line comments (`//`, `#`, `--`). Do not split one HTML comment (`<!-- … -->`) across lines in markdown: a directive broken that way is not read at all and nothing is reported, so keep markdown directives on one line.
+The def carries the keys from both lines:
+
+```
+$ ds scan
+1 files, 1 defs, 0 refs, 0 problems, 0 skipped
+$ ds find cont-func --json
+…
+    "args": {
+      "desc": "dual-write guard, remove after task-120",
+      "id": "cont-func-b5c6d7e8",
+      "owner": "@auth"
+    }
+  }
+]
+```
+
+Continuation works for line comments (`//`, `#`, `--`). Do not split one HTML comment (`<!-- … -->`) across lines in markdown: a directive broken that way is not read at all and nothing is reported, so keep markdown directives on one line.
 
 - **Unknown verbs and keys** are warnings, so an older `ds` can read files written for a newer one. `ds check --strict` turns them into errors:
 
+```markdown file=docs/verbs.md
+# Verbs
+
+<!-- ds:frob id=x -->
+
+[guard](ds:block?id=cont-func-b5c6d7e8&bogus=1)
 ```
+
+```
+$ ds check
 docs/verbs.md
-  23	warning  unknown            unknown verb "frob"
-      fix: frob is not a registered verb; register a handler or fix the directive at docs/verbs.md:23
-  25	warning  unknown            unknown key(s) bogus on ds:block
-      fix: unknown key(s) bogus on ds:block at docs/verbs.md:25; check the spelling against the verb's key table
+  3	warning  unknown            unknown verb "frob"
+      fix: frob is not a registered verb; register a handler or fix the directive at docs/verbs.md:3
+  5	warning  unknown            unknown key(s) bogus on ds:block
+      fix: unknown key(s) bogus on ds:block at docs/verbs.md:5; check the spelling against the verb's key table
+2 warning, 1 none
 ```
 
 ## Where a directive can sit
@@ -71,24 +104,72 @@ The link form is a markdown link whose target is the directive with `?` after th
 
 A comment anywhere in code can cite a block too, which puts the code in the reverse index next to the docs:
 
-```go
-// implements ds:block?id=sess-policy-h2n8wq4t
+```go file=store/impl.go
+package store
+
+// implements ds:block?id=cont-func-b5c6d7e8
 func Rotate() {}
 ```
 
-`ds check --explain` lists it as `store/impl.go:3  go  ds:block  link  sess-policy-h2n8wq4t`.
+```
+$ ds check --explain
+WHERE            TIER      WHAT      CARRIER  ID
+store/cont.go:3  go        def func  comment  cont-func-b5c6d7e8
+docs/verbs.md:3  markdown  ds:frob   block    x
+docs/verbs.md:5  markdown  ds:block  link     cont-func-b5c6d7e8
+store/impl.go:3  go        ds:block  link     cont-func-b5c6d7e8
+docs/verbs.md
+  3	warning  unknown            unknown verb "frob"
+      fix: frob is not a registered verb; register a handler or fix the directive at docs/verbs.md:3
+  5	warning  unknown            unknown key(s) bogus on ds:block
+      fix: unknown key(s) bogus on ds:block at docs/verbs.md:5; check the spelling against the verb's key table
+2 warning, 2 none
+```
 
 Directives inside code fences, indented code blocks, inline code spans and string literals are not directives, which is why this page can show them.
 
 ## Ids
 
+<!-- doctest
+mkdir ../ids
+cd ../ids
+git init -q -b main .
+ds init
+-->
+
 An id looks like `sess-save-k7m2p4xq`: a human label, a dash, and an eight-character suffix from `23456789abcdefghjkmnpqrstuvwxyz`.
 
-Let `ds def` mint ids rather than typing them. It derives the label from the symbol (or `--label`), generates the suffix, inserts the directive, and prints the id:
+Let `ds def` mint ids rather than typing them. It derives the label from the symbol (or `--label`), generates the suffix, inserts the directive, and prints the id. Given this file, where `SaveSession` already has a def:
+
+```go file=store/store.go
+package store
+
+import "context"
+
+// Limits for sessions.
+const (
+	MaxSessions = 5
+	TTLDays     = 30
+)
+
+type Session struct {
+	ID   string
+	User string
+}
+
+type Store struct{}
+
+// SaveSession writes the session.
+// ds:def id=store-savesession-m6twuucd
+func (s *Store) SaveSession(ctx context.Context, sess Session) error {
+	if sess.ID == "" {
+		return nil
+	}
+	return nil
+}
+```
 
 ```
-$ ds def store/store.go#Store.SaveSession
-store-savesession-m6twuucd
 $ ds def store/store.go#MaxSessions --owner @auth
 maxsessions-n4kpvzvf
 $ ds def store/store.go#TTLDays --label sess-ttl --dry-run
@@ -97,7 +178,14 @@ would insert at store/store.go:9:
 	// ds:def id=sess-ttl-9hz97fhy
 ```
 
-Run on a block that already has a def, `ds def` prints the existing id and changes nothing, so it is safe to call to look an id up. `ds def --fix` re-mints every copy after the first when an id has been duplicated (for example by copying a function).
+Run on a block that already has a def, `ds def` prints the existing id and changes nothing, so it is safe to call to look an id up:
+
+```
+$ ds def store/store.go#Store.SaveSession
+store-savesession-m6twuucd
+```
+
+`ds def --fix` re-mints every copy after the first when an id has been duplicated (for example by copying a function).
 
 Ids you type by hand are not validated for shape: `id=Foo_Bar` scans without complaint. Follow the lowercase `label-suffix` form anyway, because `ds rename` and the "did you mean" suggestions work on it.
 
@@ -108,56 +196,93 @@ Ids you type by hand are not validated for shape: `id=Foo_Bar` scans without com
 ```
 $ ds rename store-savesession sess-save --dry-run
 store-savesession-m6twuucd -> sess-save-m6twuucd
-7 line(s) would change (--dry-run)
+1 line(s) would change (--dry-run)
 $ ds rename store-savesession sess-save
 store-savesession-m6twuucd -> sess-save-m6twuucd
-7 line(s) changed; run ds scan
+1 line(s) changed; run ds scan
+$ ds scan
+1 files, 2 defs, 0 refs, 0 problems, 0 skipped
 ```
 
-Then run `ds scan`. Acks and first-seen hashes carry over because the suffix is unchanged. A citation still has to use the current full id; one written with an old label is reported as broken, with the right id suggested:
+Acks and first-seen hashes carry over because the suffix is unchanged. A citation still has to use the current full id; one written with an old label is reported as broken, with the right id suggested:
+
+```markdown file=docs/label.md
+# Label
+
+The [guard](ds:block?id=old-label-m6twuucd) works.
+```
 
 ```
-3	error    broken             old-label-m6twuucd is not defined; did you mean sess-save-m6twuucd
+$ ds check
+docs/label.md
+  3	error    broken             old-label-m6twuucd is not defined; did you mean sess-save-m6twuucd
+…
 ```
 
 ## ds:def — give something an identity
 
 A `ds:def` sits directly above the thing it names (or at the end of the line, for a config key), and binds the block below it: a function, a type, a constant, a config key, a markdown section, a paragraph. What counts as "the block" depends on the language; see [Languages](languages.md).
 
-```go
-// ds:def id=store-savesession-m6twuucd
-func (s *Store) SaveSession(ctx context.Context, sess Session) error {
+<!-- doctest
+mkdir ../defs
+cd ../defs
+git init -q -b main .
+ds init
+-->
+
+```go file=store/save.go
+package store
+
+// ds:def id=store-save-k7m2p4xq
+func Save(id string) error {
+	return nil
+}
 ```
 
-```yaml
+```yaml file=config/app.yaml
 server:
   port: 8081   # ds:def id=server-port-6btxuz6q
 ```
 
-```sql
+```sql file=db/sweep.sql
 -- ds:def id=delete-u3e84e69
 DELETE FROM sessions WHERE expires_at < now() - interval '30 days';
 ```
 
-```markdown
+```markdown file=docs/policy.md
+# Policy
+
 <!-- ds:def id=sess-policy-h2n8wq4t -->
 ## Session policy
 
 Sessions live thirty days and rotate on refresh.
 ```
 
-```text
+```text file=docs/rota.txt
 ds:def id=span-two-c2d3e4f5 span=+2
 Week 37  alex
 Week 38  someone
+Week 39  third
 ```
 
-One def per block and one block per id. Deleting the directive line deletes the block, and every sentence citing it becomes `broken`:
+`ds map` shows the line range each def bound (they are `uncovered` because no page cites them yet):
 
 ```
-  7	error    broken             legacy-save-q2w3e4r5 was deleted (last seen store/old.go:4)
-      fix: the id legacy-save-q2w3e4r5 is not defined; fix the id in docs/more.md:7 or re-add the ds:def on the block it meant
+$ ds scan
+5 files, 5 defs, 0 refs, 0 problems, 0 skipped
+$ ds map
+PAGE  COVERS  CITES  STATE
+
+DEF                   FILE                 CITED BY  STATE
+delete-u3e84e69       db/sweep.sql:2-2     0         uncovered
+server-port-6btxuz6q  config/app.yaml:2-2  0         uncovered
+sess-policy-h2n8wq4t  docs/policy.md:4-6   0         uncovered
+span-two-c2d3e4f5     docs/rota.txt:2-3    0         uncovered
+store-save-k7m2p4xq   store/save.go:4-6    0         uncovered
+66 tokens used, 0 omitted
 ```
+
+One def per block and one block per id. Deleting the directive line deletes the block, and every sentence citing it becomes `broken`.
 
 There is deliberately no `value=` key. The value is the visible text at the def's location, so a reader and the tool see the same thing.
 
@@ -188,6 +313,13 @@ There is deliberately no `value=` key. The value is the visible text at the def'
 
 ### stability
 
+<!-- doctest
+mkdir ../stability
+cd ../stability
+git init -q -b main .
+ds init
+-->
+
 Each change to a cited block is classified (`body`, `signature`, `type`, `renamed`, `value`, `comment`, …), and the def's `stability` decides which classes flag the sentences citing it:
 
 | `stability` | Flags on |
@@ -197,36 +329,79 @@ Each change to a cited block is classified (`body`, `signature`, `type`, `rename
 | `api` | `signature`, `type`, `renamed`, `value`, and changes it could not classify — not a body-only change |
 | `volatile` | nothing |
 
-With three Go functions cited from one sentence and a body-only edit to each, only the frozen one is flagged:
+Three functions, cited from one sentence:
 
-```go
+```go file=store/stab.go
+package store
+
 // ds:def id=stab-api-t3u4v5w6 stability=api
 func Api(a int) int {
 	return a + 1
 }
+
+// ds:def id=stab-volatile-u3v4w5x6 stability=volatile
+func Vol(a int) int {
+	return a + 1
+}
+
+// ds:def id=stab-frozen-v3w4x5y6 stability=frozen
+func Frozen(a int) int {
+	return a + 1
+}
 ```
 
+```markdown file=docs/stab.md
+# Stab
+
+[api](ds:block?id=stab-api-t3u4v5w6) and [vol](ds:block?id=stab-volatile-u3v4w5x6) and [frozen](ds:block?id=stab-frozen-v3w4x5y6) add one.
 ```
+
+<!-- doctest
+ds scan
+git add -A
+git commit -q -m stability
+-->
+
+A body-only edit to each flags only the frozen one:
+
+```
+$ sed -i.bak 's/return a + 1/return a + 2/' store/stab.go && rm store/stab.go.bak
+$ ds check
 docs/stab.md
   3	error    unacked            stab-frozen-v3w4x5y6 changed (body) since this sentence was first cited
+      still true: ds ack stab-frozen-v3w4x5y6 --doc docs/stab.md --line 3 --note '…'
+      otherwise:  edit the sentence at docs/stab.md:3, then ack
+1 error, 2 none
 ```
 
-Changing the parameter type of the `api` function is a `signature` change and is flagged, but only after `ds scan` has recorded the new block; run `ds scan` before `ds check` when relying on `stability=api` (the CI snippet from `ds init` and [CI](ci.md) cover this):
+Changing the parameter type of the `api` function is a `signature` change and is flagged, but only after `ds scan` has recorded the new block; run `ds scan` before `ds check` when relying on `stability=api`:
 
 ```
+$ sed -i.bak 's/func Api(a int)/func Api(a int64)/' store/stab.go && rm store/stab.go.bak
 $ ds scan
+2 files, 3 defs, 3 refs, 0 problems, 0 skipped
 $ ds check
-d.md
-  3	error    unacked            stab-api-t3u4v5w6 changed (signature) since this sentence was first cited
+docs/stab.md
+  3	error    unacked            stab-api-t3u4v5w6 changed (signature, body) since this sentence was first cited
+…
 ```
 
 The full classification rules are in [SPEC §20](../SPEC.md#20-change-classification-and-stability).
 
 ## Facts: inline defs in prose
 
+<!-- doctest
+mkdir ../facts
+cd ../facts
+git init -q -b main .
+ds init
+-->
+
 A fact is a def whose text is one line. In markdown, write it as a link whose text is the value. The first place a fact is written is its home; other pages cite it with `ds:cfg`.
 
-```markdown
+```markdown file=docs/facts.md
+# Facts
+
 - The API runs on port [8081](ds:def?id=api-port-h3v8n2wd&type=int).
 - Sessions expire after [30 days](ds:def?id=sess-ttl-p2c4y7mk&type=duration).
 - The app is hosted at [https://example.com](ds:def?id=app-host-d4k8w2mn&type=url).
@@ -236,39 +411,66 @@ A fact is a def whose text is one line. In markdown, write it as a link whose te
 
 ```
 $ ds facts
-ID                     VALUE                 WHERE              CITED BY
-api-port-h3v8n2wd      8081                  docs/facts.md:3    0
-sess-ttl-p2c4y7mk      30 days               docs/facts.md:4    0
-app-host-d4k8w2mn      https://example.com   docs/facts.md:5    0
-json-port-k3m4n5p6     8081                  config/app.json:1  1
-maxsessions-n4kpvzvf   8                     store/store.go:8   1
-…
+ID                 VALUE                WHERE            CITED BY
+api-port-h3v8n2wd  8081                 docs/facts.md:3  0
+sess-ttl-p2c4y7mk  30 days              docs/facts.md:4  0
+app-host-d4k8w2mn  https://example.com  docs/facts.md:5  0
 ```
 
-`ds render` prints each inline def as its plain text; `type=url` renders as a link.
+`ds render` prints each inline def as its plain text; `type=url` renders as a link:
+
+```
+$ ds render docs/facts.md
+# Facts
+
+- The API runs on port 8081.
+- Sessions expire after 30 days.
+- The app is hosted at [https://example.com](https://example.com).
+```
 
 ## Remote defs: files that cannot hold a comment
 
 JSON, CSV and `go.sum` have no comment syntax, so a directive cannot go inside them. Put the def in any file that can hold one (usually the doc that talks about the value) and point at the target with `file=` and `pick=`:
 
-```markdown
+```json file=config/app.json
+{"server": {"port": 8081, "host": "api.example.com"}}
+```
+
+```markdown file=docs/port.md
+# Port
+
 <!-- ds:def id=json-port-k3m4n5p6 file=config/app.json pick=json:$.server.port type=int -->
 
 Port is [8081](ds:cfg?id=json-port-k3m4n5p6).
 ```
 
-`ds render` drops the def line and prints `Port is 8081.` A remote def hashes the picked value, so the citation is flagged when `server.port` changes. If the key disappears, the citation is `pick failed`. Unlike a def in the file itself, a remote def does not follow its target if the value moves to another file.
+```
+$ ds render docs/port.md
+# Port
+
+
+Port is 8081.
+```
+
+A remote def hashes the picked value, so the citation is flagged when `server.port` changes. If the key disappears, the citation is `pick failed`. Unlike a def in the file itself, a remote def does not follow its target if the value moves to another file.
 
 `ds def` refuses to write into a file with no comment syntax, and says so:
 
 ```
-$ ds def doc/app.json:1
-ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=doc/app.json pick=…`), …
+$ ds def config/app.json:1
+ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config/app.json pick=…`), …
 ```
 
 A bare `ds:def` line already present in such a file is reported as `directive is not inside a comment`, and `ds repair --apply` removes it; in a file that does have comments, `ds repair --apply` comments it instead.
 
 ## pick — take one value or range out of a block
+
+<!-- doctest
+mkdir ../pick
+cd ../pick
+git init -q -b main .
+ds init
+-->
 
 `pick=` on a def narrows what is extracted. It returns exactly one line (a value, what `ds:cfg` shows) or one contiguous range (what `ds:block` shows). Most defs need no `pick`: a config key picks its value, a markdown fact picks its link text, a code symbol picks its block, a plain-text def picks to the next blank line.
 
@@ -276,7 +478,7 @@ A bare `ds:def` line already present in such a file is reported as `directive is
 |---|---|
 | `json:$.server.port` | a JSON value by path |
 | `yaml:server.port`, `toml:server.port`, `ini:server.port`, `env:API_KEY`, `hcl:resource.aws_instance.web.instance_type` | a key's value |
-| `csv:r2c2`, `csv:col=name` | a CSV cell |
+| `csv:r2c2`, `csv:col=port` | a CSV cell |
 | `line:3` | one line of the target |
 | `regex:'secrets\.(\w+)'` | the first capture group of the first match |
 | `after:'…'`, `between:'(',')'` | the text after a marker, or between two |
@@ -284,52 +486,176 @@ A bare `ds:def` line already present in such a file is reported as `directive is
 | `heading`, `section:"Session policy"`, `paragraph:2`, `link:1` | parts of a markdown target |
 | `file` | the whole file, hashed (for images, PDFs and generated files) |
 
-Examples that ran:
+These targets:
 
-```markdown
-<!-- ds:def id=json-port-p2q3r4s5 file=doc/app.json pick=json:$.server.port -->
-<!-- ds:def id=csv-port-t2u3v4w5 file=doc/svc.csv pick=csv:r2c2 -->
-<!-- ds:def id=notes-first-x2y3z4a5 file=doc/NOTES pick=line:3 -->
+```yaml file=t/a.yaml
+server:
+  port: 8081
 ```
+
+```toml file=t/a.toml
+[server]
+port = 8082
+```
+
+```ini file=t/a.ini
+[server]
+port = 8083
+```
+
+```bash file=t/a.env
+API_KEY=abc
+```
+
+```hcl file=t/a.tf
+resource "aws_instance" "web" {
+  instance_type = "t3.micro"
+}
+```
+
+```csv file=t/a.csv
+name,port
+api,8084
+```
+
+```text file=t/a.txt
+see https://example.com/x for more
+version: 1.2.3 (stable)
+```
+
+```markdown file=t/b.md
+# T
+
+## Install
+
+Run it.
+
+Second para.
+```
+
+and these remote defs, one per target line:
+
+```markdown file=docs/pick.md
+# Pick
+
+<!-- ds:def id=p-yaml-a2a2a2a2 file=t/a.yaml pick=yaml:server.port -->
+<!-- ds:def id=p-toml-b2b2b2b2 file=t/a.toml pick=toml:server.port -->
+<!-- ds:def id=p-ini-c2c2c2c2 file=t/a.ini pick=ini:server.port -->
+<!-- ds:def id=p-env-d2d2d2d2 file=t/a.env pick=env:API_KEY -->
+<!-- ds:def id=p-hcl-e2e2e2e2 file=t/a.tf pick=hcl:resource.aws_instance.web.instance_type -->
+<!-- ds:def id=p-csvc-f2f2f2f2 file=t/a.csv pick=csv:col=port -->
+<!-- ds:def id=p-url-g2g2g2g2 file=t/a.txt pick=url -->
+<!-- ds:def id=p-after-h2h2h2h2 file=t/a.txt pick="after:'version: '" -->
+<!-- ds:def id=p-head-k2k2k2k2 file=t/b.md pick=heading -->
+<!-- ds:def id=p-para-n2n2n2n2 file=t/b.md pick=paragraph:2 -->
+<!-- ds:def id=p-sect-m2m2m2m2 file=t/b.md pick=section:"Install" -->
+```
+
+give these values:
+
+```
+$ ds facts
+ID                VALUE                  WHERE       CITED BY
+p-yaml-a2a2a2a2   8081                   t/a.yaml:2  0
+p-toml-b2b2b2b2   8082                   t/a.toml:2  0
+p-ini-c2c2c2c2    8083                   t/a.ini:2   0
+p-env-d2d2d2d2    abc                    t/a.env:1   0
+p-hcl-e2e2e2e2    t3.micro               t/a.tf:2    0
+p-csvc-f2f2f2f2   8084                   t/a.csv:2   0
+p-url-g2g2g2g2    https://example.com/x  t/a.txt:1   0
+p-after-h2h2h2h2  1.2.3 (stable)         t/a.txt:2   0
+p-head-k2k2k2k2   T                      t/b.md:1    0
+p-para-n2n2n2n2   Second para.           t/b.md:7    0
+$ ds read p-sect-m2m2m2m2
+## Install
+
+Run it.
+
+Second para.
+```
+
+A `regex` pick in a code comment:
 
 ```go
 // ds:def id=app-stripe-key-m4w8k2qn secret=true source=env from=gh-stripe-key-r4t6x2mb pick=regex:'"(\w+)"'
 key := os.Getenv("STRIPE_KEY")
 ```
 
-The last one picks `STRIPE_KEY` out of the line.
+picks `STRIPE_KEY` out of the line (see [Secrets and chains](#secrets-and-chains)).
 
-A `pick` argument that contains a space must have the whole value quoted, because a value is only quoted when it starts with a quote: write `pick="after:'version: '"`, not `pick=after:'version: '` (the second is a `problem`: `key must match [a-z][a-z0-9_]*`).
+A `pick` argument that contains a space must have the whole value quoted, because a value is only quoted when it starts with a quote: write `pick="after:'version: '"`, not `pick=after:'version: '`; the second is a `problem`, `key must match [a-z][a-z0-9_]*`.
 
-Two remote defs whose picks land on the same line of the same file are reported as `two ids bound to the same block`, even when the picks differ (for example `pick=paragraph:2` and `pick=link:1` on a one-line paragraph). Keep one remote def per target line.
+Two remote defs whose picks land on the same line of the same file are reported as `two ids bound to the same block`, even when the picks differ. `ds scan` names both directives:
+
+```markdown file=docs/pick.md append=true
+<!-- ds:def id=p-betw-j2j2j2j2 file=t/a.txt pick=between:'(',')' -->
+```
+
+```
+$ ds scan
+9 files, 12 defs, 0 refs, 2 problems, 0 skipped
+  docs/pick.md:10  scan: two ids bound to the same block: p-after-h2h2h2h2, p-betw-j2j2j2j2 at t/a.txt:2-2
+  docs/pick.md:14  scan: two ids bound to the same block: p-after-h2h2h2h2, p-betw-j2j2j2j2 at t/a.txt:2-2
+```
+
+Keep one remote def per target line.
 
 ## ds:block — cite or show a block
 
-`ds:block` has two shapes, chosen by the carrier.
+<!-- doctest
+mkdir ../block
+cd ../block
+git init -q -b main .
+ds init
+-->
 
-**As a link**, it is a citation: the sentence around it depends on the block, and is flagged when the block changes.
+`ds:block` has two shapes, chosen by the carrier. Both examples cite this function:
 
-```markdown
-The guard is [`SaveSession`](ds:block?id=store-savesession-m6twuucd). It returns early when the id is empty.
+```go file=store/store.go
+package store
+
+import "context"
+
+type Session struct {
+	ID string
+}
+
+type Store struct{}
+
+var ErrEmpty error
+
+// SaveSession writes the session.
+// ds:def id=store-savesession-m6twuucd
+func (s *Store) SaveSession(ctx context.Context, sess Session) error {
+	if sess.ID == "" {
+		return ErrEmpty
+	}
+	return nil
+}
 ```
 
-`ds render` turns it into a permalink: ``The guard is [`SaveSession`](store/store.go#L22-L27).``
+**As a link**, it is a citation: the sentence around it depends on the block, and is flagged when the block changes. **In block position** (an HTML comment on its own line), it shows the code itself when the page is rendered:
 
-**In block position** (an HTML comment on its own line), it shows the code itself when the page is rendered:
+```markdown file=docs/sessions.md
+# Sessions
 
-```markdown
+The guard is [`SaveSession`](ds:block?id=store-savesession-m6twuucd). It returns early when the id is empty.
+
 <!-- ds:block id=store-savesession-m6twuucd lines=1-3 title="the guard" -->
 ```
 
-renders as
+````
+$ ds render docs/sessions.md
+# Sessions
 
-````markdown
-**the guard** · [`store/store.go:22-27`](store/store.go#L22-L27)
+The guard is [`SaveSession`](store/store.go#L15-L20). It returns early when the id is empty.
+
+**the guard** · [`store/store.go:15-20`](store/store.go#L15-L20)
 
 ```go
 func (s *Store) SaveSession(ctx context.Context, sess Session) error {
 	if sess.ID == "" {
-		return nil
+		return ErrEmpty
 ```
 ````
 
@@ -352,34 +678,104 @@ What `ds check` reports:
 - `ok` while the block is unchanged, `moved` (no severity) when it only moved.
 - `unacked` when it changed since the sentence was acked or first cited. Read the sentence; if it is still true, ack it with the command shown, otherwise edit it and then ack:
 
+<!-- doctest
+ds scan
+git add -A
+git commit -q -m sessions
+-->
+
 ```
+$ sed -i.bak 's/return nil/return save(sess)/' store/store.go && rm store/store.go.bak
+$ ds check
 docs/sessions.md
   3	error    unacked            store-savesession-m6twuucd changed (body) since this sentence was first cited
       still true: ds ack store-savesession-m6twuucd --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
+  5	error    unacked            store-savesession-m6twuucd changed (body) since this sentence was first cited
+      still true: ds ack store-savesession-m6twuucd --doc docs/sessions.md --line 5 --note '…'
+      otherwise:  edit the sentence at docs/sessions.md:5, then ack
+2 error
+$ ds ack store-savesession-m6twuucd --all --note 'still returns early'
+acked store-savesession-m6twuucd at docs/sessions.md:3 (human)
+acked store-savesession-m6twuucd at docs/sessions.md:5 (human)
+$ ds check
+2 none
 ```
 
-- `broken` when the id is not defined.
-- `range` when `lines=` falls outside the block:
+- `broken` when the id is not defined, `range` when `lines=` falls outside the block, and `too-large` when a block-position cite would render more than `[include] max_lines` lines (default 40):
+
+```markdown file=docs/more.md
+# More
+
+[missing](ds:block?id=nothing-here-abcdefgh)
+
+<!-- ds:block id=store-savesession-m6twuucd lines=4-30 -->
+```
 
 ```
-  9	warning  range              lines=4-30 outside the block's 6 lines
-      fix: adjust lines= at docs/more.md:9 to fit the block's 6 lines
+$ ds check
+docs/more.md
+  3	error    broken             nothing-here-abcdefgh is not defined
+      fix: the id nothing-here-abcdefgh is not defined; fix the id in docs/more.md:3 or re-add the ds:def on the block it meant
+  5	warning  range              lines=4-30 outside the block's 6 lines
+      fix: adjust lines= at docs/more.md:5 to fit the block's 6 lines
+1 error, 1 warning, 2 none
 ```
 
-- `too-large` when a block-position cite would render more than `[include] max_lines` lines (default 40): `error    too-large          rendering 52 lines exceeds the cap of 40`. Add `lines=` or cite it with a link instead.
+Deleting a def breaks its citations and says where it was last seen:
+
+```
+$ sed -i.bak '/ds:def id=store-savesession/d' store/store.go && rm store/store.go.bak
+$ ds check
+docs/more.md
+  3	error    broken             nothing-here-abcdefgh is not defined
+      fix: the id nothing-here-abcdefgh is not defined; fix the id in docs/more.md:3 or re-add the ds:def on the block it meant
+  5	error    broken             store-savesession-m6twuucd was deleted (last seen store/store.go:15)
+      fix: the id store-savesession-m6twuucd is not defined; fix the id in docs/more.md:5 or re-add the ds:def on the block it meant
+docs/sessions.md
+  3	error    broken             store-savesession-m6twuucd was deleted (last seen store/store.go:15)
+      fix: the id store-savesession-m6twuucd is not defined; fix the id in docs/sessions.md:3 or re-add the ds:def on the block it meant
+  5	error    broken             store-savesession-m6twuucd was deleted (last seen store/store.go:15)
+      fix: the id store-savesession-m6twuucd is not defined; fix the id in docs/sessions.md:5 or re-add the ds:def on the block it meant
+4 error
+```
 
 `at=` is a snapshot and `ds check` reports it as `ok` with "snapshot pinned". The snapshot's code is produced by `ds render --at <commit>`; a plain `ds render` prints the as-of badge and link and notes `no snapshot for … rendering the link only`.
 
 ## ds:cfg — put a value in a sentence
 
+<!-- doctest
+mkdir ../cfg
+cd ../cfg
+git init -q -b main .
+ds init
+-->
+
 `ds:cfg` inlines the current value of a one-line def. Link form only. The link text is the last known value, so the raw markdown still reads well; the build replaces it.
 
-```markdown
-A user may hold at most [5](ds:cfg?id=maxsessions-n4kpvzvf) sessions.
+```go file=store/limits.go
+package store
+
+const (
+	// ds:def id=maxsessions-k8p2w4rd owner=@auth
+	MaxSessions = 5
+)
 ```
 
-`ds render` prints `A user may hold at most 5 sessions.` A Go constant, a YAML key, a TOML key, a fact and a remote def all work as the target.
+```markdown file=docs/limits.md
+# Limits
+
+A user may hold at most [5](ds:cfg?id=maxsessions-k8p2w4rd) sessions.
+```
+
+```
+$ ds render docs/limits.md
+# Limits
+
+A user may hold at most 5 sessions.
+```
+
+A Go constant, a YAML key, a TOML key, a fact and a remote def all work as the target.
 
 | Key | Meaning |
 |---|---|
@@ -387,33 +783,79 @@ A user may hold at most [5](ds:cfg?id=maxsessions-n4kpvzvf) sessions.
 | `format` | `raw` (default), `code`, `quote`, `host`, `link`, `compact` |
 | `env` | which environment's def; default from `[env] default` or `ds render --env` |
 
-Formats, all from one def holding `https://example.com` and one holding `8081`:
+Formats, all from one def holding `https://example.com` and one holding `8081`. Put each inline def on its own line: two facts on one line are reported as `two ids bound to the same block`.
 
-| `format=` | Rendered |
-|---|---|
-| `raw` | `https://example.com` |
-| `code` | `` `https://example.com` `` |
-| `quote` | `"https://example.com"` |
-| `host` | `example.com` |
-| `link` | `[https://example.com](https://example.com)` |
-| `compact` | `8.1K` (from 8081) |
+```markdown file=docs/fmt.md
+# Fmt
 
-Citing a block that yields more than one line is refused:
-
-```
-  11	warning  range              ds:cfg on a 6-line block
-      fix: the def yields 6 lines; ds:cfg needs one line, use ds:block or a narrower pick=
+- The API runs on port [8081](ds:def?id=api-port-h3v8n2wd&type=int).
+- It is hosted at [https://example.com](ds:def?id=app-host-d4k8w2mn&type=url).
+- raw [x](ds:cfg?id=app-host-d4k8w2mn)
+- code [x](ds:cfg?id=app-host-d4k8w2mn&format=code)
+- quote [x](ds:cfg?id=app-host-d4k8w2mn&format=quote)
+- host [x](ds:cfg?id=app-host-d4k8w2mn&format=host)
+- link [x](ds:cfg?id=app-host-d4k8w2mn&format=link)
+- compact [x](ds:cfg?id=api-port-h3v8n2wd&format=compact)
 ```
 
-A changed value is `unacked`, like a changed block.
+```
+$ ds render docs/fmt.md
+# Fmt
+
+- The API runs on port 8081.
+- It is hosted at [https://example.com](https://example.com).
+- raw https://example.com
+- code `https://example.com`
+- quote "https://example.com"
+- host example.com
+- link [https://example.com](https://example.com)
+- compact 8.1K
+```
+
+Citing a block that yields more than one line is refused, and a changed value is `unacked`, like a changed block:
+
+```go file=store/save.go
+package store
+
+// ds:def id=save-func-w2x3y4z5
+func Save() error {
+	return nil
+}
+```
+
+```markdown file=docs/limits.md append=true
+
+Saving is [this](ds:cfg?id=save-func-w2x3y4z5).
+```
+
+<!-- doctest
+ds scan
+git add -A
+git commit -q -m cfg
+-->
+
+```
+$ sed -i.bak 's/MaxSessions = 5/MaxSessions = 8/' store/limits.go && rm store/limits.go.bak
+$ ds check
+docs/limits.md
+  3	error    unacked            maxsessions-k8p2w4rd changed (body) since this sentence was first cited
+      still true: ds ack maxsessions-k8p2w4rd --doc docs/limits.md --line 3 --note '…'
+      otherwise:  edit the sentence at docs/limits.md:3, then ack
+  5	warning  range              ds:cfg on a 3-line block
+      fix: the def yields 3 lines; ds:cfg needs one line, use ds:block or a narrower pick=
+1 error, 1 warning, 6 none
+```
 
 ## ds:claim — a sentence that must be re-reviewed
 
-A claim needs no def. It puts a review date on a sentence, for statements you want to be reminded about even when no code changed.
+<!-- doctest
+mkdir ../claim
+cd ../claim
+git init -q -b main .
+ds init
+-->
 
-```markdown
-We chose Postgres over Redis because ops already runs Postgres. <!-- ds:claim owner=@platform reviewed=2026-09-06 expires=90d -->
-```
+A claim needs no def. It puts a review date on a sentence, for statements you want to be reminded about even when no code changed.
 
 | Key | Meaning |
 |---|---|
@@ -422,26 +864,85 @@ We chose Postgres over Redis because ops already runs Postgres. <!-- ds:claim ow
 | `expires` | how long a review lasts, such as `90d` |
 | `about` | comma list of ids; a change to any of them also expires the claim |
 
-Before the date the claim is `ok` ("claim valid until 2026-12-05"). After it:
+```go file=store/limits.go
+package store
+
+const (
+	// ds:def id=maxsessions-k8p2w4rd
+	MaxSessions = 5
+)
+```
+
+```markdown file=docs/claims.md
+# Claims
+
+We chose Postgres over Redis because ops already runs Postgres. <!-- ds:claim owner=@platform reviewed=2026-09-06 expires=3650d -->
+
+The cache is warmed nightly. <!-- ds:claim owner=@platform reviewed=2026-01-01 expires=30d -->
+
+Sessions are capped. <!-- ds:claim owner=@auth reviewed=2026-09-20 expires=3650d about=maxsessions-k8p2w4rd -->
+```
+
+<!-- doctest
+ds scan
+git add -A
+git commit -q -m claims
+-->
+
+The first claim is within its window; the second is past it:
 
 ```
-  13	error    expired            claim reviewed 2026-01-01 expired after 30d
-      fix: review the claim at docs/verbs.md:13 and run ds ack --doc docs/verbs.md --line 13 to renew it
+$ ds check
+docs/claims.md
+  5	error    expired            claim reviewed 2026-01-01 expired after 30d
+      fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
+1 error, 2 none
 ```
 
 With `about=`, a change to a listed block expires the claim at once:
 
 ```
-  9	error    expired            claim is about maxsessions-n4kpvzvf, which changed (body)
-      fix: review the claim at docs/cover.md:9 and run ds ack --doc docs/cover.md --line 9 to renew it
+$ sed -i.bak 's/MaxSessions = 5/MaxSessions = 9/' store/limits.go && rm store/limits.go.bak
+$ ds check
+docs/claims.md
+  5	error    expired            claim reviewed 2026-01-01 expired after 30d
+      fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
+  7	error    expired            claim is about maxsessions-k8p2w4rd, which changed (body)
+      fix: review the claim at docs/claims.md:7 and run ds ack --doc docs/claims.md --line 7 to renew it
+2 error, 1 none
 ```
 
-Renew it with `ds ack --doc <doc> --line <n> --note '…'`, which prints `renewed the claim at docs/cover.md:9`. For an `about=` claim, run `ds scan` after the ack so the finding clears.
+Renew a claim with `ds ack --doc <doc> --line <n> --note '…'`. For an `about=` claim, run `ds scan` after the ack so the finding clears:
+
+```
+$ ds ack --doc docs/claims.md --line 7 --note 'cap still applies'
+renewed the claim at docs/claims.md:7 (human)
+$ ds scan
+2 files, 1 defs, 3 refs, 0 problems, 0 skipped
+$ ds check
+docs/claims.md
+  5	error    expired            claim reviewed 2026-01-01 expired after 30d
+      fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
+1 error, 2 none
+```
 
 ## ds:url — an outside link that is watched
 
-```markdown
-See the [Go spec](ds:url?href=https://go.dev/ref/spec&title=Specification).
+<!-- doctest
+mkdir ../url
+cd ../url
+git init -q -b main .
+ds init
+-->
+
+```markdown file=docs/url.md
+# Links
+
+See the [Go spec](ds:url?href=https://go.dev/ref/spec&title=Rust).
+
+The [old address](ds:url?href=http://go.dev/ref/spec) still works.
+
+This [page](ds:url?href=https://go.dev/this-page-does-not-exist-xyz) is gone.
 ```
 
 | Key | Meaning |
@@ -453,12 +954,23 @@ See the [Go spec](ds:url?href=https://go.dev/ref/spec&title=Specification).
 `ds render` turns it into an ordinary link. Without network access the check is skipped with a warning:
 
 ```
-3 unverifiable external link not checked — fix: external link checks need --resolve with network access
+$ ds check
+docs/url.md
+  3	warning  unverifiable       external link not checked
+      fix: external link checks need --resolve with network access
+  5	warning  unverifiable       external link not checked
+      fix: external link checks need --resolve with network access
+  7	warning  unverifiable       external link not checked
+      fix: external link checks need --resolve with network access
+3 warning
 ```
 
-With `ds check --resolve`:
+With `ds check --resolve`, `ds` fetches each page and reports `dead` (an error), `retitled` and `url moved` (warnings):
+
+<!-- doctest:skip needs network access to go.dev -->
 
 ```
+$ ds check --resolve
 docs/url.md
   3	warning  retitled           title is now "The Go Programming Language Specification - The Go Programming Language"
       fix: the page at https://go.dev/ref/spec no longer has title "Rust"; confirm it is still the right page
@@ -471,10 +983,12 @@ Remember the link-form rule: a `title` with spaces must be written with `%20`.
 
 ## ds:run — run something and record the result
 
-```markdown
-<!-- ds:run id=hello-task-q3r4s5t6 expect=ok -->
-<!-- ds:run cmd="echo hi" expect="hi" -->
-```
+<!-- doctest
+mkdir ../run
+cd ../run
+git init -q -b main .
+ds init
+-->
 
 | Key | Meaning |
 |---|---|
@@ -482,57 +996,108 @@ Remember the link-form rule: a `title` with spaces must be written with `%20`.
 | `expect` | `ok` (exit zero), `rows`, an HTTP status, or a quoted substring of the output |
 | `env`, `timeout`, `show` | environment, time limit, and what the renderer shows (`output`, `command`, `both`, `none`) |
 
-Nothing runs unless `[run] enabled = true` and the doc matches `[run] allow`, and then only with `ds check --run`. Without `--run` the directive is `skipped` (info). With it:
+The def for an `id=` run is a block marked runnable:
+
+```bash file=scripts/tasks.sh
+# ds:def id=hello-task-q3r4s5t6 runnable=true
+echo hello from task
+
+# ds:def id=not-runnable-r3s4t5u6
+echo nope
+```
+
+```markdown file=docs/run.md
+# Run
+
+<!-- ds:run id=hello-task-q3r4s5t6 expect=ok -->
+
+<!-- ds:run id=not-runnable-r3s4t5u6 expect=ok -->
+
+<!-- ds:run cmd="echo hi" expect="hi" -->
+```
+
+Nothing runs unless the config enables it and the doc matches `allow`:
+
+```toml file=.ds/config.toml append=true
+
+[run]
+enabled = true
+allow = ["docs/**"]
+```
+
+and then only with `ds check --run`. Without `--run` each directive is `skipped` (info). With it:
 
 ```
+$ ds check --run
 docs/run.md:3  run ok: echo hello from task
 docs/run.md:5  run skipped: not-runnable-r3s4t5u6 is not runnable=true
 docs/run.md:7  run ok: echo hi
-```
-
-The def for the first one is a shell line marked runnable:
-
-```bash
-# ds:def id=hello-task-q3r4s5t6 runnable=true
-echo hello from task
+3 none
 ```
 
 [Secrets and runs](secrets-and-runs.md) covers the run configuration and its safety rules.
 
 ## ds:table — a table over records
 
-```markdown
+```markdown file=docs/tasks.md
+# Tasks
+
 <!-- ds:table kind=task where="state!=done" cols=title,owner -->
 ```
 
 Keys: `kind`, `where`, `cols`, `sort`, `limit`, `empty`. It needs a record source under `[records]` in the config (see [Configuration](configuration.md)); without one it is reported and renders nothing:
 
 ```
-  19	warning  unverifiable       no record source configured
+$ ds check
+…
+docs/tasks.md
+  3	warning  unverifiable       no record source configured
       fix: register a record source in [records] to render ds:table
+…
 ```
 
 ## Secrets and chains
 
+<!-- doctest
+mkdir ../secrets
+cd ../secrets
+git init -q -b main .
+ds init
+-->
+
 Secrets reach the repository as addresses (`${{ secrets.STRIPE_KEY }}`, `op://…`, an env var name), and docsync works on those addresses only. Mark the def `secret=true`; link copies of one value with `from=` and mark the single root `truth=true`. `ds:chain` renders the path:
 
-```bash
-# .env.tpl
+```bash file=.env.tpl
 STRIPE_KEY=op://Platform/stripe-prod/credential   # ds:def id=op-stripe-key-p9c2v7ld secret=true truth=true
 ```
 
-```yaml
-# .github/workflows/deploy.yml
+```yaml file=.github/workflows/deploy.yml
 env:
   STRIPE_KEY: ${{ secrets.STRIPE_KEY }}   # ds:def id=gh-stripe-key-r4t6x2mb secret=true from=op-stripe-key-p9c2v7ld sync=scripts/sync-secrets.sh
 ```
 
-```markdown
+```go file=store/pay.go
+package store
+
+import "os"
+
+func Key() string {
+	// ds:def id=app-stripe-key-m4w8k2qn secret=true source=env from=gh-stripe-key-r4t6x2mb pick=regex:'"(\w+)"'
+	key := os.Getenv("STRIPE_KEY")
+	return key
+}
+```
+
+```markdown file=docs/sec.md
+# Secrets
+
 Stripe: <!-- ds:chain id=app-stripe-key-m4w8k2qn -->
 ```
 
 ```
 $ ds why app-stripe-key-m4w8k2qn --chain
+app-stripe-key-m4w8k2qn  stmt  store/pay.go:7-7
+  docs/sec.md:3  ds:chain  Stripe:
 app-stripe-key-m4w8k2qn  STRIPE_KEY  store/pay.go:7
   from gh-stripe-key-r4t6x2mb  ${{ secrets.STRIPE_KEY }}  .github/workflows/deploy.yml:2
     from op-stripe-key-p9c2v7ld  op://Platform/stripe-prod/credential  .env.tpl:1  TRUTH
@@ -542,28 +1107,64 @@ app-stripe-key-m4w8k2qn  STRIPE_KEY  store/pay.go:7
 
 ## Environments
 
+<!-- doctest
+mkdir ../envs
+cd ../envs
+git init -q -b main .
+ds init
+-->
+
 The same id can be defined once per environment with `env=`, and cites choose one with `env=`:
 
-```bash
-# config/prod.env
+```bash file=config/prod.env
 API_HOST=api.example.com   # ds:def id=api-host-r2s3t4u5 env=prod
-# config/staging.env
+```
+
+```bash file=config/staging.env
 API_HOST=staging.example.com   # ds:def id=api-host-r2s3t4u5 env=staging
 ```
 
-```markdown
+```markdown file=docs/hosts.md
+# Hosts
+
 Prod is [api](ds:cfg?id=api-host-r2s3t4u5&env=prod), staging is [s](ds:cfg?id=api-host-r2s3t4u5&env=staging).
 ```
 
-renders `Prod is api.example.com, staging is staging.example.com.` A cite without `env=` uses `[env] default`, or `--env` on `ds check` and `ds render`; set the default rather than relying on whichever def is found first. Citing an environment with no def is broken:
+```
+$ ds render docs/hosts.md
+# Hosts
+
+Prod is api.example.com, staging is staging.example.com.
+```
+
+A cite without `env=` uses `[env] default`, or `--env` on `ds check` and `ds render`; set the default rather than relying on whichever def is found first. Citing an environment with no def is broken:
+
+```markdown file=docs/dev.md
+# Dev
+
+Dev is [d](ds:cfg?id=api-host-r2s3t4u5&env=dev).
+```
 
 ```
-3 broken api-host-r2s3t4u5 is not defined for env=dev
+$ ds check
+docs/dev.md
+  3	error    broken             api-host-r2s3t4u5 is not defined for env=dev
+      fix: api-host-r2s3t4u5 has no definition for env=dev; add one or cite a defined environment
+1 error, 2 none
 ```
 
 ## Deprecation and sunset
 
-```go
+<!-- doctest
+mkdir ../sunset
+cd ../sunset
+git init -q -b main .
+ds init
+-->
+
+```go file=store/old.go
+package store
+
 // ds:def id=legacy-save-q2w3e4r5 deprecated=2026-09-01 desc="old writer"
 func LegacySave() {}
 
@@ -571,72 +1172,165 @@ func LegacySave() {}
 func OlderSave() {}
 ```
 
+```markdown file=docs/old.md
+# Old
+
+Use [legacy](ds:block?id=legacy-save-q2w3e4r5) or [older](ds:block?id=older-save-t6y7u8i9).
+```
+
 Every citation of the first gets an info finding from its date; every citation of the second fails after its date:
 
 ```
-  7	info     deprecated         legacy-save-q2w3e4r5 deprecated since 2026-09-01
-      fix: legacy-save-q2w3e4r5 is deprecated since 2026-09-01; plan to move the reference at docs/more.md:7
-  7	error    sunset             older-save-t6y7u8i9 reached sunset 2026-09-01
-      fix: older-save-t6y7u8i9 passed its sunset date 2026-09-01; remove the reference at docs/more.md:7
+$ ds check
+docs/old.md
+  3	info     deprecated         legacy-save-q2w3e4r5 deprecated since 2026-09-01
+      fix: legacy-save-q2w3e4r5 is deprecated since 2026-09-01; plan to move the reference at docs/old.md:3
+  3	error    sunset             older-save-t6y7u8i9 reached sunset 2026-09-01
+      fix: older-save-t6y7u8i9 passed its sunset date 2026-09-01; remove the reference at docs/old.md:3
+1 error, 1 info
 ```
 
 ## Translations
 
+<!-- doctest
+mkdir ../i18n
+cd ../i18n
+git init -q -b main .
+ds init
+-->
+
 Define the source paragraph, then mark the translated paragraph with `translates=true`:
 
-```markdown
+```markdown file=docs/policy.md
+# Policy
+
 <!-- ds:def id=retention-para-w4x5y6z7 -->
 Logs are kept for ninety days.
 ```
 
-```markdown
+```markdown file=docs/es/policy.md
+# Política
+
 <!-- ds:block id=retention-para-w4x5y6z7 translates=true -->
 Los registros se guardan noventa días.
 ```
 
+<!-- doctest
+ds scan
+git add -A
+git commit -q -m i18n
+-->
+
 When the source changes:
 
 ```
-docs/es.md
+$ sed -i.bak 's/ninety days/sixty days/' docs/policy.md && rm docs/policy.md.bak
+$ ds check
+docs/es/policy.md
   3	error    translation stale  source retention-para-w4x5y6z7 changed (body)
-      fix: the source paragraph retention-para-w4x5y6z7 changed; update the translation at docs/es.md:3 and ack
+      fix: the source paragraph retention-para-w4x5y6z7 changed; update the translation at docs/es/policy.md:3 and ack
+1 error
 ```
 
 ## Page frontmatter: covers and review_every
 
+<!-- doctest
+mkdir ../covers
+cd ../covers
+git init -q -b main .
+ds init
+-->
+
 A markdown page can declare itself the home of ids in its frontmatter:
 
-```markdown
+```go file=store/session.go
+package store
+
+type Session struct {
+	// ds:def id=session-user-yk7dsbtd
+	User string
+}
+```
+
+```markdown file=docs/store.md
 ---
 title: Store
 ds:
   covers: [session-user-yk7dsbtd, gone-thing-abcdefgh]
   review_every: 180d
 ---
+# Store
+
+Each session belongs to one user.
 ```
 
 A covered id no longer counts as `uncovered`. A covered id that is not defined is an orphan:
 
 ```
-docs/cover.md
+$ ds check
+docs/store.md
   1	warning  orphan             covers gone-thing-abcdefgh, which is not defined
-      fix: the page docs/cover.md covers gone-thing-abcdefgh, which is not defined; remove it from covers or restore the def
+      fix: the page docs/store.md covers gone-thing-abcdefgh, which is not defined; remove it from covers or restore the def
+1 warning
 ```
 
 `review_every` asks for the whole page to be re-read on a schedule even when nothing it cites changed; `ds ack --doc <page>` records the review. A def that nothing cites or covers is reported as `uncovered` (info), which never fails a run.
 
 ## Mistakes ds check catches
 
+<!-- doctest
+mkdir ../mistakes
+cd ../mistakes
+git init -q -b main .
+ds init
+-->
+
+```markdown file=docs/bad.md
+# Bad
+
+<!-- ds:block id=x-abcdefgh id=y -->
+
+<!-- ds:def owner=@x -->
+Para with no id.
+```
+
+```go file=store/bad.go
+package store
+
+ds:def id=bad-go-e3f4g5h6
+var C = 1
+```
+
+```
+$ ds check
+docs/bad.md
+  3	error    problem            column 23: directive: duplicate key
+      fix: fix the directive at docs/bad.md:3: column 23: directive: duplicate key
+  5	error    problem            extract: ds:def without id=
+      fix: fix the directive at docs/bad.md:5: extract: ds:def without id=
+store/bad.go
+  3	error    problem            scan: directive is not inside a comment: store/bad.go carries comments, so a bare directive line is probably not valid there; ds repair --apply comments it
+      fix: fix the directive at store/bad.go:3: scan: directive is not inside a comment: store/bad.go carries comments, so a bare directive line is probably not valid there; ds repair --apply comments it
+  3	info     uncovered          defined but never cited or covered
+      fix: bad-go-e3f4g5h6 is defined but nothing cites or covers it; cite it from a page or remove the def
+3 error, 1 info
+$ ds repair
+store/bad.go:3
+  - ds:def id=bad-go-e3f4g5h6
+  + // ds:def id=bad-go-e3f4g5h6
+1 line(s) would be repaired, 0 need a person (run with --apply to write)
+```
+
 | You wrote | `ds check` says |
 |---|---|
 | a def with no `id=` | `error problem extract: ds:def without id=` |
-| the same key twice | `error problem column 39: directive: duplicate key` |
+| the same key twice | `error problem column N: directive: duplicate key` |
 | an id nobody defines | `error broken nothing-here-abcdefgh is not defined` |
 | a misspelled verb or key | `warning unknown` (an error with `--strict`) |
-| a bare `ds:def` line in Go or JSON | `error problem scan: directive is not inside a comment: …; ds repair --apply comments it` (or removes it, in JSON) |
+| a bare `ds:def` line in Go or JSON | `error problem scan: directive is not inside a comment: …` (`ds repair --apply` comments it, or removes it in JSON) |
 | two defs over the same lines | `error problem scan: two ids bound to the same block: …` |
 | a def with nothing below it | `error problem extract: ds:def has nothing after it to bind to` |
-| a `pick=` that matches nothing | `error pick failed scan: remote def pick failed: t/a.yaml: pick: nothing matched: yaml server.nope` |
+| a `pick=` that matches nothing | `error pick failed scan: remote def pick failed: …: pick: nothing matched: …` |
 
 The full list of finding states and severities is in [SPEC §17](../SPEC.md#17-findings).
 

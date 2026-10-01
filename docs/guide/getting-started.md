@@ -40,6 +40,16 @@ Check what you are running with `ds version`. On Windows, `ds:run` and `ds revie
 
 Run `ds init` at the repository root:
 
+<!-- doctest
+git init -q -b main .
+mkdir -p billing docs
+printf 'package billing\n\nimport "time"\n\n// GraceDays is how long an unpaid invoice stays open before it is suspended.\nconst GraceDays = 14\n\n// DueDate is when an invoice issued at t must be paid.\nfunc DueDate(t time.Time) time.Time {\n\treturn t.AddDate(0, 0, 30)\n}\n' > billing/invoice.go
+printf '# Billing\n\nAn invoice is due thirty days after it is issued.\n' > docs/billing.md
+printf 'Suspending an account\n\nCheck the invoice is past its grace period.\nEmail the billing contact.\nSet the account to suspended.\n\nEscalate if the customer disputes it.\n' > docs/runbook.txt
+git add -A
+git commit -qm billing
+-->
+
 ```
 $ ds init
 wrote .ds/config.toml
@@ -61,7 +71,8 @@ What it wrote:
 
 The generated config:
 
-```toml
+```
+$ cat .ds/config.toml
 spec = "1.0"
 prefix = "ds"
 
@@ -104,7 +115,7 @@ notify          ok    no state yet (first notify will create .ds/notified.json)
 
 The example repository has one Go file and a runbook:
 
-```go
+```go file=billing/invoice.go
 package billing
 
 import "time"
@@ -168,6 +179,10 @@ To cover a fixed number of lines instead, add `span=+N` to the directive by hand
 
 Add `--dry-run` to see the edit without writing it:
 
+<!-- doctest
+printf 'package billing\n\n// LateFee is the flat fee added to an overdue invoice, in cents.\nconst LateFee = 2500\n' > billing/fees.go
+-->
+
 ```
 $ ds def billing/fees.go#LateFee --dry-run
 latefee-9d8g8sw8
@@ -175,13 +190,17 @@ would insert at billing/fees.go:4:
 // ds:def id=latefee-9d8g8sw8
 ```
 
+<!-- doctest
+rm billing/fees.go
+-->
+
 Each language marks its blocks a little differently; the [one-snippet-per-language table](how-it-works.md#what-a-def-looks-like-in-each-language) and [Languages](languages.md) cover them.
 
 ## 4. Cite them from a doc
 
 A citation is a markdown link whose target is a directive. `ds:block` says "this sentence depends on that block"; `ds:cfg` says "this is that one-line value", and `ds render` replaces the link text with the current value:
 
-```markdown
+```markdown file=docs/billing.md
 # Billing
 
 An invoice is due thirty days after it is issued; see [`DueDate`](ds:block?id=duedate-ctdp6ew3).
@@ -220,11 +239,20 @@ An unpaid invoice is suspended after 14 days.
 
 ## 6. Break it and read the finding
 
+<!-- doctest
+git add -A
+git commit -qm bind
+-->
+
 Change the payment terms to 45 days without opening the doc:
 
 ```go
 	return t.AddDate(0, 0, 45)
 ```
+
+<!-- doctest
+printf 'package billing\n\nimport "time"\n\n// GraceDays is how long an unpaid invoice stays open before it is suspended.\n// ds:def id=gracedays-nbgvqwva\nconst GraceDays = 14\n\n// DueDate is when an invoice issued at t must be paid.\n// ds:def id=duedate-ctdp6ew3 owner=@billing\nfunc DueDate(t time.Time) time.Time {\n\treturn t.AddDate(0, 0, 45)\n}\n' > billing/invoice.go
+-->
 
 ```
 $ ds check
@@ -245,6 +273,10 @@ Each finding reads left to right: the doc and line of the sentence, the severity
 ## 7. Fix the sentence and ack
 
 The sentence says "thirty days", which is now wrong. Edit it to "forty-five days", then record that it is true for the code as it is now:
+
+<!-- doctest
+printf '# Billing\n\nAn invoice is due forty-five days after it is issued; see [`DueDate`](ds:block?id=duedate-ctdp6ew3).\n\nAn unpaid invoice is suspended after [14](ds:cfg?id=gracedays-nbgvqwva) days.\n' > docs/billing.md
+-->
 
 ```
 $ ds ack duedate-ctdp6ew3 --doc docs/billing.md --line 3 --note "terms moved to net-45"
@@ -304,9 +336,15 @@ The GitHub Action, pull request comments and pre-commit hooks are in [CI](ci.md)
 
 ## 10. Adopt the links you already have
 
+<!-- doctest
+git add -A
+git commit -qm net45
+printf 'package billing\n\nimport "errors"\n\nvar ErrTooLate = errors.New("refund window closed")\n\nfunc Refund(days int) error {\n\tif days > 14 {\n\t\treturn ErrTooLate\n\t}\n\treturn nil\n}\n' > billing/refund.go
+-->
+
 If your docs already link to code by line, such as `[Refund](../billing/refund.go#L7-L12)`, `ds adopt` turns each one into a def on the code and a citation in the doc. Preview first:
 
-```markdown
+```markdown file=docs/refunds.md
 # Refunds
 
 A refund after the window fails with [`ErrTooLate`](../billing/refund.go#L5).
@@ -323,6 +361,13 @@ docs/refunds.md:4: The check lives in [`Refund`](ds:block?id=refund-z59d26qe).
 $ ds adopt
 2 link(s) adopted, 4 edit(s); run ds scan
 ```
+
+<!-- doctest
+ds scan
+git add -A
+git commit -qm adopt
+printf '# Grace\n\nSee [`GraceDays`](../billing/invoice.go#GraceDays) and [`DueDate`](../billing/invoice.go#DueDate).\n' > docs/grace.md
+-->
 
 Ids are minted when the edit is written, so the ids `ds adopt` writes differ from the ones the dry run printed:
 

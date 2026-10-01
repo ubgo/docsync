@@ -41,9 +41,14 @@ Every arrow is one command. A block that only moves (another file, other lines, 
 
 ## One round, end to end
 
-A Go function and the sentence that depends on it:
+<!-- doctest
+git init -q -b main .
+ds init
+-->
 
-```go
+A Go function that a doc will describe:
+
+```go file=webhook/retry.go
 package webhook
 
 // MaxAttempts is how many times a failed delivery is tried before it is dropped.
@@ -52,7 +57,7 @@ func MaxAttempts() int {
 }
 ```
 
-Mark it. `ds def` mints an id, writes the directive above the declaration, and prints the id:
+Mark the function. `ds def` mints an id, writes the directive above the declaration, and prints the id:
 
 ```
 $ ds def webhook/retry.go#MaxAttempts --owner @platform
@@ -69,11 +74,18 @@ func MaxAttempts() int {
 
 Cite it from the doc with an ordinary markdown link whose target is `ds:block?id=…`:
 
-```markdown
+```markdown file=docs/webhooks.md
+# Webhooks
+
 A failed delivery is retried until [`MaxAttempts`](ds:block?id=maxattempts-ck543sgy) is reached: five tries, then it is dropped.
 ```
 
 Record the state and check it (here the code and doc were committed first, then the scan, then `.ds/`):
+
+<!-- doctest
+git add -A
+git commit -qm webhooks
+-->
 
 ```
 $ ds scan
@@ -81,6 +93,12 @@ $ ds scan
 $ ds check
 1 none
 ```
+
+<!-- doctest
+git add -A
+git commit -qm scan
+printf 'package webhook\n\n// MaxAttempts is how many times a failed delivery is tried before it is dropped.\n// ds:def id=maxattempts-ck543sgy owner=@platform\nfunc MaxAttempts() int {\n\treturn 3\n}\n' > webhook/retry.go
+-->
 
 The summary counts findings by severity; `none` means up to date. `.ds/` is committed like any other file.
 
@@ -109,6 +127,12 @@ $ ds review
 
 The sentence says "five tries", so it is wrong. Fix it to "three tries", then record that it is true again:
 
+```markdown file=docs/webhooks.md
+# Webhooks
+
+A failed delivery is retried until [`MaxAttempts`](ds:block?id=maxattempts-ck543sgy) is reached: three tries, then it is dropped.
+```
+
 ```
 $ ds ack maxattempts-ck543sgy --doc docs/webhooks.md --line 3 --note 'retries cut to 3'
 acked maxattempts-ck543sgy at docs/webhooks.md:3 (human)
@@ -116,37 +140,68 @@ $ ds check
 1 none
 ```
 
-The ack is held to both the block's hash and the sentence's wording. Rewording the sentence later, with the code unchanged, flags it again, because the person who acked approved different words:
+<!-- doctest
+ds scan
+git add -A
+git commit -qm ack
+printf '# Webhooks\n\nA failed delivery is retried until [`MaxAttempts`](ds:block?id=maxattempts-ck543sgy) is reached: three tries, then it is discarded.\n' > docs/webhooks.md
+-->
+
+The ack is held to both the block's hash and the sentence's wording. Rewording the sentence later ("dropped" becomes "discarded"), with the code unchanged, flags it again, because the person who acked approved different words:
 
 ```
+$ ds check
 docs/webhooks.md
   3	error    unacked            sentence rewritten since the ack
+…
 ```
+
+<!-- doctest
+printf '# Webhooks\n\nA failed delivery is retried until [`MaxAttempts`](ds:block?id=maxattempts-ck543sgy) is reached: three tries, then it is dropped.\n' > docs/webhooks.md
+printf 'package webhook\n' > webhook/retry.go
+-->
 
 Deleting the function makes the citation broken:
 
 ```
+$ ds check
 docs/webhooks.md
   3	error    broken             maxattempts-ck543sgy was deleted (last seen webhook/retry.go:5)
       fix: the id maxattempts-ck543sgy is not defined; fix the id in docs/webhooks.md:3 or re-add the ds:def on the block it meant
+…
 ```
+
+<!-- doctest
+printf 'package webhook\n\n// MaxAttempts is how many times a failed delivery is tried before it is dropped.\n// ds:def id=maxattempts-ck543sgy owner=@platform\nfunc MaxAttempts() int {\n\treturn 3\n}\n' > webhook/retry.go
+git mv webhook/retry.go webhook/policy.go
+printf 'package webhook\n\nfunc Backoff() int {\n\treturn 1\n}\n\n// MaxAttempts is how many times a failed delivery is tried before it is dropped.\n// ds:def id=maxattempts-ck543sgy owner=@platform\nfunc MaxAttempts() int {\n\treturn 3\n}\n' > webhook/policy.go
+-->
 
 Moving it to another file, with the directive travelling with it, needs nothing:
 
 ```
+$ ds check
 docs/webhooks.md
   3	none     moved              moved from webhook/retry.go:5-7
+1 none
 ```
 
 ## What a def looks like in each language
 
-A def is a comment in whatever comment syntax the file already has, placed above (or, for one-line config values, beside) the thing it marks. `ds def <file>#<symbol>` or `ds def <file>:<line>` writes it for you, and refuses rather than write a directive the file's syntax would not accept. Every snippet below is what `ds def` wrote, or, where noted, what a scan recorded. [Languages](languages.md) covers each one in depth.
+<!-- doctest
+mkdir ../langs
+cd ../langs
+git init -q -b main .
+ds init
+-->
+
+A def is a comment in whatever comment syntax the file already has, placed above (or, for one-line config values, beside) the thing it marks. `ds def <file>#<symbol>` or `ds def <file>:<line>` writes it for you, and refuses rather than write a directive the file's syntax would not accept. Every snippet below is what `ds def` wrote. [Languages](languages.md) covers each one in depth.
 
 | File | How you mark it | What it binds |
 |---|---|---|
-| Go | `ds def store.go#Store.Save` | the function, method, type or const below; symbol `Store.Save` |
+| Go | `ds def src/store.go#Store.Save` | the function, method, type or const below; symbol `Store.Save` |
 | TypeScript, JavaScript | `ds def src/api.ts#retryDelay`; a method by its bare name, `#get` | the function, class, interface, const or method below; a method is recorded as `Cache.get` |
-| Python | `ds def billing.py#grace_days`; a method by its bare name, `#total` | the `def` or `class` below; a method is recorded as `Invoice.total` |
+| Python | `ds def src/billing.py#grace_days`; a method by its bare name | the `def` or `class` below; a method is recorded as `Invoice.total` |
 | SQL | `ds def db/schema.sql#sessions` | the statement below |
 | YAML, TOML | `ds def config/app.yaml#server.port` | that key's value, by key path |
 | JSON | a remote def in another file: `file=config/app.json pick=json:$.server.port` | the picked value |
@@ -157,7 +212,11 @@ A def is a comment in whatever comment syntax the file already has, placed above
 
 Go:
 
-```go
+```go file=src/store.go
+package store
+
+type Store struct{}
+
 // ds:def id=store-save-95mdgm26
 func (s *Store) Save() error {
 	return nil
@@ -169,7 +228,7 @@ const maxConns = 10
 
 TypeScript and JavaScript (a method inside a class gets an indented directive and is recorded as `Cache.get`):
 
-```ts
+```ts file=src/api.ts
 // ds:def id=retrydelay-4z36zrpq
 export function retryDelay(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, 30000);
@@ -183,14 +242,14 @@ export class Cache {
 }
 ```
 
-```js
+```js file=src/util.js
 // ds:def id=max-retries-ytrfkpce
 export const MAX_RETRIES = 5;
 ```
 
 Python:
 
-```python
+```python file=src/billing.py
 # ds:def id=grace-days-4bhschkr
 def grace_days():
     return 14
@@ -198,7 +257,7 @@ def grace_days():
 
 SQL:
 
-```sql
+```sql file=db/schema.sql
 -- ds:def id=sessions-ypd8qhnn
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY,
@@ -208,36 +267,46 @@ CREATE TABLE sessions (
 
 YAML and TOML put the directive on the key's own line, so the def is that key's value and nothing else:
 
-```yaml
+```yaml file=config/app.yaml
 server:
   port: 8081   # ds:def id=server-port-zcrvprs3
   timeout: 30s
 ```
 
-```toml
+```toml file=config/app.toml
 [server]
 port = 8081   # ds:def id=server-port-f4t23dny
 workers = 4
 ```
 
-JSON has no comments, so `ds def config/app.json:3` refuses and says what to do instead: write a remote def in a file that can hold a comment, pointing at the JSON with `file=` and a `pick=` path. This one lives in a markdown page:
+JSON has no comments:
+
+```json file=config/app.json
+{
+  "server": {
+    "port": 8081
+  }
+}
+```
+
+So `ds def config/app.json:3` refuses and says what to do instead: write a remote def in a file that can hold a comment, pointing at the JSON with `file=` and a `pick=` path.
 
 ```
 $ ds def config/app.json:3
 ds: docsync: no comment carrier for this file type: .json has no comment syntax docsync knows, so a directive cannot be written into it; bind it from a file that does with a remote def (`file=config/app.json pick=…`), or add the type to [scan] if it does have comments
 ```
 
-```markdown
+This one lives in a markdown page:
+
+```markdown file=docs/facts.md
 <!-- ds:def id=api-port-h3v8n2wd file=config/app.json pick=json:$.server.port type=int -->
 
 The API listens on [8081](ds:cfg?id=api-port-h3v8n2wd).
 ```
 
-`ds:cfg` renders the current value in place, so `ds render` turns that line into "The API listens on 8081." and, once the JSON says 9090, into "The API listens on 9090." while `ds check` flags the sentence as `changed (value)`.
-
 HCL, by line:
 
-```hcl
+```hcl file=deploy/s3.tf
 # ds:def id=resource-aws-s3-bucket-logs-98vsbruu
 resource "aws_s3_bucket" "logs" {
   bucket = "logs"
@@ -246,7 +315,10 @@ resource "aws_s3_bucket" "logs" {
 
 Shell, by line:
 
-```sh
+```sh file=scripts/release.sh
+#!/bin/sh
+set -e
+
 # ds:def id=release-ahrgsntw
 release() {
   echo "release"
@@ -255,7 +327,9 @@ release() {
 
 Markdown, by heading. The def covers the section up to the next heading of the same or higher level:
 
-```markdown
+```markdown file=docs/policy.md
+# Policy
+
 <!-- ds:def id=retention-nppm6hmc -->
 ## Retention
 
@@ -264,11 +338,63 @@ Sessions are kept for thirty days.
 
 Plain text has no comment syntax, so the directive is a line of its own:
 
-```text
+```text file=docs/runbook.txt
+Suspending an account
+
 ds:def id=runbook-bw796cm3
 Check the invoice is past its grace period.
 Email the billing contact.
 Set the account to suspended.
+```
+
+Asked again for a block that already carries a directive, `ds def` prints the existing id rather than writing a second one, which is a quick way to see what a def binds:
+
+```
+$ ds def src/store.go#Store.Save
+store-save-95mdgm26
+$ ds def src/api.ts#get
+get-6xe25m8w
+$ ds def src/billing.py#grace_days
+grace-days-4bhschkr
+$ ds def db/schema.sql#sessions
+sessions-ypd8qhnn
+$ ds def config/app.yaml#server.port
+server-port-zcrvprs3
+$ ds def config/app.toml#server.port
+server-port-f4t23dny
+$ ds def deploy/s3.tf:1
+resource-aws-s3-bucket-logs-98vsbruu
+$ ds def scripts/release.sh:4
+release-ahrgsntw
+$ ds def docs/policy.md#Retention
+retention-nppm6hmc
+```
+
+`ds:cfg` renders the current value in place, and a changed value flags the sentence:
+
+```
+$ ds scan
+…
+$ ds render docs/facts.md
+
+The API listens on 8081.
+```
+
+<!-- doctest
+printf '{\n  "server": {\n    "port": 9090\n  }\n}\n' > config/app.json
+-->
+
+Once the JSON says 9090:
+
+```
+$ ds render docs/facts.md
+
+The API listens on 9090.
+$ ds check
+…
+docs/facts.md
+  3	error    unacked            api-port-h3v8n2wd changed (value) since this sentence was first cited
+…
 ```
 
 ## What is in `.ds/` and what you commit

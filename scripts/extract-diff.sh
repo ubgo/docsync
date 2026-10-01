@@ -94,7 +94,9 @@ for p in $(echo "$CORPUS" | tr ':' ' '); do
   # One prepared tree, then two byte-identical copies.
   src=$S/src-$name
   mkdir -p "$src"
-  (cd "$real" && tar cf - --exclude .git --exclude .ds .) | (cd "$src" && tar xf -)
+  # The last commit, not the working tree: see scripts/corpus.sh.
+  git -C "$real" archive --format=tar HEAD | (cd "$src" && tar xf -)
+  /bin/rm -rf "$src/.ds"
   fx=0
   find "$src" -name '*.go' -not -path '*/testdata/*' | sort | while read -r f; do
     fx=$((fx+1)); anchor "$f" "$fx"

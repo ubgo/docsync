@@ -2,7 +2,21 @@
 
 This page covers the two servers `ds` runs for other programs: `ds mcp`, which gives a coding agent typed tools over the Model Context Protocol, and `ds lsp`, which gives an editor code lenses, hover, and go-to-definition. It is for anyone wiring docsync into an agent, an MCP client, or an editor, and it ends with the budgeted commands (`ds map`, `ds context`) that both people and agents use to read only what matters.
 
-The examples use a small repository with two defined blocks in `store/session.go` (`sess-ttl`, a constant, and `sess-save`, a function) cited from `docs/sessions.md`.
+The examples use a small repository with two defined blocks in `store/session.go` (`sess-ttl`, a constant, and `sess-save`, a function) cited from `docs/sessions.md`. The constant was 30 when the page cited it and is 45 now.
+
+<!-- doctest
+git init -q -b main .
+ds init
+mkdir -p store docs
+printf 'package store\n\n// ds:def id=sess-ttl owner=@auth stability=stable\nconst SessionTTL = 30\n\n// ds:def id=sess-save owner=@auth stability=stable\nfunc SaveSession(id string) error {\n\tif id == "" { return nil }\n\treturn nil\n}\n' > store/session.go
+printf 'package store\n\nfunc Purge() {}\n\nfunc Sweep() {}\n' > store/sweep.go
+printf '# Sessions\n\nSessions expire after [30](ds:cfg?id=sess-ttl) minutes.\n\nEvery session write goes through SaveSession:\n\n\074!\055\055 ds:block id=sess-save \055\055\076\n' > docs/sessions.md
+ds scan
+git add -A
+git commit -qm init
+sed -i.bak 's/= 30/= 45/' store/session.go
+rm -f store/session.go.bak
+-->
 
 ## Token-budgeted context: ds map and ds context
 
@@ -44,7 +58,23 @@ The other read commands an agent uses in place of grep and opening files: `ds fi
 
 ### Tools
 
-This is the list `tools/list` returns:
+This is the list `tools/list` returns. To see it yourself, keep the `initialize` request in a variable and pipe JSON-RPC lines into the server:
+
+```console
+$ export INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}'
+$ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ds mcp | tail -1 | grep -o '"name":"[a-z]*"'
+"name":"map"
+"name":"find"
+"name":"read"
+"name":"locate"
+"name":"facts"
+"name":"why"
+"name":"context"
+"name":"check"
+"name":"impact"
+"name":"def"
+"name":"ack"
+```
 
 | Tool | Kind | Arguments (required in bold) | What it returns |
 |---|---|---|---|
@@ -66,23 +96,30 @@ Every result's text starts with `data:`, and the tool descriptions say that what
 
 ### The two writes and their limits
 
-`def` writes the directive into the source file, exactly as `ds def` does. It is capped per session by `agents.max_defs_per_run` in `.ds/config.toml` (default 20; `0` removes the cap). Past the cap the tool returns an error:
+`def` writes the directive into the source file, exactly as `ds def` does. It is capped per session by `agents.max_defs_per_run` in `.ds/config.toml` (default 20; `0` removes the cap). Past the cap the tool returns an error. With the cap set to 1, the second `def` in one session is refused:
 
-```text
-data:
-mcp: def cap for this session reached (agents.max_defs_per_run); ask a human to raise it or run `def` themselves
+```toml file=.ds/config.toml append=true
+
+[agents]
+max_defs_per_run = 1
+```
+
+```console
+$ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"def","arguments":{"target":"store/sweep.go#Purge"}}}' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"def","arguments":{"target":"store/sweep.go#Sweep"}}}' | ds mcp | tail -1
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"data:\nmcp: def cap for this session reached (agents.max_defs_per_run); ask a human to raise it or run `def` themselves"}],"isError":true}}
 ```
 
 `ack` refuses without `delegated_by`:
 
-```text
-data:
-docsync: an agent ack needs delegated_by (§26.7)
+```console
+$ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ack","arguments":{"id":"sess-ttl","doc":"docs/sessions.md","line":3}}}' | ds mcp | tail -1
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"data:\ndocsync: an agent ack needs delegated_by (§26.7)"}],"isError":true}}
 ```
 
 With it, the ack is recorded with actor `mcp`, actor kind `agent`, and the delegating person, so the audit log always says who judged:
 
 ```console
+$ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ack","arguments":{"id":"sess-ttl","doc":"docs/sessions.md","line":3,"delegated_by":"alice","note":"45 is right"}}}' | ds mcp > /dev/null
 $ ds audit --actor-kind agent
 2026-10-01T03:32:16Z	mcp (agent, delegated by alice)	sess-ttl	docs/sessions.md:3	45 is right
 ```
@@ -119,16 +156,6 @@ The server finds the repository from its working directory (it walks up to the n
 
 Use an absolute path for `command` if the client does not inherit your shell's `PATH`.
 
-To try the server by hand, pipe JSON-RPC lines into it:
-
-```sh
-printf '%s\n' \
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}' \
-  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"find","arguments":{"query":"SessionTTL"}}}' \
-  | ds mcp
-```
-
 ## ds init --agents
 
 `ds init --agents` does everything `ds init` does and also sets a repository up for coding agents:
@@ -139,6 +166,10 @@ printf '%s\n' \
 - installs a session-start hook in that agent's project settings that runs `ds map --budget 2000`, so every session begins with the table of contents.
 
 It is safe to run again. An existing `.mcp.json` is left alone, with a note telling you to add the `docsync` server yourself, and an existing hook is kept:
+
+<!-- doctest
+ds init --agents
+-->
 
 ```console
 $ ds init --agents
@@ -151,22 +182,33 @@ The rules themselves, in short: never cite a path and line, define the block and
 
 ## ds review --ai
 
-`ds review` prints the review worklist, one checkbox per finding with its sentence and both remedies. It never acks.
+`ds review` prints the review worklist, one checkbox per finding with its sentence and both remedies. It never acks. Here the constant has moved on again, to 60, since the ack above:
+
+<!-- doctest
+sed -i.bak 's/= 45/= 60/' store/session.go
+rm -f store/session.go.bak
+-->
 
 ```console
 $ ds review
-- [ ] docs/sessions.md:3  unacked  sess-ttl changed (body) since this sentence was first cited
+- [ ] docs/sessions.md:3  unacked  sess-ttl changed (unknown) since this sentence was acked
       sentence: Sessions expire after [30](ds:cfg?id=sess-ttl) minutes.
       still true: ds ack sess-ttl --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 ```
 
-`ds review --ai` sends that worklist, as JSON with each finding's cited context, on stdin to a command you name, and prints what it returns, which must be a unified diff. The model is your choice:
+`ds review --ai` sends that worklist, as JSON with each finding's cited context, on stdin to a command you name, and prints what it returns, which must be a unified diff. The model is your choice; here it is a script in the repository root:
 
-```toml
+```toml file=.ds/config.toml append=true
+
 [review]
-command = "my-model-wrapper"
+command = "./my-model-wrapper"
 ```
+
+<!-- doctest
+printf '#!/bin/sh\ncat >/dev/null\nprintf -- "%%s\\n" "--- a/docs/sessions.md" "+++ b/docs/sessions.md" "@@ -3 +3 @@" "-Sessions expire after [30](ds""\072cfg?id=sess-ttl) minutes." "+Sessions expire after [60](ds""\072cfg?id=sess-ttl) minutes."\n' > my-model-wrapper
+chmod +x my-model-wrapper
+-->
 
 ```console
 $ ds review --ai
@@ -174,7 +216,7 @@ $ ds review --ai
 +++ b/docs/sessions.md
 @@ -3 +3 @@
 -Sessions expire after [30](ds:cfg?id=sess-ttl) minutes.
-+Sessions expire after [45](ds:cfg?id=sess-ttl) minutes.
++Sessions expire after [60](ds:cfg?id=sess-ttl) minutes.
 ```
 
 `--out <file>` writes the patch to a file. Applying it and acking stay with a person. `review --ai` runs a command from committed configuration, so it refuses to start on a pull request from a fork (see [CI](ci.md#pull-requests-from-forks)).

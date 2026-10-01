@@ -13,7 +13,7 @@ go get github.com/ubgo/docsync/ext/treesitter@latest   # Go, TypeScript, TSX, Ja
 go get github.com/ubgo/docsync/cli@latest              # only if you want to build your own ds binary
 ```
 
-Each program on this page was compiled and run against the published modules (`github.com/ubgo/docsync v0.1.1`, `ext/structured v0.1.0`, `ext/treesitter v0.1.0`, `cli v0.1.3`).
+Each program on this page was compiled and run against the published modules (`github.com/ubgo/docsync v0.1.1`, `ext/structured v0.1.0`, `ext/treesitter v0.1.0`, `cli v0.1.3`), and the page's own test builds them against the current source.
 
 ## The contract: the library never touches the world
 
@@ -27,9 +27,69 @@ The CLI is one consumer of this contract: `cli/cli.go` builds its `System` from 
 
 ## Check a repository
 
-This program runs the same check as `ds check` over a repository that `ds init` and `ds scan` have set up, and prints one line per finding.
+The examples use a small repository with one Go function, `SaveSession`, defined and cited from a page:
 
-```go
+```go file=internal/store/session.go
+package store
+
+import "time"
+
+const SweepInterval = time.Hour
+
+// ds:def id=savesession-73km8a3x owner=@auth
+func SaveSession(id string) error {
+	return nil
+}
+```
+
+```markdown file=docs/sessions.md
+# Sessions
+
+Every write goes through [`SaveSession`](ds:block?id=savesession-73km8a3x), which never fails.
+```
+
+<!-- doctest
+git init -q -b main .
+ds init
+ds scan
+git add -A
+git commit -qm init
+-->
+
+Then the function body changes, and nobody touches the page:
+
+```go file=internal/store/session.go
+package store
+
+import "time"
+
+const SweepInterval = time.Hour
+
+// ds:def id=savesession-73km8a3x owner=@auth
+func SaveSession(id string) error {
+	if id == "" { return errEmpty }
+	return nil
+}
+
+var errEmpty = error(nil)
+```
+
+This program runs the same check as `ds check` over a repository that `ds init` and `ds scan` have set up, and prints one line per finding. It lives in its own module next to the repository, in `../prog/dscheck`.
+
+<!-- doctest
+mkdir -p ../prog
+cd ../prog
+printf 'module example.com/dsdemo\n\ngo 1.26\n' > go.mod
+go mod edit -require=github.com/ubgo/docsync@v0.0.0 -replace=github.com/ubgo/docsync=$DOCSYNC_ROOT
+go mod edit -require=github.com/ubgo/docsync/ext/structured@v0.0.0 -replace=github.com/ubgo/docsync/ext/structured=$DOCSYNC_ROOT/ext/structured
+go mod edit -require=github.com/ubgo/docsync/ext/treesitter@v0.0.0 -replace=github.com/ubgo/docsync/ext/treesitter=$DOCSYNC_ROOT/ext/treesitter
+go mod edit -require=github.com/ubgo/docsync/cli@v0.0.0 -replace=github.com/ubgo/docsync/cli=$DOCSYNC_ROOT/cli
+export GOWORK=off
+export GOFLAGS=-mod=mod
+cd ../repo
+-->
+
+```go file=../prog/dscheck/main.go
 // Command dscheck runs docsync's check over a repository that `ds init`
 // set up, and prints one line per finding.
 package main
@@ -112,7 +172,7 @@ func must[T any](v T, err error) T {
 }
 ```
 
-The test repository has one Go function, `SaveSession`, defined with `ds def` and cited from `docs/sessions.md`. After the function body was edited, `ds check` and this program agree:
+`ds check` and this program agree about the edited function:
 
 ```console
 $ ds check
@@ -121,8 +181,8 @@ docs/sessions.md
       still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 1 error
-
-$ go build -o dscheck . && ./dscheck ../repo; echo "exit=$?"
+$ cd ../prog
+$ go build -o bin/dscheck ./dscheck && bin/dscheck ../repo; echo "exit=$?"
 docs/sessions.md:3	error	unacked	savesession-73km8a3x changed (moved, body) since this sentence was first cited
 	still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
 exit=1
@@ -132,17 +192,26 @@ exit=1
 
 ### Register the same tiers as the binary that wrote the ledger
 
-A block's hash depends on which extractor bound it. The standard `ds` binary carries the structured and tree-sitter tiers; a `System` built with no `WithExtractor` uses only the built-in, grammarless tiers. Pointed at a ledger written by `ds`, the two disagree about unchanged code. With the extractor lines removed from the program above, the same file at the same commit reports drift:
+A block's hash depends on which extractor bound it. The standard `ds` binary carries the structured and tree-sitter tiers; a `System` built with no `WithExtractor` uses only the built-in, grammarless tiers. Pointed at a ledger written by `ds`, the two disagree about unchanged code. Here the edit is put back to the committed version, and `dscheck-stdlib` is the program above with the three lines naming `structured` and `treesitter` (and their imports) removed. The same file at the same commit reports drift:
+
+<!-- doctest
+cp ../repo/internal/store/session.go session.edited
+git -C ../repo show HEAD:internal/store/session.go > ../repo/internal/store/session.go
+mkdir -p dscheck-stdlib
+grep -v -e structured -e treesitter dscheck/main.go > dscheck-stdlib/main.go
+go build -o bin/dscheck-stdlib ./dscheck-stdlib
+-->
 
 ```console
-$ ./dscheck ../repo     # built without the structured and tree-sitter tiers, tree unchanged
+$ bin/dscheck-stdlib ../repo     # built without the structured and tree-sitter tiers, tree unchanged
 docs/sessions.md:3	error	unacked	savesession-73km8a3x changed (body) since this sentence was first cited
+	still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
 ```
 
 With the tiers registered, the unchanged tree is clean:
 
 ```console
-$ ./dscheck ../repo     # built with them, tree unchanged
+$ bin/dscheck ../repo     # built with them, tree unchanged
 docs/sessions.md:3	none	ok	up to date
 ```
 
@@ -152,7 +221,11 @@ So if your program shares a ledger with `ds`, register what `cli/cmd/ds` registe
 
 `Define` finds a symbol or line and returns the id it would use plus the `Edit` that inserts the directive. Nothing is written until you apply the edit.
 
-```go
+<!-- doctest
+cp session.edited ../repo/internal/store/session.go
+-->
+
+```go file=../prog/define/main.go
 // Command define mints an id for path#Symbol and prints the edit the library
 // proposes; with -w it applies the edit itself.
 package main
@@ -205,11 +278,11 @@ func main() {
 ```
 
 ```console
-$ ./define ../repo internal/store/session.go#SweepInterval
+$ go build -o bin/define ./define
+$ bin/define ../repo internal/store/session.go#SweepInterval
 id=sweepinterval-kue77789 existing=false
 edit: internal/store/session.go line 5 insert "// ds:def id=sweepinterval-kue77789 owner=@auth"
-
-$ ./define ../repo internal/store/session.go#SaveSession
+$ bin/define ../repo internal/store/session.go#SaveSession
 id=savesession-73km8a3x existing=true
 edit:  line 0 insert ""
 ```
@@ -222,23 +295,42 @@ The target is the same `path#Symbol` or `path:line` that `ds def` takes. A block
 
 `Scan` walks the tree and `Snapshot` turns the result into the ledger and refs a first `ds scan` would write:
 
-```go
-sys, err := docsync.New(
-	docsync.WithFS(os.DirFS(os.Args[1])),
-	docsync.WithRepo("api"),
-	docsync.WithExtractor(treesitter.All()...),
+```go file=../prog/snap/main.go
+// Command snap scans a tree and prints the ledger a first `ds scan` would write.
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+
+	"github.com/ubgo/docsync"
+	"github.com/ubgo/docsync/ext/treesitter"
 )
-// …
-res, err := sys.Scan(context.Background())
-// …
-l, _ := sys.Snapshot(res)
-if err := l.Encode(os.Stdout); err != nil {
-	log.Fatal(err)
+
+func main() {
+	sys, err := docsync.New(
+		docsync.WithFS(os.DirFS(os.Args[1])),
+		docsync.WithRepo("api"),
+		docsync.WithExtractor(treesitter.All()...),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	res, err := sys.Scan(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	l, _ := sys.Snapshot(res)
+	if err := l.Encode(os.Stdout); err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 
 ```console
-$ ./snap ../repo
+$ go build -o bin/snap ./snap
+$ bin/snap ../repo
 # docsync ledger format=2 extract=1 repo=api commit= scanned_at=2026-10-01T03:42:59Z
 id	repo	kind	file	symbol	lines	hash	owner	stability	env	args
 savesession-73km8a3x	api	func	internal/store/session.go	SaveSession	8-11	73e47ea1f7bfc260d14e34ab7193bda9b627579dc01931009b0a17d5a0d6d86e	@auth	stable		id=savesession-73km8a3x owner=@auth
@@ -309,7 +401,7 @@ The root module is split into packages that each own one grammar or one step, so
 
 The `cli` module exports `Main` and `Run`, so an organisation can ship its own binary with the standard commands plus its own extractors, pickers, verbs, and config defaults:
 
-```go
+```go file=../prog/pds/main.go
 // Command pds is an organisation's own build of ds: the standard commands
 // and tiers, a different name, and a config default every repo inherits.
 package main
@@ -335,7 +427,20 @@ func main() {
 }
 ```
 
-It reads the same `.ds/` files as `ds` and gives the same findings on the same tree. Other options include `cli.WithRegistry`, `cli.WithVerb` (verb names), `cli.WithPluginLookup` (where `ds-*` plugins are found), `cli.WithNotifyState` (where `ds notify` keeps its memory), `cli.WithVCS`, and `cli.WithHTTPClient`.
+It reads the same `.ds/` files as `ds` and gives the same findings on the same tree:
+
+```console
+$ go build -o bin/pds ./pds
+$ cd ../repo
+$ ../prog/bin/pds check
+docs/sessions.md
+  3	error    unacked            savesession-73km8a3x changed (moved, body) since this sentence was first cited
+      still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
+      otherwise:  edit the sentence at docs/sessions.md:3, then ack
+1 error
+```
+
+The name changes the command's usage line; `version` and the remedies it prints still say `ds`. Other options include `cli.WithRegistry`, `cli.WithVerb` (verb names), `cli.WithPluginLookup` (where `ds-*` plugins are found), `cli.WithNotifyState` (where `ds notify` keeps its memory), `cli.WithVCS`, and `cli.WithHTTPClient`.
 
 ## Plugins in other languages
 
