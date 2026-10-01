@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/ubgo/docsync v0.1.0
+	github.com/ubgo/docsync v0.1.1
 	github.com/ubgo/docsync/ext/records/sqlite v0.1.0
 	github.com/ubgo/docsync/ext/structured v0.1.0
 	github.com/ubgo/docsync/ext/treesitter v0.1.0
