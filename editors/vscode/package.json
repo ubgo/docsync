@@ -4,7 +4,7 @@
   "description": "Code lenses listing dependents of every ds:def, hover with the cited block and its diff, go-to-definition from a cite, and warnings when a defined symbol is renamed or deleted. A thin client for `ds lsp`.",
   "version": "0.1.0",
   "publisher": "ubgo",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "engines": { "vscode": "^1.85.0", "node": ">=20" },
   "categories": ["Linters", "Other"],
   "activationEvents": ["onStartupFinished"],

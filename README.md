@@ -3,7 +3,7 @@
 <p align="center">Documentation drift detection for teams working with AI coding agents: an open-source Go CLI, library, MCP server and language server that binds docs to the code, config and facts they describe.</p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
   <img alt="Go 1.26" src="https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white">
   <img alt="Test coverage: 100% of statements" src="https://img.shields.io/badge/coverage-100%25-brightgreen">
   <img alt="Core library: Go standard library only" src="https://img.shields.io/badge/core-stdlib%20only-informational">
@@ -28,7 +28,7 @@ auth:
 Every write goes through [`SaveSession`](ds:block?id=sess-save-k7m2p4xq). It listens on [8081](ds:cfg?id=auth-port-h3v8n2wd).
 ```
 
-The full design is in [docs/SPEC.md](docs/SPEC.md). It is normative; the conformance fixtures under `testdata/conformance` are the tie-breaker where prose is ambiguous.
+**Documentation:** the [guide](docs/guide/README.md) covers setup, every directive, command, config key, language and integration, with real output throughout; start with [docsync at a glance](docs/guide/how-it-works.md) or [Getting started](docs/guide/getting-started.md). The full design is in [docs/SPEC.md](docs/SPEC.md). It is normative; the conformance fixtures under `testdata/conformance` are the tie-breaker where prose is ambiguous.
 
 ## Contents
 
@@ -309,6 +309,4 @@ These are deliberate and recorded so the spec can catch up rather than drift:
 
 ## License
 
-docsync is licensed under the [GNU Affero General Public License v3.0](LICENSE). You may use, modify and distribute it; if you run a modified version as a network service, you must offer its source to that service's users.
-
-<sub>docsync — documentation drift detection and docs-as-code for AI coding agents: an MCP server, language server, Go CLI and library, GitHub Action, pre-commit hooks, and Hugo, Docusaurus and VS Code integrations. Open source, local-first, no cloud, no API key.</sub>
+docsync is licensed under the [Apache License 2.0](LICENSE). You may use, modify and distribute it, including in closed-source and commercial work, as long as you keep the license and copyright notices; the license also grants a patent license from contributors.

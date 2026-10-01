@@ -2,10 +2,11 @@
 
 > Find the sentences in your docs that stopped being true. docsync binds documentation to the code, config and facts it describes, and `ds check` names every sentence whose code changed, moved or vanished, with the diff and the fix. Go CLI and library, MCP server for AI coding agents, LSP, GitHub Action, Hugo and Docusaurus.
 
-docsync is open source (AGPL-3.0) at https://github.com/ubgo/docsync. It runs locally; the library never opens the network.
+docsync is open source (Apache-2.0) at https://github.com/ubgo/docsync. It runs locally; the library never opens the network.
 
 ## Docs
 - [README](https://github.com/ubgo/docsync/blob/main/README.md): overview, CLI, library, FAQ
+- [Guide](https://github.com/ubgo/docsync/blob/main/docs/guide/README.md): how it works, getting started, directives, languages, every command and config key, CI, agents, integrations, library, cross-repo, secrets and runs, troubleshooting
 - [SPEC](https://github.com/ubgo/docsync/blob/main/docs/SPEC.md): the normative design; every rule has a conformance fixture
 - [CHANGELOG](https://github.com/ubgo/docsync/blob/main/CHANGELOG.md): release history
 - [CONTRIBUTING](https://github.com/ubgo/docsync/blob/main/CONTRIBUTING.md): setup and the rules the code holds itself to
