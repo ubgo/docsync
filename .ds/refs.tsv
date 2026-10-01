@@ -1,4 +1,4 @@
-# docsync refs format=2 extract=1 repo=docsync commit=d32853b scanned_at=2026-09-30T06:44:14Z
+# docsync refs format=2 extract=1 repo=docsync commit=bb41e70 scanned_at=2026-10-01T04:28:47Z
 id	repo	doc	line	verb	carrier	acked_hash	seen_hash	sentence_hash	env	args
 gitignorebody-jgek8ecm	docsync	README.md	181	block	block	651f34d3d4b1225c324b617cc64a81fc0ac0c5884b5cb066f55b0c782b0e9bef	a004e82def0f945a7406469d74c93bf1bc17045039b4d4c20545b1148ce7db96			id=gitignorebody-jgek8ecm
 flags-zfrzu4vz	docsync	README.md	243	block	block		4ac21d7b990947aec4faa6533935f75e7edf26f6f3623532c3660023576bb623			id=flags-zfrzu4vz

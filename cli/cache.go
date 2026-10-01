@@ -105,18 +105,42 @@ type cacheFile struct {
 // the scanner searches for, the extractor tiers in precedence order, and
 // the long-line limit — an entry served by size and modification time
 // (Unchanged) skips the long-line test that admitted it, so a lowered limit
-// must not be served entries admitted under the old one. A cache entry is
-// valid only for the inputs that produced it.
+// must not be served entries admitted under the old one — and the program
+// that extracted it (buildStamp). A cache entry is valid only for the inputs
+// that produced it.
 //
 // Why it exists: the cache was keyed on content alone. After the extent fix
 // it served the old extents, so the fix silently did not apply; editing
 // `prefix` served entries extracted under the old one — on this repo 14
 // defs and 110 refs that existed nowhere in the tree. The rule was once
 // guarded by bumping cacheFormat by hand, a convention easy to forget; it is
-// part of the key instead.
+// part of the key instead. The rule alone is not enough either: a fix to
+// what a hash covers that keeps the rule (Go string text, bug 22) left
+// unchanged files served their old hashes until `--full`, so the program
+// is part of the key as well.
 // dsself:def id=cacheinputs-vyhx6vbz owner=@docsync stability=stable
-func cacheInputs(rule int, prefix string, tiers []string, maxLineChars int) string {
-	return strconv.Itoa(rule) + "\x00" + prefix + "\x00" + strings.Join(tiers, ",") + "\x00" + strconv.Itoa(maxLineChars)
+func cacheInputs(rule int, prefix string, tiers []string, maxLineChars int, build string) string {
+	return strconv.Itoa(rule) + "\x00" + prefix + "\x00" + strings.Join(tiers, ",") + "\x00" + strconv.Itoa(maxLineChars) + "\x00" + build
+}
+
+// buildStamp identifies the running ds program by its executable's size and
+// modification time, so a cache written by one build is never served to
+// another. Any rebuild or upgrade drops the cache once, which costs one
+// full extraction; serving a different build's extents and hashes would
+// report drift that is not there, or hide drift that is. exe and stat are
+// os.Executable and os.Stat; they are parameters so the failure paths are
+// testable. When the executable cannot be found the stamp is empty, which
+// still keys the cache on every other input.
+func buildStamp(exe func() (string, error), stat func(string) (os.FileInfo, error)) string {
+	p, err := exe()
+	if err != nil {
+		return ""
+	}
+	fi, err := stat(p)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatInt(fi.Size(), 10) + ":" + strconv.FormatInt(fi.ModTime().UnixNano(), 10)
 }
 
 // extractCache implements scan.Cache over the store. inputs is the

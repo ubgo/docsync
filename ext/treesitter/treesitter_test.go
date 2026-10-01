@@ -3,6 +3,7 @@ package treesitter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -775,5 +776,44 @@ func TestObjectLiteralPropertiesBind(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestStringContentIsHashed pins that changing only the text inside a string
+// changes a block's hash, in every grammar and every string form (bug 22).
+// Go's grammar gives a string literal no node for its text, only the quote
+// marks, so the hash used to see `"one"` and `"two"` as the same block and a
+// changed message, URL or query never flagged the sentences citing it.
+func TestStringContentIsHashed(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, file, src string
+		tier            extract.Extractor
+	}{
+		{"go interpreted", "a.go", "package p\n\n// ds:def id=s-a2b6f8jk\nfunc E() string { return \"%s\" }\n", Go()},
+		{"go escapes", "a.go", "package p\n\n// ds:def id=s-a2b6f8jk\nfunc E() string { return \"a\\n%s\\t\" }\n", Go()},
+		{"go raw", "a.go", "package p\n\n// ds:def id=s-a2b6f8jk\nfunc E() string { return `%s` }\n", Go()},
+		{"go call argument", "a.go", "package p\n\n// ds:def id=s-a2b6f8jk\nvar A = errors.New(\"%s\")\n", Go()},
+		{"go rune", "a.go", "package p\n\n// ds:def id=s-a2b6f8jk\nfunc R() rune { return '%s' }\n", Go()},
+		{"typescript", "a.ts", "// ds:def id=s-a2b6f8jk\nexport function e() { return \"%s\" }\n", TypeScript()},
+		{"tsx template", "a.tsx", "// ds:def id=s-a2b6f8jk\nexport function e() { return `x ${1} %s` }\n", TSX()},
+		{"javascript", "a.js", "// ds:def id=s-a2b6f8jk\nfunction e() { return '%s' }\n", JavaScript()},
+		{"python", "a.py", "# ds:def id=s-a2b6f8jk\ndef e():\n    return \"%s\"\n", Python()},
+		{"python f-string", "a.py", "# ds:def id=s-a2b6f8jk\ndef e(x):\n    return f\"{x} %s\"\n", Python()},
+		{"sql", "a.sql", "-- ds:def id=s-a2b6f8jk\nSELECT * FROM users WHERE name = '%s';\n", SQL()},
+	}
+	for _, c := range cases {
+		hash := func(v string) string {
+			return find(t, c.tier.Extract(c.file, []byte(fmt.Sprintf(c.src, v)), "ds"), "s-a2b6f8jk").Hash
+		}
+		if v1, v2 := "o", "t"; hash(v1) == hash(v2) {
+			t.Errorf("%s: changing the string's text left the hash unchanged", c.name)
+		}
+	}
+	// Layout outside the string still does not count.
+	a := Go().Extract("a.go", []byte("package p\n\n// ds:def id=s-a2b6f8jk\nfunc E() string { return \"one\" }\n"), "ds")
+	b := Go().Extract("a.go", []byte("package p\n\n// ds:def id=s-a2b6f8jk\nfunc E() string {\n\treturn   \"one\"\n}\n"), "ds")
+	if find(t, a, "s-a2b6f8jk").Hash != find(t, b, "s-a2b6f8jk").Hash {
+		t.Error("reformatting around a string changed the hash")
 	}
 }

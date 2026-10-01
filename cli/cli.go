@@ -486,7 +486,7 @@ func (a *App) system() (loaded, error) {
 	if len(a.removed) > 0 {
 		opts = append(opts, docsync.WithRemoved(a.removed))
 	}
-	cache, err := st.LoadCache(cacheInputs(extract.Rule, cfg.Prefix, a.tiers(), cfg.Scan.MaxLineChars), a.now)
+	cache, err := st.LoadCache(cacheInputs(extract.Rule, cfg.Prefix, a.tiers(), cfg.Scan.MaxLineChars, buildStamp(os.Executable, os.Stat)), a.now)
 	if err != nil {
 		return loaded{}, err
 	}

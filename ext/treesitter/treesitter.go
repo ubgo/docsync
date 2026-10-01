@@ -332,7 +332,7 @@ func (t tier) tokens(n *sitter.Node, src []byte, withComments bool) string {
 		if t.g.Comments[n.Type()] && !withComments {
 			return
 		}
-		if n.ChildCount() == 0 {
+		if n.ChildCount() == 0 || hasUncoveredText(n, src) {
 			// Some grammars surface newlines and other layout as anonymous
 			// tokens (Go's statement terminators); they are not code.
 			tok := strings.TrimSpace(n.Content(src))
@@ -351,6 +351,30 @@ func (t tier) tokens(n *sitter.Node, src []byte, withComments bool) string {
 	}
 	walk(n)
 	return b.String()
+}
+
+// hasUncoveredText reports whether n holds source text that none of its
+// children covers. Walking only the children would drop that text from the
+// hash, so such a node is taken whole, as one token.
+//
+// Go's grammar is the case that made this necessary: an interpreted string
+// literal's children are its two quote marks (and any escape sequences),
+// and the characters between them belong to no child. Walking the children
+// hashed `"one"` and `"two"` identically, so a changed message, URL or
+// query inside a function never flagged the sentences citing it. Where a
+// grammar does give the text a node (Python's string_content, TypeScript's
+// string_fragment) nothing is uncovered and the node is walked as before,
+// which keeps every hash that was already right unchanged.
+func hasUncoveredText(n *sitter.Node, src []byte) bool {
+	at := n.StartByte()
+	for i := 0; i < int(n.ChildCount()); i++ {
+		c := n.Child(i)
+		if strings.TrimSpace(string(src[at:c.StartByte()])) != "" {
+			return true
+		}
+		at = c.EndByte()
+	}
+	return strings.TrimSpace(string(src[at:n.EndByte()])) != ""
 }
 
 // fieldText returns the source of a field child, "" when absent.

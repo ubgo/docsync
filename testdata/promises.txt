@@ -53,6 +53,7 @@ key-path-segments	test	quoting any segment is always allowed
 key-path-segments	test	Paths are compared segment by segment, never as joined strings
 value-visible	prose: a design principle; no directive key carries a value, and unknown keys warn (config and directive tests)	the value is visible text at the def's location, never an attribute of the directive.
 cache-no-secret	test	**The extraction cache** is never given a file that a secret glob matches
+cache-keyed-on-build	test	A cache entry is valid only for the inputs that produced it, so the cache file records them and is discarded wholesale when they differ: the extraction rule version, the directive prefix, the extractor tiers in precedence order, `max_line_chars`, since a file served by its time skips the long-line test that admitted it, and the `ds` program itself (its executable's size and time), since a fix to what a hash covers need not change the rule and an upgraded `ds` must not be served the old build's hashes.
 resolve-gated	test	Off by default, never on fork PRs.
 local-truth-example	prose: an example of a use, not a rule	A `.env.prod` never in git can still be the declared truth
 ledger-by-hand	prose: a convention for people; the tool cannot see who edited a file	never edited by hand

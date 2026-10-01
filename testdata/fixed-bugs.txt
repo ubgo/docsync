@@ -28,3 +28,4 @@
 19 ds def missed a standalone typed Go constant
 20 policy.require_doc and the unmarked report skipped every file a syntax tier read
 21 ds github comment left each block diff fence open
+22 the text inside a Go string literal was not part of the block hash

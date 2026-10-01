@@ -2,7 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +70,7 @@ func TestCacheRoundTrip(t *testing.T) {
 // is in the fingerprint for the same reason — a binary built with a different
 // extractor set reads the same bytes differently.
 // Pins bug 12.
+// promise:cache-keyed-on-build
 func TestCacheKeyedOnExtractionInputs(t *testing.T) {
 	t.Parallel()
 	const (
@@ -77,7 +82,7 @@ func TestCacheKeyedOnExtractionInputs(t *testing.T) {
 	found := extract.Found{Page: &extract.Page{Covers: []string{"a-b3c7g9kl"}}}
 
 	st := NewStore(t.TempDir())
-	c, err := st.LoadCache(cacheInputs(extract.Rule, prefix, tiers, lineLimit), time.Now)
+	c, err := st.LoadCache(cacheInputs(extract.Rule, prefix, tiers, lineLimit, "b1"), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,13 +95,15 @@ func TestCacheKeyedOnExtractionInputs(t *testing.T) {
 		inputs string
 		want   bool
 	}{
-		{"the inputs that wrote it", cacheInputs(extract.Rule, prefix, tiers, lineLimit), true},
-		{"another prefix", cacheInputs(extract.Rule, otherPrefix, tiers, lineLimit), false},
-		{"a tier removed", cacheInputs(extract.Rule, prefix, []string{"markdown", "text"}, lineLimit), false},
-		{"the tiers reordered", cacheInputs(extract.Rule, prefix, []string{"code", "markdown", "text"}, lineLimit), false},
-		{"another extraction rule", cacheInputs(extract.Rule+1, prefix, tiers, lineLimit), false},
+		{"the inputs that wrote it", cacheInputs(extract.Rule, prefix, tiers, lineLimit, "b1"), true},
+		{"another prefix", cacheInputs(extract.Rule, otherPrefix, tiers, lineLimit, "b1"), false},
+		{"a tier removed", cacheInputs(extract.Rule, prefix, []string{"markdown", "text"}, lineLimit, "b1"), false},
+		{"the tiers reordered", cacheInputs(extract.Rule, prefix, []string{"code", "markdown", "text"}, lineLimit, "b1"), false},
+		{"another extraction rule", cacheInputs(extract.Rule+1, prefix, tiers, lineLimit, "b1"), false},
 		// A stamped entry skips the long-line test that admitted it.
-		{"another long-line limit", cacheInputs(extract.Rule, prefix, tiers, lineLimit-1), false},
+		{"another long-line limit", cacheInputs(extract.Rule, prefix, tiers, lineLimit-1, "b1"), false},
+		// Another build of ds may extract or hash differently under the same rule.
+		{"another build of ds", cacheInputs(extract.Rule, prefix, tiers, lineLimit, "b2"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			back, err := st.LoadCache(tc.inputs, time.Now)
@@ -110,8 +117,37 @@ func TestCacheKeyedOnExtractionInputs(t *testing.T) {
 	}
 	// The two parts are separated, not concatenated: without a delimiter a
 	// prefix that ends where a tier name begins would collide.
-	if cacheInputs(1, "a", []string{"b"}, 1) == cacheInputs(1, "ab", nil, 1) || cacheInputs(1, "2", nil, 1) == cacheInputs(12, "", nil, 1) || cacheInputs(1, "", []string{"1"}, 1) == cacheInputs(1, "", nil, 11) {
+	if cacheInputs(1, "a", []string{"b"}, 1, "") == cacheInputs(1, "ab", nil, 1, "") || cacheInputs(1, "2", nil, 1, "") == cacheInputs(12, "", nil, 1, "") || cacheInputs(1, "", []string{"1"}, 1, "") == cacheInputs(1, "", nil, 11, "") || cacheInputs(1, "", nil, 1, "2") == cacheInputs(1, "", nil, 12, "") {
 		t.Error("the fingerprint must distinguish its components")
+	}
+}
+
+// TestBuildStamp pins that the stamp names the executable's size and time,
+// changes when the program is rebuilt, and degrades to empty rather than
+// failing a scan when the executable cannot be found or read.
+func TestBuildStamp(t *testing.T) {
+	t.Parallel()
+	exe := filepath.Join(t.TempDir(), "ds")
+	if err := os.WriteFile(exe, []byte("one"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	at := func() (string, error) { return exe, nil }
+	first := buildStamp(at, os.Stat)
+	if first == "" || !strings.HasPrefix(first, "3:") {
+		t.Errorf("stamp = %q, want the size first", first)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(exe, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if buildStamp(at, os.Stat) == first {
+		t.Error("a rebuilt program must stamp differently")
+	}
+	if got := buildStamp(func() (string, error) { return "", errors.New("no exe") }, os.Stat); got != "" {
+		t.Errorf("no executable = %q", got)
+	}
+	if got := buildStamp(func() (string, error) { return filepath.Join(exe, "missing"), nil }, os.Stat); got != "" {
+		t.Errorf("unreadable executable = %q", got)
 	}
 }
 

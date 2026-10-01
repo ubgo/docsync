@@ -12,8 +12,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- In Go, the text inside a string literal was not part of a block's hash: changing `errors.New("account locked")` to `"account suspended"`, a URL, a query or a flag name inside a function never flagged the sentences citing it (bug 22). Go's grammar gives a string no node for its text, and the hash was built from the parse tree's leaves. Text that no child node covers is now hashed with its node. Only Go interpreted strings (`"…"`) were affected; raw strings, runes, and strings in TypeScript, JavaScript, Python and SQL already hashed their text, and their hashes do not change. The extraction rule stays at 1. See Upgrading.
+- The extraction cache is now keyed on the `ds` build as well as the rule, prefix, tiers and line limit. Keyed on the rule alone, an upgrade that fixes what a hash covers without changing the rule kept serving unchanged files their old hashes until `ds check --full`, so the fix appeared to apply only to files someone had edited. Each new build re-extracts once.
 - `policy.require_doc` and the unmarked view of `ds report` did nothing for Go, TypeScript, TSX, JavaScript, Python or SQL files: they only looked at files the heuristic code tier had read, and the standard `ds` reads those languages with their tree-sitter grammars. A file now counts by its extension, whichever tier read it.
 - `ds github comment`: the closing fence of each block diff was written on the diff's last line, so the code block never closed and everything after it in the comment rendered as code.
+
+### Upgrading
+
+After upgrading, a Go block whose code contains a `"…"` string has a new hash although its code did not change, so `ds check` reports each citation of it once, as a change. Re-ack those after confirming the code really is unchanged. A coding agent can do it with this prompt:
+
+```text
+docsync was upgraded, and its hash now includes the text inside Go string
+literals. Citations of Go blocks that contain a "..." string may be reported
+once even though their code did not change. Clear only those, and nothing else:
+
+1. Run `ds scan`, then `ds check --json`. Work only on findings whose block
+   file ends in .go.
+2. For each one, find when that citation was last acked: `ds audit --id <id>`
+   prints one line per ack, starting with its time. Take the commit the
+   repository was at then: `git log -1 --before=<time> --format=%H`. If the id
+   was never acked, or that prints nothing, use the last commit that changed
+   .ds/refs.tsv. Compare the
+   block's lines at that commit with the working tree: `ds locate <id>` gives
+   the file and line range, and `git diff <commit> -- <file>` the changes.
+3. If those lines did not change, the finding is the upgrade. Read the citing
+   sentence once to be sure it is still true, then run
+   `ds ack <id> --doc <doc> --line <line> --note "re-ack after the Go string hashing fix; code unchanged"`.
+4. If the lines did change, this is a real finding. Do not ack it: fix the
+   sentence, or report it, as you would any other.
+5. Run `ds check` again and report what you acked and what you left.
+```
 
 ## [0.1.3] - 2026-10-01
 

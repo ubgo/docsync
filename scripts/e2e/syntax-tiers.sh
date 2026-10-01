@@ -19,7 +19,7 @@ no() { echo "  FAIL  $1"; fail=$((fail+1)); }
 has() { case "$2" in *"$3"*) ok "$1";; *) no "$1 (no \"$3\" in: $(printf '%s' "$2" | head -3))";; esac; }
 
 # ---- policy.require_doc covers files every tier reads (bug 20) -------------
-cd "$S" && git init -q . && git config user.email t@t && git config user.name t
+P="$S/policy"; mkdir -p "$P" && cd "$P" && git init -q . && git config user.email t@t && git config user.name t
 mkdir -p internal/auth docs
 printf 'package auth\n\nfunc Refresh() {}\n' > internal/auth/refresh.go
 printf 'export function Rotate() {}\n' > internal/auth/rotate.ts
@@ -35,6 +35,19 @@ for f in refresh.go:Refresh rotate.ts:Rotate revoke.py:Revoke renew.rs:Renew; do
 done
 out=$(ds report 2>&1)
 has "report lists Refresh in a Go file as unmarked" "$out" "Refresh"
+
+# ---- the text inside a Go string is part of the hash (bug 22) --------------
+# Go's grammar gives a string literal no node for its text, so a hash built
+# from the parse tree's leaves never saw it change.
+G="$S/strings"; mkdir -p "$G" && cd "$G" && git init -q . && git config user.email t@t && git config user.name t
+printf 'package p\n\nimport "errors"\n\n// ds:def id=errmsg-k7m2p4xq\nvar ErrLocked = errors.New("account locked")\n' > e.go
+printf '# Errors\n\nA locked account says [account locked](ds:block?id=errmsg-k7m2p4xq).\n' > errors.md
+ds init >/dev/null; ds scan >/dev/null; git add -A; git commit -qm a
+ds ack errmsg-k7m2p4xq --doc errors.md --line 3 --note ok >/dev/null 2>&1
+out=$(ds check 2>&1); case "$out" in *errmsg-k7m2p4xq*) no "an unchanged string is not drift ($out)";; *) ok "an unchanged string is not drift";; esac
+sedi() { for _f in "$@"; do :; done; sed -i.bak "$@" && /bin/rm -f "$_f.bak"; }
+sedi 's/account locked/account suspended/' e.go
+out=$(ds check 2>&1); has "changing the text of a Go string flags the citation" "$out" "errmsg-k7m2p4xq"
 
 echo; echo "  ---- $pass passed, $fail failed ----"
 [ "$fail" -eq 0 ]
