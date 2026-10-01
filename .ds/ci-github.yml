@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: "1.26" }
       - run: go install github.com/ubgo/docsync/cli/cmd/ds@latest
-      - run: ds check --json > docsync.json || (cat docsync.json; exit 1)
+      - run: ds check --json > "$RUNNER_TEMP/docsync.json" || (cat "$RUNNER_TEMP/docsync.json"; exit 1)

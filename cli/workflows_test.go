@@ -84,6 +84,21 @@ func TestShippedWorkflowsAreManual(t *testing.T) {
 	}
 }
 
+// The workflow ds init writes keeps its report out of the checkout: it
+// wrote docsync.json into the repository, where the default code = ["**"]
+// scanned it as a citation of every block it quoted (bug 75).
+func TestInitWorkflowWritesItsReportOutsideTheCheckout(t *testing.T) {
+	t.Parallel()
+	for _, l := range strings.Split(ciSnippet, "\n") {
+		if strings.Contains(l, "ds check --json") && (!strings.Contains(l, `> "$RUNNER_TEMP/`) || strings.Contains(l, "> docsync.json")) {
+			t.Errorf("report written into the checkout: %s", l)
+		}
+	}
+	if !strings.Contains(ciSnippet, "ds check --json") {
+		t.Error("the template no longer runs ds check --json, so nothing here was checked")
+	}
+}
+
 // TestTriggersOf pins the reader the test above depends on, including the
 // case that matters most: it must see an automatic trigger when one is there,
 // or the check above passes on nothing.

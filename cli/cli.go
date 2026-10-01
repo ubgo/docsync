@@ -74,7 +74,10 @@ type App struct {
 	cwd string
 	// gitVCS reports that vcs is the default git client for dir rather than
 	// one the embedder injected, so --dir may point it somewhere else.
-	gitVCS         bool
+	gitVCS bool
+	// dirFlag records that --dir named the directory, which then wins
+	// over the workspace an LSP client names.
+	dirFlag        bool
 	stdin          io.Reader
 	stdout, stderr io.Writer
 	extractors     []extract.Extractor
@@ -90,9 +93,14 @@ type App struct {
 	// frozen makes system() resolve foreign blocks from the committed
 	// snapshot rather than the index, so a check is reproducible (§21).
 	frozen bool
-	// urlCheck is set by `check --resolve`; snapshot by `render --at`.
+	// urlCheck is set by `check --resolve`.
 	urlCheck func(href string) check.URLResult
-	snapshot func(id, sha string) (string, bool)
+	// atFS and atCommit are set by `render --at`: system() scans that
+	// commit's tree instead of the work tree and stamps permalinks with
+	// that commit, so the page, its values, its line ranges and its links
+	// all come from one commit (bug 60).
+	atFS     fs.FS
+	atCommit string
 	// httpClient is what --resolve uses; tests inject a server's client.
 	httpClient *http.Client
 	// notifyStateImpl replaces where `ds notify` keeps its dedupe and
@@ -250,6 +258,7 @@ func (a *App) root() *cobra.Command {
 		// working directory. `init` makes a root where it is started, so it
 		// does not discover one.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			a.dirFlag = dir != ""
 			return a.locate(dir, cmd.Name() != initCmdName)
 		},
 	}
@@ -464,6 +473,10 @@ func (a *App) system() (loaded, error) {
 		return loaded{}, err
 	}
 	commit, _ := a.vcs.Head()
+	var fsys fs.FS = os.DirFS(a.dir)
+	if a.atFS != nil {
+		fsys, commit = a.atFS, a.atCommit
+	}
 	repo := a.repoName(cfg)
 	wsOpts, warnings, err := a.workspaceOptions(cfg, repo, a.fetchIndex)
 	if err != nil {
@@ -475,7 +488,7 @@ func (a *App) system() (loaded, error) {
 	// sysRef is filled in once New returns; see the OldContent hook below.
 	var sysRef *docsync.System
 	opts := []docsync.Option{
-		docsync.WithFS(os.DirFS(a.dir)), docsync.WithConfig(cfg), docsync.WithRepo(repo), docsync.WithCommit(commit),
+		docsync.WithFS(fsys), docsync.WithConfig(cfg), docsync.WithRepo(repo), docsync.WithCommit(commit),
 		docsync.WithPrevious(prev, refs), docsync.WithAcks(acks), docsync.WithClock(a.now),
 	}
 	if a.registry != nil {
@@ -510,14 +523,22 @@ func (a *App) system() (loaded, error) {
 	if err != nil {
 		return loaded{}, err
 	}
-	opts = append(opts, docsync.WithExtractCache(cache))
+	// The extraction cache describes the work tree, keyed on what a file
+	// looks like on disk; a commit view has no such metadata, so it is
+	// neither read nor fed from one.
+	if a.atFS == nil {
+		opts = append(opts, docsync.WithExtractCache(cache))
+	}
 	if a.urlCheck != nil {
 		opts = append(opts, docsync.WithURLCheck(a.urlCheck))
 	}
-	if a.snapshot != nil {
-		opts = append(opts, docsync.WithSnapshot(a.snapshot))
-	}
 	opts = append(opts, docsync.WithLocalReader(a.readLocal))
+	// `ds:block … at=<sha>` renders the block as it was at that commit in
+	// every render, not only under `render --at` (bug 66). It is lazy: no
+	// git call happens unless a page holds such a snapshot.
+	opts = append(opts, docsync.WithSnapshotBlock(a.snapshotAt(commit, func(path string, src []byte) ([]block.Block, error) {
+		return sysRef.ExtractFile(context.Background(), path, src)
+	})))
 	if a.resolveHook != nil {
 		opts = append(opts, docsync.WithResolver(a.resolveHook), docsync.WithStoredHashes(a.storedHashes))
 	}

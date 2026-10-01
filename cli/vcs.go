@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -77,9 +78,29 @@ func (g Git) run(args ...string) ([]byte, error) {
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, errors.Join(ErrNoVCS, errors.New(strings.TrimSpace(stderr.String())))
+		return nil, gitError(err, strings.TrimSpace(stderr.String()))
 	}
 	return out.Bytes(), nil
+}
+
+// notARepo is how git says the directory is outside any repository.
+const notARepo = "not a git repository"
+
+// gitError classifies a failed git call. Only a git that could not run, or
+// a directory outside any repository, is ErrNoVCS, which commands treat as
+// "no history here" and degrade on. Any other failure is git's own message:
+// `render --at` of a page the commit does not have used to print "git: not
+// a repository or git not installed" ahead of git's "path does not exist"
+// (bug 60), blaming the repository for a missing file.
+func gitError(err error, stderr string) error {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || strings.Contains(stderr, notARepo) {
+		return errors.Join(ErrNoVCS, errors.New(stderr))
+	}
+	if stderr == "" {
+		return fmt.Errorf("git: %w", err)
+	}
+	return errors.New(strings.TrimPrefix(stderr, "fatal: "))
 }
 
 // Head returns the short sha of HEAD.

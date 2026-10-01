@@ -354,7 +354,9 @@ func TestHooksAndToggles(t *testing.T) {
 
 func TestRender(t *testing.T) {
 	t.Parallel()
-	s := newSys(t, repo(false), WithSnapshot(func(string, string) (string, bool) { return "", false }))
+	// WithSnapshotBlock reaches the renderer; it answers nothing here, as
+	// the page pins no snapshot (bug 66 is pinned in render and the cli).
+	s := newSys(t, repo(false), WithSnapshot(func(string, string) (string, bool) { return "", false }), WithSnapshotBlock(func(string, string) (block.Block, bool) { return block.Block{}, false }))
 	out, notes, err := s.Render(context.Background(), "docs/sessions.md", RenderOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +603,7 @@ func TestAgentSurface(t *testing.T) {
 		t.Error("ContextFor reuses a report")
 	}
 	byIDCtx, _ := s.Context(ctx, "sess-save-k7m2p4xq", ContextOptions{})
-	if len(byIDCtx.Items) != 2 || byIDCtx.Items[0].ID != "sess-save-k7m2p4xq" || byIDCtx.Items[0].Mode != ModeFull || !strings.HasPrefix(byIDCtx.Items[1].Why, "cites ") || !strings.Contains(byIDCtx.Items[1].Content, "Every write") {
+	if len(byIDCtx.Items) != 3 || byIDCtx.Items[2].Mode != ModeLine || byIDCtx.Items[2].Content != "docs/sessions.md:9 shows it in block position" || byIDCtx.Items[0].ID != "sess-save-k7m2p4xq" || byIDCtx.Items[0].Mode != ModeFull || !strings.HasPrefix(byIDCtx.Items[1].Why, "cites ") || !strings.Contains(byIDCtx.Items[1].Content, "Every write") {
 		t.Errorf("context by id = %+v", byIDCtx.Items)
 	}
 	// A big unchanged block shrinks to a line in auto mode.

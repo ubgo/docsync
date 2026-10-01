@@ -173,10 +173,13 @@ func TestOutPathsResolveTheSameWay(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, strings.TrimPrefix(abs, string(filepath.Separator)))); err == nil {
 		t.Error("an absolute --out was written under the repository")
 	}
-	// --out without --ai has no patch to write: a usage error, not a flag
-	// accepted and silently ignored.
-	if r := run(t, dir, v, "review", "--out", "review.patch"); r.code != ExitError || !strings.Contains(r.err, "--ai") {
+	// --out without --ai writes the worklist there, and prints nothing
+	// (bug 70); it used to be refused, which the help did not say.
+	if r := run(t, dir, v, "review", "--out", "review.txt"); r.code != 0 || r.out != "" {
 		t.Errorf("review --out without --ai = %+v", r)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "review.txt")); err != nil || !strings.Contains(string(b), "- [ ] ") && !strings.Contains(string(b), "nothing to review") {
+		t.Errorf("worklist file = %q %v", b, err)
 	}
 	if r := run(t, dir, v, "export", "hugo", "--out", filepath.Join(abs, "x")); !strings.Contains(r.out, filepath.Join(abs, "x")) {
 		t.Errorf("export must report where it wrote: %q", r.out)

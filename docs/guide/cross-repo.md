@@ -430,14 +430,14 @@ ds scan
 ~~~~console
 $ ds refresh
 1 repo-mode copies rewritten
-0 moved; ledger updated
+0 moved; ledger unchanged
 $ cat docs/limits.md
 # Limits
 
 The request body cap:
 
 <!-- ds:block id=maxbody-k7m2p4xq -->
-**MaxBody** · [`limits.go:4-6`](limits.go#L4-L6)
+**MaxBody** · [`limits.go:4-6`](../limits.go#L4-L6)
 
 ```go
 func MaxBody() int {
@@ -466,7 +466,7 @@ docs/limits.md
 1 error
 $ ds refresh
 1 repo-mode copies rewritten
-0 moved; ledger updated
+0 moved; ledger unchanged
 $ perl -pi -e 's/2 << 20/4 << 20/' docs/limits.md
 $ ds check                    # after editing inside the copy
 docs/limits.md

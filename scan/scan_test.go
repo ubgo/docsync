@@ -160,7 +160,7 @@ func TestScan(t *testing.T) {
 			t.Fatalf("defs not sorted at %d: %v %v", i, a, b)
 		}
 	}
-	if len(SkipReasonValues) != 6 {
+	if len(SkipReasonValues) != 7 {
 		t.Error("SkipReasonValues")
 	}
 }
@@ -585,7 +585,7 @@ func TestUnknownStabilityIsAFinding(t *testing.T) {
 // drops it on purpose. Adding a reason means deciding which it is here.
 func TestUnreadableReasons(t *testing.T) {
 	t.Parallel()
-	want := map[SkipReason]bool{SkipTooLarge: true, SkipLongLine: true, SkipBinary: true, SkipReadError: true, SkipExcluded: false, SkipNotIn: false}
+	want := map[SkipReason]bool{SkipTooLarge: true, SkipLongLine: true, SkipBinary: true, SkipReadError: true, SkipExcluded: false, SkipNotIn: false, SkipOwnOutput: false}
 	for _, r := range SkipReasonValues {
 		w, ok := want[r]
 		if !ok {

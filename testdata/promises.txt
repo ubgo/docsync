@@ -155,3 +155,6 @@ config-unbuilt-refused	test	the `[sources.*]` table it would read is refused whe
 config-unbuilt-refused	test	Keys this specification describes but the build does not act on yet are refused when the config loads
 config-unbuilt-refused	test	Configuration that would enable any of it is refused when the config loads rather than accepted and ignored
 env-known-closed	test	an `--env` passed to `check`, `render` or `def` that it does not list is refused, naming the list
+context-since-checked	test	any other value is refused
+commit-ack-keys	test	any other key is refused.
+ack-scope-named	test	An id with neither `--doc` and `--line` nor `--all` is refused, so no sentence is approved without being named.

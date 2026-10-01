@@ -99,7 +99,7 @@ func TestInlineNotes(t *testing.T) {
 	if lines[4] != "x" {
 		t.Errorf("missing env falls back to text: %q", lines[4])
 	}
-	if lines[5] != "[x](internal/store/write.go#L12-L15)" {
+	if lines[5] != "[x](../internal/store/write.go#L12-L15)" {
 		t.Errorf("at= link uses the default template: %q", lines[5])
 	}
 	perLine := map[int]int{}
@@ -145,13 +145,13 @@ func TestBlockPosition(t *testing.T) {
 	if strings.Contains(out, "ds:def") || !strings.HasPrefix(out, "## Policy\n") {
 		t.Errorf("def line must vanish without touching the heading:\n%s", out)
 	}
-	if !strings.Contains(out, "**sess-save-k7m2p4xq** · [`internal/store/write.go:12-15`](internal/store/write.go#L12-L15)\n\n```go\nfunc Save() {\n\t// legacy first\n\treturn nil\n}\n```") {
+	if !strings.Contains(out, "**sess-save-k7m2p4xq** · [`internal/store/write.go:12-15`](../internal/store/write.go#L12-L15)\n\n```go\nfunc Save() {\n\t// legacy first\n\treturn nil\n}\n```") {
 		t.Errorf("full block:\n%s", out)
 	}
-	if !strings.Contains(out, "<details>\n<summary>**the guard** · [`internal/store/write.go:12-15`](internal/store/write.go#L12-L15)</summary>\n\n```golang\nfunc Save() {\n```\n\n</details>") {
+	if !strings.Contains(out, "<details>\n<summary>**the guard** · [`internal/store/write.go:12-15`](../internal/store/write.go#L12-L15)</summary>\n\n```golang\nfunc Save() {\n```\n\n</details>") {
 		t.Errorf("collapsed fragment with comments stripped:\n%s", out)
 	}
-	if !strings.Contains(out, "[`internal/store/write.go:12-15`](internal/store/write.go#L12-L15) · as of `9f3a1c`") {
+	if !strings.Contains(out, "[`internal/store/write.go:12-15`](../internal/store/write.go#L12-L15) · as of `9f3a1c`") {
 		t.Errorf("snapshot without hook renders caption only:\n%s", out)
 	}
 	for _, kept := range []string{"<!-- ds:block id=sess-save-k7m2p4xq lines=3-9 -->", "<!-- ds:block id=sess-save-k7m2p4xq lines=x -->", "<!-- ds:block id=nope-h3v8n2wd -->", "<!-- ds:block id=op-stripe-key-p9c2v7ld -->", "<!-- ds:cfg id=auth-port-h3v8n2wd -->", "<!-- ds:url -->", "<!-- ds:frob id=1 -->", "<!-- ds:block -- broken -->", "<!-- not a directive -->"} {
@@ -207,9 +207,9 @@ func TestChain(t *testing.T) {
 	if kept, _ := render(t, "Missing: <!-- ds:chain id=absent-a2b6f8jk -->", Options{}); kept != "Missing: <!-- ds:chain id=absent-a2b6f8jk -->" {
 		t.Errorf("unrenderable trailing directive is kept: %q", kept)
 	}
-	want := "- `app-stripe-key-m4w8k2qn` env `STRIPE_KEY` — [internal/pay/stripe.go:12](internal/pay/stripe.go#L12-L12)\n" +
-		"  - from `gh-stripe-key-r4t6x2mb` github `${{ secrets.STRIPE_KEY }}` — [.github/workflows/deploy.yml:9](.github/workflows/deploy.yml#L9-L9) · synced by `scripts/sync-secrets.sh`\n" +
-		"    - from `op-stripe-key-p9c2v7ld` 1password `op://Platform/stripe-prod/credential` — [.env.tpl:3](.env.tpl#L3-L3) · **truth**\n"
+	want := "- `app-stripe-key-m4w8k2qn` env `STRIPE_KEY` — [internal/pay/stripe.go:12](../internal/pay/stripe.go#L12-L12)\n" +
+		"  - from `gh-stripe-key-r4t6x2mb` github `${{ secrets.STRIPE_KEY }}` — [.github/workflows/deploy.yml:9](../.github/workflows/deploy.yml#L9-L9) · synced by `scripts/sync-secrets.sh`\n" +
+		"    - from `op-stripe-key-p9c2v7ld` 1password `op://Platform/stripe-prod/credential` — [.env.tpl:3](../.env.tpl#L3-L3) · **truth**\n"
 	if out != want || len(notes) != 0 {
 		t.Errorf("chain:\n%s\nwant:\n%s\nnotes %+v", out, want, notes)
 	}
@@ -396,6 +396,11 @@ func TestFragmentAndCloser(t *testing.T) {
 	}
 	if text, ok, _ := Fragment(save, block.Reference{ID: save.ID}, "ds", 40); !ok || !strings.Contains(text, "return nil") {
 		t.Errorf("nil args fragment = %q %v", text, ok)
+	}
+	// A repo-mode copy is written into its doc, so its link is relative to
+	// that doc too (bug 64).
+	if text, _, _ := Fragment(save, block.Reference{ID: save.ID, Pos: block.Position{File: "docs/d.md"}}, "ds", 40); !strings.Contains(text, "(../internal/store/write.go#L12-L15)") {
+		t.Errorf("fragment in docs/ = %q", text)
 	}
 	if Closer("ds", "abc123") != "<!-- /ds:block hash=abc123 -->" {
 		t.Error("closer")

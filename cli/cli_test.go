@@ -93,6 +93,33 @@ func (f fakeVCS) Show(commit, path string) ([]byte, error) {
 }
 func (f fakeVCS) Exists(commit string) bool { return commit == f.head }
 
+// Resolve and Tree make fakeVCS a TreeVCS: a commit exists when files holds
+// a path at it, and its tree is those paths.
+func (f fakeVCS) Resolve(commit string) (string, error) {
+	if len(f.Tree0(commit)) == 0 {
+		return "", errors.New(commit + " is not a commit")
+	}
+	return commit, nil
+}
+
+func (f fakeVCS) Tree(commit string) (map[string]int64, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.Tree0(commit), nil
+}
+
+// Tree0 lists the paths files holds at commit.
+func (f fakeVCS) Tree0(commit string) map[string]int64 {
+	out := map[string]int64{}
+	for k, b := range f.files {
+		if p, ok := strings.CutPrefix(k, commit+":"); ok {
+			out[p] = int64(len(b))
+		}
+	}
+	return out
+}
+
 func write(t *testing.T, dir, rel, content string) {
 	t.Helper()
 	p := filepath.Join(dir, filepath.FromSlash(rel))
@@ -315,7 +342,10 @@ func TestDefScanCheckAck(t *testing.T) {
 			if r := run(t, dir, v, "scan"); r.code != ExitError {
 				t.Errorf("scan with blocked ledger = %+v", r)
 			}
-			if r := run(t, dir, v, "refresh"); r.code != ExitError {
+			// With nothing to record, refresh writes nothing, so a blocked
+			// ledger is no obstacle (bug 77); the write error with a move
+			// to record is in TestRefreshWithNothingToRecordWritesNothing.
+			if r := run(t, dir, v, "refresh"); r.code != 0 || !strings.Contains(r.out, "ledger unchanged") {
 				t.Errorf("refresh with blocked ledger = %+v", r)
 			}
 		} else if r := run(t, dir, v, "ack", "sess-save-k7m2p4xq", "--all"); r.code != ExitError {

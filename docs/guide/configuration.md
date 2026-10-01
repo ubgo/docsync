@@ -377,7 +377,7 @@ rm docs/code.md
 | `unacked` | `"error"` or `"warn"` | `"error"` | The severity of `unacked`. With `"warn"`, a changed block no longer fails `check` unless `--strict` is passed. Useful while adopting docsync in a repository with many existing citations. |
 | `sentence` | `"wording"` or `"position"` | `"wording"` | What an ack holds a citation to. `wording`: rewriting an acked sentence makes it `unacked` again (`sentence rewritten since the ack`). `position`: the ack holds for that place in the page whatever it says. |
 | `fuzzy_threshold` | float in (0, 1] | `0.8` | How similar a block's new body must be to a vanished one for the match to call it `rewritten?` rather than `deleted`. |
-| `permalink` | string | empty | A link template for rendered citations, with `{sha}`, `{file}`, `{start}` and `{end}`. Empty renders repository-relative links (`internal/auth/session.go#L7-L7`). |
+| `permalink` | string | empty | A link template for rendered citations, with `{sha}`, `{file}` (the path from the repository root), `{rel}` (the path from the rendered page's directory), `{start}` and `{end}`. Empty renders `{rel}#L{start}-L{end}`, a link that resolves from where the page sits: from `docs/auth.md` it is `../internal/auth/session.go#L7-L7`. |
 | `snapshot_max_age` | day duration | empty | In a workspace, `check --frozen` prints a warning when `.ds/foreign.tsv` is older than this. Empty means never. It is only ever a warning. |
 
 ```toml

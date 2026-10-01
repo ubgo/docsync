@@ -243,27 +243,7 @@ func TestRenderAt(t *testing.T) {
 	if r := run(t, dir, v, "render", "docs/missing.md", "--at", "old"); r.code != ExitError {
 		t.Errorf("missing page at commit = %+v", r)
 	}
-	// Snapshot hook degrades: no ledger at the commit, corrupt ledger,
-	// unknown id, missing file, bad range.
-	snap := (&App{vcs: fakeVCS{files: map[string][]byte{}}}).snapshotAt("x")
-	if _, ok := snap("id", ""); ok {
-		t.Error("no ledger at commit")
-	}
-	snap = (&App{vcs: fakeVCS{files: map[string][]byte{"x:.ds/ledger.tsv": []byte("garbage\n")}}}).snapshotAt("x")
-	if _, ok := snap("id", ""); ok {
-		t.Error("corrupt ledger at commit")
-	}
-	files := map[string][]byte{"x:.ds/ledger.tsv": ledgerRaw, "x:internal/store/write.go": []byte("short\n")}
-	snap = (&App{vcs: fakeVCS{files: files}}).snapshotAt("x")
-	if _, ok := snap("nope", ""); ok {
-		t.Error("unknown id")
-	}
-	if _, ok := snap("sess-save-k7m2p4xq", ""); ok {
-		t.Error("range beyond the file at that commit")
-	}
-	if _, ok := snap("auth-port-h3v8n2wd", ""); ok {
-		t.Error("file missing at commit")
-	}
+	// The hook's degrade paths are in TestSnapshotHook.
 }
 
 // TestRunFileIsGatedAndQuoted pins ds:run file= as the code execution it

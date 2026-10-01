@@ -233,7 +233,7 @@ The last line counts findings by severity: two citations are up to date (`ok`), 
 $ ds render docs/billing.md
 # Billing
 
-An invoice is due thirty days after it is issued; see [`DueDate`](billing/invoice.go#L11-L13).
+An invoice is due thirty days after it is issued; see [`DueDate`](../billing/invoice.go#L11-L13).
 
 An unpaid invoice is suspended after 14 days.
 ```
@@ -332,7 +332,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: "1.26" }
       - run: go install github.com/ubgo/docsync/cli/cmd/ds@latest
-      - run: ds check --json > docsync.json || (cat docsync.json; exit 1)
+      - run: ds check --json > "$RUNNER_TEMP/docsync.json" || (cat "$RUNNER_TEMP/docsync.json"; exit 1)
 ```
 
 The GitHub Action, pull request comments and pre-commit hooks are in [CI](ci.md).

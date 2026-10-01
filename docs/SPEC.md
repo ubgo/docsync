@@ -260,6 +260,8 @@ Auth listens on [8081](ds:cfg?id=auth-port-h3v8n2wd) in every environment.
 Deploy [this version](ds:cfg?id=api-version-c8t2m6qp&format=code) to [prod](ds:cfg?id=app-host-d4k8w2mn&format=host).
 ```
 
+`ds:cfg` is link form only: a value belongs inside a sentence. `<!-- ds:cfg id=… -->` on a line of its own is a scan problem, so `check` fails on the page that `render` would publish without its value.
+
 | Key | Meaning |
 |---|---|
 | `id` | a def whose pick yields one line |
@@ -309,7 +311,7 @@ We chose Postgres over Redis because ops already runs Postgres. <!-- ds:claim ow
 | Key | Meaning |
 |---|---|
 | `owner` `reviewed` `expires` | lifecycle; `ds ack` sets `reviewed` to today |
-| `about` | comma list of ids; a change to any also flags the claim |
+| `about` | comma list of ids; a change to any also flags the claim, until an ack renews it against what those blocks are now |
 
 For sentences you want nagged. Design prose without a claim is left alone.
 
@@ -392,6 +394,8 @@ Remote defs hash the extracted value, report `pick failed` when the key disappea
 **Custom extractors** are executables `ds-pick-<format>` that receive a file and a pick expression and print one value or one range.
 
 **Normalization before hashing:** CRLF to LF, leading BOMs stripped, trailing whitespace removed. CRLF is read as LF before a `pick=` is evaluated too, including the raw target of a `file=` def, so a Windows checkout with `core.autocrlf` resolves every def and hash exactly as an LF checkout of the same commit does. Leading byte order marks are dropped when a file is read, before any parsing, not only before hashing: a mark left in front of line 1 would glue itself to the first key's symbol, hide a directive or front matter on line 1, and make a file saved by a Windows editor read as a different file. A source write puts the marks back where they were. Files above `scan.limits.max_file_kb`, binary files, and — in tiers that are not prose — files with a line longer than `scan.limits.max_line_chars` are not scanned; the line limit is a sign of minified code, and a paragraph written on one line is not that, so markdown, AsciiDoc, rst and plain text are exempt. `ds scan` counts every such file in its summary line (`N skipped`) and names on stderr each one that held citations or blocks at the last scan; such a file keeps its last recorded state, and `check` reports it as `unscanned` until it can be read again. A file that held nothing at the last scan is counted but not named, because every directory on a Mac has a binary `.DS_Store`, and a warning that fires on junk teaches people to ignore the one that matters. Dropping it instead lost its citations' first-seen hashes, so when it came back an unreviewed change counted as new and passed.
+
+**ds output is not source.** A file whose content is a report ds wrote (a `--json` report, which opens with the envelope's `json_format` key, or an ack log written by `ds audit --export`) is skipped as `ds-output`, whatever it is named: both quote sentences with their citations, so a report saved inside the repository was read as a page citing every block it mentioned, and `rename` rewrote the ids in an exported audit record.
 
 ### 11. Facts
 
@@ -619,13 +623,13 @@ The ack records id, block hash, doc, the sentence's hash and text, and the extra
 
 ### 19. Acks
 
-`ds ack <id>… [--doc path] [--group N] [--note text] [--all]`
+`ds ack <id>… [--doc path] [--line N] [--group N] [--note text] [--all]`
 
-- Default scope is the doc line named; `--all` widens on purpose. With no id, `--doc D --line N` renews the claim on that line and `--doc D` alone records that the whole page was reread, for `review_every`; a page review is an ack row with no id, line, or hash, and is refused for a page that declares no `review_every`.
+- Default scope is the doc line named; `--all` widens on purpose, to every citation of the id, in `--doc` when given. An id with neither `--doc` and `--line` nor `--all` is refused, so no sentence is approved without being named. With no id, `--doc D --line N` renews the claim on that line and `--doc D` alone records that the whole page was reread, for `review_every`; a page review is an ack row with no id, line, or hash, and is refused for a page that declares no `review_every`.
 - An ack is an append-only event: actor, actor kind (human or agent, with `delegated_by` for agents), time, id, environment where the def is per environment, block hash, sentence hash, note. `ds audit` exports the log.
 - Acks are keyed by hash, so reverting a commit restores an already-acked hash and the finding disappears with no action.
 - `ds triage` groups `unacked` findings by diff similarity so a mechanical change across many blocks is one decision with one note.
-- A commit message containing `ds:ack id=…` (with the configured prefix, like every directive) records the ack with the change, so the developer who changed the code confirms the doc in the same PR.
+- A commit message containing `ds:ack id=…` (with the configured prefix, like every directive) records the ack with the change, so the developer who changed the code confirms the doc in the same PR. `note=…` on it becomes the ack's note (otherwise `--note`, otherwise the commit subject); any other key is refused.
 - `ds review --ai` proposes prose edits as a patch and never records an ack. A person, or an agent explicitly delegated, does.
 
 ### 20. Change classification and stability
@@ -774,7 +778,7 @@ max_lines = 40
 fuzzy_threshold = 0.8
 unacked = "error"                            # error | warn
 sentence = "wording"                         # wording | position: what an ack holds a citation to (section 18)
-permalink = "https://github.com/org/repo/blob/{sha}/{file}#L{start}-L{end}"
+permalink = "https://github.com/org/repo/blob/{sha}/{file}#L{start}-L{end}"   # {file} is repo-relative, {rel} relative to the page; empty renders {rel}#L{start}-L{end}
 
 [policy]
 require_doc = ["pkg/api/**"]                 # exported symbols here must have a def with a home
@@ -970,7 +974,7 @@ Returns, under a token budget, what exists and what state it is in: pages with c
 | Flag | Effect |
 |---|---|
 | `--budget N` | return the highest-ranked items that fit in N tokens; report what was omitted and why |
-| `--since ack` \| `--since <sha>` | for cited blocks, return only the diff since the last ack or since the commit; unchanged items shrink to one line |
+| `--since ack` \| `--since <sha>` | for cited blocks, return only the diff since the last ack or since the commit; unchanged items shrink to one line (a value stays a value); any other value is refused |
 | `--mode full\|diff\|value\|auto` | `auto` sends values as values, changed blocks as diffs, small unchanged blocks whole, large unchanged blocks as a line |
 
 Ranking: `unacked` and `broken` first, then dependency distance from the target, then recency. Order is deterministic for identical inputs so prompt caches hit. Output includes `used_tokens` and an `omitted` list, so an agent can ask for more with a larger budget instead of guessing.
@@ -1154,7 +1158,7 @@ Expired rows are deleted every [thirty minutes](ds:block?id=sess-interval-q9x1z6
 ```
 
 ```
-$ ds ack sess-save-k7m2p4xq sess-interval-q9x1z6ch --note "order and interval changed, prose updated"
+$ ds ack sess-save-k7m2p4xq sess-interval-q9x1z6ch --doc docs/sessions.md --all --note "order and interval changed, prose updated"
 $ ds check
 docs/sessions.md
   9	none     moved              moved from config/auth.yaml:3-3

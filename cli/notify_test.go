@@ -168,7 +168,7 @@ func TestImpactStagedAckFromCommitAndMCPRegistration(t *testing.T) {
 	if r := run(t, dir, v, "ack"); r.code != ExitError || !strings.Contains(r.err, "at least one id") {
 		t.Errorf("ack without ids = %+v", r)
 	}
-	if ids := ackDirectives("ds", "x ds:ack id=a-b2c3 y nods:ack id=z ds:ack  id=c"); len(ids) != 2 || ids[0] != "a-b2c3" || ids[1] != "c" {
+	if ids, _ := ackDirectives("ds", "x ds:ack id=a-b2c3 y nods:ack id=z ds:ack  id=c"); len(ids) != 2 || ids[0].ID != "a-b2c3" || ids[1].ID != "c" {
 		t.Errorf("ackDirectives = %v", ids)
 	}
 	// init --agents registers the MCP server once.
@@ -282,7 +282,7 @@ func TestAckFromCommitUsesThePrefix(t *testing.T) {
 	if r := run(t, dir, v, "ack", "--from-commit", "other"); r.code != ExitError || !strings.Contains(r.err, "no mine:ack id=") {
 		t.Errorf("a commit with only the default prefix carries nothing here: %+v", r)
 	}
-	if ids := ackDirectives("mine", "mine:ack id=x, notmine:ack id=y, (mine:ack id=z)"); len(ids) != 2 || ids[0] != "x" || ids[1] != "z" {
+	if ids, _ := ackDirectives("mine", "mine:ack id=x, notmine:ack id=y, (mine:ack id=z)"); len(ids) != 2 || ids[0].ID != "x" || ids[1].ID != "z" {
 		t.Errorf("ackDirectives = %v", ids)
 	}
 	// Without a config there is no prefix to read, and the command says so.
