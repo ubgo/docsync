@@ -14,15 +14,9 @@ repos = ["github.com/org/api", "github.com/org/web.git"]
 index = "github.com/org/ds-index"
 default_branch = "main"
 stale_after_commits = 20
-[workspace.id]
-suffix_length = 8
-suffix_alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-[workspace.env]
-default = "prod"
-known = ["prod", "staging"]
 `
 	w, err := ParseWorkspace(strings.NewReader(src))
-	if err != nil || w.Name != "platform" || len(w.Repos) != 2 || w.Index != "github.com/org/ds-index" || w.DefaultBranch != "main" || w.StaleAfterCommits != 20 || w.ID.SuffixLength != 8 || w.ID.SuffixAlphabet != "abcdefghjkmnpqrstuvwxyz23456789" || w.Env.Default != "prod" {
+	if err != nil || w.Name != "platform" || len(w.Repos) != 2 || w.Index != "github.com/org/ds-index" || w.DefaultBranch != "main" || w.StaleAfterCommits != 20 {
 		t.Errorf("workspace = %+v %v", w, err)
 	}
 	if w, err := ParseWorkspace(strings.NewReader("[workspace]\nname = \"one\"\nrepos = [\".\"]\n")); err != nil || w.Index != "" {
@@ -32,17 +26,17 @@ known = ["prod", "staging"]
 		in   string
 		want error
 	}{
-		"no table":       {"x = 1\n", ErrUnknown},
-		"empty":          {"", ErrWorkspaceName},
-		"no name":        {"[workspace]\nrepos = [\"a\"]\n", ErrWorkspaceName},
-		"no repos":       {"[workspace]\nname = \"n\"\n", ErrWorkspaceRepos},
-		"unknown key":    {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\nnope = 1\n", ErrUnknown},
-		"bad type":       {"[workspace]\nname = 1\nrepos = [\"a\"]\n", ErrType},
-		"bad id":         {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\n[workspace.id]\nsuffix_length = \"x\"\n", ErrType},
-		"bad env":        {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\n[workspace.env]\nknown = 1\n", ErrType},
-		"env default":    {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\n[workspace.env]\ndefault = \"qa\"\nknown = [\"prod\"]\n", ErrValue},
-		"syntax":         {"[workspace\n", ErrSyntax},
-		"workspace type": {"workspace = 1\n", ErrType},
+		"no table":    {"x = 1\n", ErrUnknown},
+		"empty":       {"", ErrWorkspaceName},
+		"no name":     {"[workspace]\nrepos = [\"a\"]\n", ErrWorkspaceName},
+		"no repos":    {"[workspace]\nname = \"n\"\n", ErrWorkspaceRepos},
+		"unknown key": {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\nnope = 1\n", ErrUnknown},
+		"bad type":    {"[workspace]\nname = 1\nrepos = [\"a\"]\n", ErrType},
+		// Bug 120: parsed but read by nothing, so refused as not implemented.
+		"id not implemented":  {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\n[workspace.id]\nsuffix_length = 8\n", ErrNotImplemented},
+		"env not implemented": {"[workspace]\nname = \"n\"\nrepos = [\"a\"]\n[workspace.env]\nknown = [\"prod\"]\n", ErrNotImplemented},
+		"syntax":              {"[workspace\n", ErrSyntax},
+		"workspace type":      {"workspace = 1\n", ErrType},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

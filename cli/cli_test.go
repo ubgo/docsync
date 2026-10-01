@@ -190,7 +190,8 @@ func TestInitAndDoctor(t *testing.T) {
 	if r := run(t, dir, v, "init", "--force"); r.code != 0 {
 		t.Errorf("forced init = %+v", r)
 	}
-	// Without a docs dir, markdown anywhere is scanned; config defaults hook applies.
+	// Without a docs dir, markdown anywhere is scanned; config defaults hook
+	// applies. Both layouts are what SPEC §22 and the README document (bug 127).
 	bare := t.TempDir()
 	var out bytes.Buffer
 	code := Run([]string{"init"}, WithDir(bare), WithIO(nil, &out, &out), WithVCS(fakeVCS{err: ErrNoVCS}), WithConfigDefaults(func(c *config.Config) { c.Prefix = "dx" }))

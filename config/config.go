@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ubgo/docsync/block"
+	"github.com/ubgo/docsync/id"
 	"github.com/ubgo/docsync/internal/duration"
 )
 
@@ -47,7 +48,6 @@ const (
 	DefaultSuffixAlphabet = "23456789abcdefghjkmnpqrstuvwxyz"
 	DefaultMaxDefsPerRun  = 20
 	DefaultEscalateAfter  = "7d"
-	DefaultSourceTTL      = "24h"
 )
 
 // Closed-set values.
@@ -87,7 +87,37 @@ var (
 	ErrSpec     = errors.New("config: spec version not supported by this tool")
 	ErrNoScan   = errors.New("config: scan.code and scan.docs are both empty; nothing would be scanned")
 	ErrRequired = errors.New("config: required key missing")
+	// ErrNotImplemented refuses a key the specification describes but this
+	// build does not act on. Accepting it silently would let a team believe
+	// a channel or a source was configured when nothing reads it.
+	ErrNotImplemented = errors.New("config: key not implemented yet")
 )
+
+// Keys the specification names that this build refuses rather than ignores
+// (docs/SPEC.md §38 lists them as open work). Each is the dotted path a file
+// would set; a table key refuses the whole table.
+const (
+	KeyNotifyGitHubIssues = "notify.github_issues"
+	KeySources            = "sources"
+	KeyWorkspaceID        = "workspace.id"
+	KeyWorkspaceEnv       = "workspace.env"
+)
+
+// NotImplementedValues maps each refused key to what to do instead, which
+// the load error repeats. Removing an entry is how a key becomes supported:
+// the parser then needs a setter and something outside this package must
+// read it, which a test in this package enforces.
+var NotImplementedValues = map[string]string{
+	KeyNotifyGitHubIssues: "Slack ([notify] slack) is the only notify channel",
+	KeySources:            "ds:cfg query= has no source to run against; cite a def by id instead",
+	KeyWorkspaceID:        "each repository's [id] in .ds/config.toml is what minting uses",
+	KeyWorkspaceEnv:       "each repository's [env] in .ds/config.toml is what checking uses",
+}
+
+// notImplemented is the error for a refused key.
+func notImplemented(key string, line int) error {
+	return fmt.Errorf("%w: %s (line %d): %s; remove it", ErrNotImplemented, key, line, NotImplementedValues[key])
+}
 
 // Config mirrors the file. Field docs are the spec's meaning; see §23.
 type Config struct {
@@ -104,7 +134,6 @@ type Config struct {
 	Resolve   ResolveConfig
 	Run       RunConfig
 	URL       URLConfig
-	Sources   map[string]SourceConfig
 	Records   RecordsConfig
 	Notify    NotifyConfig
 	Agents    AgentsConfig
@@ -211,13 +240,6 @@ type URLConfig struct {
 	RatePerMinute int
 }
 
-// SourceConfig is one [sources.<name>].
-type SourceConfig struct {
-	DSN string
-	URL string
-	TTL string
-}
-
 // RecordsConfig is [records].
 type RecordsConfig struct {
 	Source string
@@ -290,7 +312,6 @@ var (
 type NotifyConfig struct {
 	Snapshot      SnapshotNotifyConfig
 	Slack         string
-	GitHubIssues  bool
 	EscalateAfter string
 }
 
@@ -320,7 +341,6 @@ func Default() Config {
 		Env:     EnvConfig{Default: DefaultEnv},
 		Run:     RunConfig{Timeout: DefaultRunTimeout, Shell: DefaultRunShell, Env: map[string]map[string]string{}},
 		URL:     URLConfig{TTL: DefaultURLTTL, RatePerMinute: DefaultURLRate},
-		Sources: map[string]SourceConfig{},
 		Records: RecordsConfig{Source: DefaultRecords},
 		Notify: NotifyConfig{
 			EscalateAfter: DefaultEscalateAfter,
@@ -407,13 +427,69 @@ func (c Config) Validate() error {
 	if c.Include.MaxLines < 1 || c.Scan.MaxFileKB < 1 || c.Scan.MaxLineChars < 1 || c.URL.RatePerMinute < 1 || c.Agents.MaxDefsPerRun < 0 {
 		return fmt.Errorf("%w: a limit is below its minimum", ErrValue)
 	}
-	if c.Env.Default != "" && len(c.Env.Known) > 0 && !in(c.Env.Default, c.Env.Known) {
-		return fmt.Errorf("%w: env.default %q is not in env.known", ErrValue, c.Env.Default)
+	if err := c.validateEnvs(); err != nil {
+		return err
+	}
+	if err := c.validateID(); err != nil {
+		return err
 	}
 	if err := c.Notify.Snapshot.validate(); err != nil {
 		return err
 	}
 	return c.validateDurations()
+}
+
+// validateEnvs holds every environment name the config itself uses to
+// env.known when it lists any: env.default and each [run.env.<name>]. A
+// misspelled `[run.env.stagng]` used to load and then never apply, so a
+// ds:run cited for staging ran with none of its variables set.
+func (c Config) validateEnvs() error {
+	if len(c.Env.Known) == 0 {
+		return nil
+	}
+	if c.Env.Default != "" && !in(c.Env.Default, c.Env.Known) {
+		return fmt.Errorf("%w: env.default %q is not in env.known", ErrValue, c.Env.Default)
+	}
+	for _, name := range sortedKeys(c.Run.Env) {
+		if !in(name, c.Env.Known) {
+			return fmt.Errorf("%w: run.env.%s names an environment that is not in env.known %v", ErrValue, name, c.Env.Known)
+		}
+	}
+	return nil
+}
+
+// KnownEnv reports whether name may be used as an environment: always when
+// env.known is empty (the list is opt-in), else only when it is listed. It
+// is the one test every place that takes an environment name applies -- a
+// --env flag, a directive's env= -- so they cannot disagree.
+func (c Config) KnownEnv(name string) bool {
+	return len(c.Env.Known) == 0 || in(name, c.Env.Known)
+}
+
+// validateID refuses an [id] table the minting rules would refuse, so a bad
+// suffix_length fails when the config loads, and in `ds doctor`, rather than
+// at the first command that builds a system. Empty values mean the
+// defaults, as for a config built in code.
+func (c Config) validateID() error {
+	if err := c.IDConfig().Validate(); err != nil {
+		return fmt.Errorf("%w: [id]: %v", ErrValue, err)
+	}
+	return nil
+}
+
+// IDConfig is the id shape this config mints and checks with: [id], with
+// an empty value standing for its default. Validate has already refused a
+// value the minting rules would refuse, so a loaded config's IDConfig is
+// always valid.
+func (c Config) IDConfig() id.Config {
+	ic := id.Config{Alphabet: c.ID.SuffixAlphabet, SuffixLength: c.ID.SuffixLength}
+	if ic.Alphabet == "" {
+		ic.Alphabet = DefaultSuffixAlphabet
+	}
+	if ic.SuffixLength == 0 {
+		ic.SuffixLength = DefaultSuffixLength
+	}
+	return ic
 }
 
 // validateDurations refuses a duration key that does not parse. Each
@@ -427,9 +503,6 @@ func (c Config) validateDurations() error {
 		{"url.ttl", c.URL.TTL},
 		{"notify.escalate_after", c.Notify.EscalateAfter},
 		{"check.snapshot_max_age", c.Check.SnapshotMaxAge},
-	}
-	for _, name := range sortedKeys(c.Sources) {
-		days = append(days, struct{ key, v string }{"sources." + name + ".ttl", c.Sources[name].TTL})
 	}
 	for _, d := range days {
 		if d.v == "" {
@@ -523,7 +596,7 @@ func (c *Config) apply(doc map[string]value) error {
 				"rate_per_minute": func(x value) (e error) { c.URL.RatePerMinute, e = x.integer(); return },
 			})
 		case "sources":
-			err = c.applySources(v)
+			err = notImplemented(KeySources, v.line)
 		case "records":
 			err = applyTable(v, map[string]func(value) error{
 				"source": func(x value) (e error) { c.Records.Source, e = x.str(); return },
@@ -533,7 +606,7 @@ func (c *Config) apply(doc map[string]value) error {
 		case "notify":
 			err = applyTable(v, map[string]func(value) error{
 				"slack":          func(x value) (e error) { c.Notify.Slack, e = x.str(); return },
-				"github_issues":  func(x value) (e error) { c.Notify.GitHubIssues, e = x.boolean(); return },
+				"github_issues":  func(x value) error { return notImplemented(KeyNotifyGitHubIssues, x.line) },
 				"escalate_after": func(x value) (e error) { c.Notify.EscalateAfter, e = x.str(); return },
 				"snapshot":       c.applySnapshotNotify,
 			})
@@ -633,27 +706,6 @@ func (c *Config) applyRun(v value) error {
 			return nil
 		},
 	})
-}
-
-func (c *Config) applySources(v value) error {
-	t, err := v.table()
-	if err != nil {
-		return err
-	}
-	for _, name := range sortedKeys(t) {
-		var sc SourceConfig
-		sc.TTL = DefaultSourceTTL
-		err := applyTable(t[name], map[string]func(value) error{
-			"dsn": func(x value) (e error) { sc.DSN, e = x.str(); return },
-			"url": func(x value) (e error) { sc.URL, e = x.str(); return },
-			"ttl": func(x value) (e error) { sc.TTL, e = x.str(); return },
-		})
-		if err != nil {
-			return wrapKey(name, err)
-		}
-		c.Sources[name] = sc
-	}
-	return nil
 }
 
 // applyTable dispatches each key of a table to its setter and rejects
@@ -1123,11 +1175,6 @@ func cloneMaps(c Config) Config {
 		owners[k] = append([]string(nil), v...)
 	}
 	c.Owners = owners
-	sources := make(map[string]SourceConfig, len(c.Sources))
-	for k, v := range c.Sources {
-		sources[k] = v
-	}
-	c.Sources = sources
 	env := make(map[string]map[string]string, len(c.Run.Env))
 	for k, v := range c.Run.Env {
 		inner := make(map[string]string, len(v))

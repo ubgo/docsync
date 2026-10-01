@@ -160,7 +160,7 @@ ds: config: invalid value: check.unacked "warning"
 cp ../good.toml .ds/config.toml
 -->
 
-Other checks made at load time: `spec` must be `"1.0"`; `prefix` must be a lowercase identifier; at least one of `scan.code` and `scan.docs` must be non-empty; `check.fuzzy_threshold` must be above 0 and at most 1; `include.max_lines`, `scan.limits.*` and `url.rate_per_minute` must be at least 1; `agents.max_defs_per_run` must not be negative; and `env.default`, when set, must be listed in `env.known` if that list is non-empty.
+Other checks made at load time: `spec` must be `"1.0"`; `prefix` must be a lowercase identifier; at least one of `scan.code` and `scan.docs` must be non-empty; `check.fuzzy_threshold` must be above 0 and at most 1; `include.max_lines`, `scan.limits.*` and `url.rate_per_minute` must be at least 1; `agents.max_defs_per_run` must not be negative; `[id]` must be a suffix length from 6 to 32 and an alphabet of at least 16 distinct lowercase letters and digits; and when `env.known` is non-empty, `env.default` and every `[run.env.<name>]` must be listed in it.
 
 <!-- doctest
 perl -pi -e 's/spec = "1.0"/spec = "2.0"/' .ds/config.toml
@@ -202,7 +202,7 @@ Duration keys use one of two forms, and a value that does not parse is an error 
 | Keys | Form | Examples |
 |---|---|---|
 | `run.timeout` | A positive Go duration. | `300ms`, `30s`, `2m` |
-| `url.ttl`, `check.snapshot_max_age`, `notify.escalate_after`, `notify.snapshot.digest_after`, `sources.<name>.ttl` | A whole number followed by `m` (minutes), `h` (hours), `d` (days) or `w` (weeks). Months and years are not accepted, because their length varies; write `90d`. | `90m`, `24h`, `7d`, `2w` |
+| `url.ttl`, `check.snapshot_max_age`, `notify.escalate_after`, `notify.snapshot.digest_after` | A whole number followed by `m` (minutes), `h` (hours), `d` (days) or `w` (weeks). Months and years are not accepted, because their length varies; write `90d`. | `90m`, `24h`, `7d`, `2w` |
 
 ```toml file=.ds/config.toml append=true
 
@@ -550,13 +550,38 @@ Chains, `from=` and `truth=true` are covered in [Secrets and runs](secrets-and-r
 | Key | Type | Default | What it does |
 |---|---|---|---|
 | `default` | string | `""` | The environment used for citations that have no `env=`, when `--env` is not given to `check` or `render`. |
-| `known` | array of strings | empty | The environments that exist. When it is set, `default` must be one of them. |
+| `known` | array of strings | empty | The environments that exist. When it is set, `default` and every `[run.env.<name>]` must be one of them or the config does not load; `--env` on `check`, `render` and `def` must be one of them; and an `env=` on a def or citation that is not is reported `unknown`. |
 
 ```toml
 [env]
 default = "prod"
 known = ["prod", "staging", "dev"]
 ```
+
+A citation with a misspelled environment is reported, and a misspelled `--env` stops the command:
+
+<!-- doctest
+perl -pi -e 's/^default = ""$/default = "prod"\nknown = ["prod", "staging"]/' .ds/config.toml
+-->
+
+```markdown file=docs/env.md
+The refresh window is [described here](ds:block?id=refresh-ttl-4d8x2kqa&env=stagng).
+```
+
+<!-- doctest
+ds scan
+-->
+
+```console
+$ ds check --env stagng
+ds: docsync: environment not in env.known: "stagng"; env.known is prod, staging
+```
+
+<!-- doctest
+rm docs/env.md
+cp ../good.toml .ds/config.toml
+ds scan
+-->
 
 ## resolve
 
@@ -689,7 +714,6 @@ Without it, `ds review --ai` stops with `--ai needs [review] command in .ds/conf
 |---|---|---|---|
 | `slack` | string | empty | A Slack incoming webhook URL. `$VAR` is expanded from the environment, so the URL can stay out of the file. Empty prints the digests only. |
 | `escalate_after` | day duration | `"7d"` | A finding still open this long after it was first sent is sent again as an escalation. |
-| `github_issues` | boolean | `false` | Accepted; see [below](#keys-that-are-accepted-but-do-nothing-yet). |
 
 ```toml
 [notify]
@@ -757,7 +781,7 @@ max_defs_per_run = 20
 | `suffix_alphabet` | string | `"23456789abcdefghjkmnpqrstuvwxyz"` | The characters a new id suffix is made of: unique lowercase ASCII letters and digits, at least 16 of them. |
 | `suffix_length` | integer | `8` | The length of a new suffix, from 6 to 32. |
 
-These apply when `ds def` mints an id. A value outside the allowed range is reported then, not when the config loads:
+These apply when `ds def` mints an id, and are checked when the config loads, so a value outside the allowed range stops every command and fails `ds doctor`:
 
 ```toml file=.ds/config.toml append=true
 
@@ -767,17 +791,14 @@ suffix_length = 4
 
 ```console
 $ ds doctor
-config          ok    spec 1.0, prefix ds
-…
-$ ds def internal/auth/refresh.go#Refresh --dry-run
-ds: id: suffix length out of range: 4 not in [6,32]
+config	FAIL	config: invalid value: [id]: id: suffix length out of range: 4 not in [6,32]
 ```
 
 <!-- doctest
 cp ../good.toml .ds/config.toml
 -->
 
-Changing them does not touch existing ids. The workspace file has its own `[workspace.id]` section with the same two keys; see [Cross-repo](cross-repo.md).
+Changing them does not touch existing ids. Each repository mints with its own `[id]`; a `[workspace.id]` table in the workspace file is refused as not implemented yet.
 
 ## ledger
 
@@ -821,6 +842,31 @@ picks = ["jq"]
 
 Resolver plugins (`ds-resolve-<provider>`) are found by provider name and need no entry here, and record plugins are named by `[records] source`.
 
+## Keys that are refused because they are not built yet
+
+The [specification](../SPEC.md#23-configuration) describes these, but the current build does not act on them, so a config that sets them does not load, naming the key and what to use instead. Accepting them would let a team believe a channel or a source was configured when nothing reads it.
+
+| Key | Use instead |
+|---|---|
+| `notify.github_issues` | Slack (`[notify] slack`) is the only channel. |
+| `[sources.<name>]` | `ds:cfg query=` is not built; cite a def by `id=`. |
+| `[workspace.id]`, `[workspace.env]` in `ds-workspace.toml` | Each repository's own `[id]` and `[env]`. |
+
+```toml file=.ds/config.toml append=true
+
+[notify]
+github_issues = true
+```
+
+```console
+$ ds check
+ds: notify: github_issues: config: key not implemented yet: notify.github_issues (line 22): Slack ([notify] slack) is the only notify channel; remove it
+```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
+
 ## Keys that are accepted but do nothing yet
 
 The parser accepts these keys, so a config written from the [specification's example](../SPEC.md#23-configuration) loads, but the current build does not act on them:
@@ -828,11 +874,8 @@ The parser accepts these keys, so a config written from the [specification's exa
 | Key | Status |
 |---|---|
 | `resolve.enabled` | Resolution is controlled only by `ds check --resolve`. |
-| `notify.github_issues` | Slack is the only channel. |
 | `agents.mcp` | `ds init --agents` registers `ds mcp` either way. |
 | `agents.session_hook` | `ds init --agents` always installs `ds map --budget 2000`. |
-| `env.known` | Only checked against `env.default`. |
-| `[sources.<name>]` with `dsn`, `url`, `ttl` | Parsed, and `ttl` must be a valid day duration (default `"24h"`), but no command reads them. |
 | `[performance]` | Targets for the project's own performance suite; any keys are accepted and ignored. |
 
 ## A complete example
@@ -932,15 +975,18 @@ picks = []                          # ds-pick-<scheme> executables
 
 ```console
 $ ds doctor
-config             ok    spec 1.0, prefix ds
-glob internal/**   ok    2 files
-glob cmd/**        WARN  matches no files
-glob go.mod        ok    1 files
-glob docs/**/*.md  ok    1 files
-glob README.md     WARN  matches no files
+config               ok    spec 1.0, prefix ds
+glob internal/**     ok    2 files
+glob cmd/**          WARN  matches no files
+glob go.mod          ok    1 files
+glob docs/**/*.md    ok    1 files
+glob README.md       WARN  matches no files
 …
+workspace            ok    none; this repository is its own workspace
+resolve github       ok    ds-resolve-github is on PATH
+resolve onepassword  ok    ds-resolve-onepassword is on PATH
 $ ds check
 2 none
 ```
 
-The workspace file, `ds-workspace.toml`, is a separate file in the index repository with its own keys (`name`, `repos`, `index`, `default_branch`, `stale_after_commits`, and `[workspace.id]` and `[workspace.env]`); it is described in [Cross-repo](cross-repo.md).
+The workspace file, `ds-workspace.toml`, is a separate file in the index repository with its own keys (`name`, `repos`, `index`, `default_branch` and `stale_after_commits`; `[workspace.id]` and `[workspace.env]` are refused as not implemented yet); it is described in [Cross-repo](cross-repo.md).

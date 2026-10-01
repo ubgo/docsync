@@ -435,12 +435,12 @@ $ cd ../repo
 $ ../prog/bin/pds check
 docs/sessions.md
   3	error    unacked            savesession-73km8a3x changed (moved, body) since this sentence was first cited
-      still true: ds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
+      still true: pds ack savesession-73km8a3x --doc docs/sessions.md --line 3 --note '…'
       otherwise:  edit the sentence at docs/sessions.md:3, then ack
 1 error
 ```
 
-The name changes the command's usage line; `version` and the remedies it prints still say `ds`. Other options include `cli.WithRegistry`, `cli.WithVerb` (verb names), `cli.WithPluginLookup` (where `ds-*` plugins are found), `cli.WithNotifyState` (where `ds notify` keeps its memory), `cli.WithVCS`, and `cli.WithHTTPClient`.
+The name is used everywhere the binary names itself: the usage line, `pds version`, and every command a remedy, error or `doctor` row tells the reader to run. Directives keep their prefix (`ds:block`), which is configuration, not the binary's name. Other options include `cli.WithRegistry`, `cli.WithVerb` (verb names), `cli.WithPluginLookup` (where `ds-*` plugins are found), `cli.WithNotifyState` (where `ds notify` keeps its memory), `cli.WithVCS`, and `cli.WithHTTPClient`.
 
 ## Plugins in other languages
 

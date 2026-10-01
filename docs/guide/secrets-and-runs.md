@@ -863,7 +863,7 @@ docs/hosts.md
 1 error, 1 none
 ```
 
-And a citation of an environment with no def is `broken`:
+And a citation of an environment with no def is `broken`. Here `dev` is also missing from `env.known`, so the citation is reported `unknown` as well; an environment `env.known` lists but that has no def is `broken` alone:
 
 ```markdown file=docs/hosts.md append=true
 
@@ -875,9 +875,11 @@ $ ds scan
 …
 $ ds check
 docs/hosts.md
+  7	warning  unknown            env=dev is not in env.known
+      fix: env=dev at docs/hosts.md:7 is not in [env] known (prod, staging); fix the name or add it to the list
   7	error    broken             api-host-d4k8w2mn is not defined for env=dev
       fix: api-host-d4k8w2mn has no definition for env=dev; add one or cite a defined environment
-1 error, 2 none
+1 error, 1 warning, 2 none
 ```
 
 Secrets work the same way: one `truth=true` def per environment for the same id.

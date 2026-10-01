@@ -90,7 +90,26 @@ var (
 	// rule, which is the upgrade path: unchanged blocks can report drift until
 	// the next scan restamps both files, so hosts warn rather than refuse.
 	ErrOtherRule = errors.New("docsync: recorded under an older extraction rule; unchanged blocks may report drift until the next scan")
+	// ErrUnknownEnv refuses an environment name that [env] known does not
+	// list, when it lists any. A misspelled --env used to run the whole
+	// command against an environment nothing defines, and every citation
+	// then reported a missing definition instead of the one typo.
+	ErrUnknownEnv = errors.New("docsync: environment not in env.known")
 )
+
+// envFor is the environment a command runs for: the one asked for, held to
+// env.known, or env.default when none was asked for. Check, Render and
+// Define all go through it, so a name is accepted or refused the same way
+// whichever command it is passed to.
+func (s *System) envFor(asked string) (string, error) {
+	if asked == "" {
+		return s.cfg.Env.Default, nil
+	}
+	if !s.cfg.KnownEnv(asked) {
+		return "", fmt.Errorf("%w: %q; env.known is %s", ErrUnknownEnv, asked, strings.Join(s.cfg.Env.Known, ", "))
+	}
+	return asked, nil
+}
 
 // Envelope is the header every JSON result carries (§26.2).
 type Envelope struct {
@@ -103,6 +122,8 @@ type Envelope struct {
 // System is a configured instance. Build one with New; it is safe to share
 // between goroutines because every method is read-only over its fields.
 type System struct {
+	// command is the binary name remedies are written with (WithCommandName).
+	command      string
 	fsys         fs.FS
 	cfg          config.Config
 	repo         string
@@ -365,6 +386,13 @@ func WithRecords(f func(args map[string]string) ([]map[string]string, error)) Op
 	return func(s *System) error { s.records = f; return nil }
 }
 
+// WithCommandName names the binary that findings tell the reader to run,
+// for a custom build (cli.WithName): its remedies say "pds ack", not a
+// "ds ack" its users do not have. Empty keeps check.DefaultCommand.
+func WithCommandName(name string) Option {
+	return func(s *System) error { s.command = name; return nil }
+}
+
 // WithClock replaces time.Now, for reproducible output.
 func WithClock(f func() time.Time) Option {
 	return func(s *System) error { s.now = f; return nil }
@@ -387,10 +415,8 @@ func New(opts ...Option) (*System, error) {
 	if err := s.cfg.Validate(); err != nil {
 		return nil, err
 	}
-	s.idcfg = id.Config{Alphabet: s.cfg.ID.SuffixAlphabet, SuffixLength: s.cfg.ID.SuffixLength}
-	if err := s.idcfg.Validate(); err != nil {
-		return nil, err
-	}
+	// Validate refused an [id] the minting rules would refuse (bug 121).
+	s.idcfg = s.cfg.IDConfig()
 	return s, nil
 }
 
@@ -624,9 +650,9 @@ func (s *System) undocumented(res scan.Result) ([]check.Undocumented, error) {
 }
 
 func (s *System) checkScan(res scan.Result, opts CheckOptions) (Report, error) {
-	env := opts.Env
-	if env == "" {
-		env = s.cfg.Env.Default
+	env, err := s.envFor(opts.Env)
+	if err != nil {
+		return Report{}, err
 	}
 	urlCheck := s.urlCheck
 	resolver := s.resolver
@@ -655,6 +681,7 @@ func (s *System) checkScan(res scan.Result, opts CheckOptions) (Report, error) {
 			TestResults: s.tests, CommitExists: s.commitExists, URLCheck: urlCheck, Resolve: resolver, StoredHashes: s.storedHashes,
 			HasRecords: s.records != nil, RunEnabled: opts.Run && s.cfg.Run.Enabled, ExtraVerbs: s.verbs,
 			Handlers: handlers, KnownKeys: knownKeys, RequiredKeys: requiredKeys, Classify: s.classifier,
+			KnownEnvs: s.cfg.Env.Known, Command: s.command,
 		},
 	})
 	s.observeFindings(rep.Findings)
@@ -755,9 +782,9 @@ func (s *System) Render(ctx context.Context, doc string, opts RenderOptions) ([]
 	if err != nil {
 		return nil, nil, err
 	}
-	env := opts.Env
-	if env == "" {
-		env = s.cfg.Env.Default
+	env, err := s.envFor(opts.Env)
+	if err != nil {
+		return nil, nil, err
 	}
 	in := render.Input{Doc: doc, Src: src, Defs: append(append([]block.Block{}, res.Defs...), s.merged...)}
 	ropts := render.Options{

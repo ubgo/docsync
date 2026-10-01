@@ -390,12 +390,20 @@ func (r *renderer) inlineVerb(n int, d directive.Directive, text, orig string) s
 		return "[" + text + "](" + r.link(b, d.Args[keyAt]) + ")"
 	case extract.VerbCfg:
 		if id == "" {
-			r.note(n, "cfg query= has no configured source; link text kept")
+			r.note(n, "cfg query= is not built yet; link text kept")
 			return text
 		}
 		b, ok := r.def(id, d.Args[block.KeyEnv])
 		if !ok {
 			r.note(n, "%s is not defined; link text kept", id)
+			return text
+		}
+		// A secret whose content is a value, not an address, is blanked
+		// before it gets here, and Value then reported it as "more than one
+		// line", which sent the reader to ds:block, a verb that refuses
+		// secrets too (bug 126). A secret that is an address renders as one.
+		if b.IsSecret() && b.Content == "" {
+			r.note(n, "%s is a secret; its value is not rendered, link text kept", id)
 			return text
 		}
 		v, ok := Value(b)

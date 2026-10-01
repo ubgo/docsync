@@ -1,6 +1,10 @@
 package check
 
-import "github.com/ubgo/docsync/scan"
+import (
+	"regexp"
+
+	"github.com/ubgo/docsync/scan"
+)
 
 // Rule: NO BARE STRINGS for any value with a closed set of choices. Every
 // state, severity, and remedy text lives here; findings, JSON, and tests all
@@ -71,6 +75,26 @@ const (
 	sinceAcked      = "since this sentence was acked"
 	sinceFirstCited = "since this sentence was first cited"
 )
+
+// DefaultCommand is the binary name the remedy texts are written with.
+const DefaultCommand = "ds"
+
+// commandRE finds DefaultCommand used as a command in a message: at the
+// start or after a space, backtick or parenthesis, and followed by a space
+// and a lowercase subcommand or flag. A directive (`ds:def`) and a word that
+// merely ends in "ds" are not matched.
+var commandRE = regexp.MustCompile("(^|[\\s`(])" + DefaultCommand + " ([a-z-])")
+
+// CommandText rewrites every command in text from DefaultCommand to name, so
+// a binary built under another name (cli.WithName) prints remedies its users
+// can run. An empty name, or DefaultCommand, returns text unchanged. It is
+// exported because the CLI's own messages follow the same rule.
+func CommandText(text, name string) string {
+	if name == "" || name == DefaultCommand {
+		return text
+	}
+	return commandRE.ReplaceAllString(text, "${1}"+name+" ${2}")
+}
 
 // Severity decides the exit code.
 type Severity string
@@ -177,6 +201,7 @@ const (
 	remedyURL            = "external link checks need --resolve with network access"
 	remedyRun            = "pass --run to execute %s:run directives where they are enabled"
 	remedyTable          = "register a record source in [records] to render %s:table"
+	remedyQuery          = "%s:cfg query= is not built yet (SPEC section 38); cite a def with id= instead"
 	remedyOrphan         = "the page %s covers %s, which is not defined; remove it from covers or restore the def"
 	remedyUncovered      = "%s is defined but nothing cites or covers it; cite it from a page or remove the def"
 	remedyUnknownVerb    = "%s is not a registered verb; register a handler or fix the directive at %s:%d"
@@ -188,6 +213,7 @@ const (
 	remedyDuplicate     = "%s:%d: %v; run `ds def --fix` to re-mint every copy after the first (it prints old -> new), or delete the directive from the copy sentences do not mean"
 	remedyGenerated     = "move the %s:def out of the generated file %s or exclude it from scan.generated"
 	remedyEnvMissing    = "%s has no definition for env=%s; add one or cite a defined environment"
+	remedyUnknownEnv    = "env=%s at %s:%d is not in [env] known (%s); fix the name or add it to the list"
 	remedyClaimNoDate   = "the claim at %s:%d needs reviewed=YYYY-MM-DD and expires=Nd to age out"
 	remedyURLDead       = "the link %s returned %d; update or remove it at %s:%d"
 	remedyURLMoved      = "the link %s now redirects to %s; update it at %s:%d"

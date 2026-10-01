@@ -109,6 +109,7 @@ gitignore       ok    machine-local state excluded
 gitattributes   ok    acks.tsv merges without conflicts
 blocks          ok    0 bodies, 0 live
 notify          ok    no state yet (first notify will create .ds/notified.json)
+workspace       ok    none; this repository is its own workspace
 ```
 
 ## 3. Define your first blocks

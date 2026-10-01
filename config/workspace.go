@@ -23,8 +23,6 @@ type Workspace struct {
 	// StaleAfterCommits is how far a published ledger may fall behind its
 	// repo's default branch before consumers warn (§21); 0 disables.
 	StaleAfterCommits int
-	ID                IDConfig
-	Env               EnvConfig
 }
 
 // Workspace errors.
@@ -33,9 +31,11 @@ var (
 	ErrWorkspaceRepos = fmt.Errorf("%w: workspace.repos must list at least one repository", ErrRequired)
 )
 
-// ParseWorkspace reads a workspace file. Missing id and env sections take
-// the same defaults as a repo config so a workspace of one behaves like no
-// workspace at all.
+// ParseWorkspace reads a workspace file. The [workspace.id] and
+// [workspace.env] tables the specification describes are refused as not
+// implemented (NotImplementedValues): each repository mints and selects with
+// its own [id] and [env], and a workspace-wide value that nothing applied
+// would let a team believe its repositories agreed when they need not.
 func ParseWorkspace(r io.Reader) (Workspace, error) {
 	src, err := io.ReadAll(r)
 	if err != nil {
@@ -45,7 +45,7 @@ func ParseWorkspace(r io.Reader) (Workspace, error) {
 	if err != nil {
 		return Workspace{}, err
 	}
-	w := Workspace{ID: IDConfig{SuffixAlphabet: DefaultSuffixAlphabet, SuffixLength: DefaultSuffixLength}}
+	w := Workspace{}
 	for _, k := range sortedKeys(doc) {
 		if k != "workspace" {
 			return Workspace{}, fmt.Errorf("%w: %s (line %d)", ErrUnknown, k, doc[k].line)
@@ -61,18 +61,8 @@ func ParseWorkspace(r io.Reader) (Workspace, error) {
 		"index":               func(x value) (e error) { w.Index, e = x.str(); return },
 		"default_branch":      func(x value) (e error) { w.DefaultBranch, e = x.str(); return },
 		"stale_after_commits": func(x value) (e error) { w.StaleAfterCommits, e = x.integer(); return },
-		"id": func(x value) error {
-			return applyTable(x, map[string]func(value) error{
-				"suffix_alphabet": func(y value) (e error) { w.ID.SuffixAlphabet, e = y.str(); return },
-				"suffix_length":   func(y value) (e error) { w.ID.SuffixLength, e = y.integer(); return },
-			})
-		},
-		"env": func(x value) error {
-			return applyTable(x, map[string]func(value) error{
-				"default": func(y value) (e error) { w.Env.Default, e = y.str(); return },
-				"known":   func(y value) (e error) { w.Env.Known, e = y.strs(); return },
-			})
-		},
+		"id":                  func(x value) error { return notImplemented(KeyWorkspaceID, x.line) },
+		"env":                 func(x value) error { return notImplemented(KeyWorkspaceEnv, x.line) },
 	})
 	if err != nil {
 		return Workspace{}, wrapKey("workspace", err)
@@ -109,9 +99,6 @@ func (w Workspace) Validate() error {
 	}
 	if w.StaleAfterCommits < 0 {
 		return fmt.Errorf("%w: workspace.stale_after_commits %d is negative", ErrValue, w.StaleAfterCommits)
-	}
-	if w.Env.Default != "" && len(w.Env.Known) > 0 && !in(w.Env.Default, w.Env.Known) {
-		return fmt.Errorf("%w: workspace.env.default %q is not in env.known", ErrValue, w.Env.Default)
 	}
 	return nil
 }

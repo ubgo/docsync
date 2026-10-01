@@ -149,3 +149,7 @@ prune-by-hash	test	a targeted `--hash … --force` for a value that should never
 ds-dir-not-scanned	test	The `.ds/` directory is never scanned
 agent-bounded	test	`ack` is refused unless it names the human who delegated the run
 agent-bounded	test	`run`, `resolve`, `undo`, `publish` and `adopt` are not exposed to agents at all
+config-unbuilt-refused	test	the `[sources.*]` table it would read is refused when the config loads
+config-unbuilt-refused	test	Keys this specification describes but the build does not act on yet are refused when the config loads
+config-unbuilt-refused	test	Configuration that would enable any of it is refused when the config loads rather than accepted and ignored
+env-known-closed	test	an `--env` passed to `check`, `render` or `def` that it does not list is refused, naming the list

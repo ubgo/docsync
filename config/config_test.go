@@ -64,12 +64,6 @@ DATABASE_URL = '$PROD "literal" url'
 ttl = "7d"
 rate_per_minute = 30
 
-[sources.sql]
-dsn = "$DOCS_READONLY_DSN"
-ttl = "24h"
-[sources.metrics]
-url = "https://m.example/q"
-
 [records]
 source = "frontmatter"                       # frontmatter | sqlite | http
 path = "records/"
@@ -77,7 +71,6 @@ table = "tasks"
 
 [notify]
 slack = "$DS_SLACK_WEBHOOK"
-github_issues = true
 escalate_after = "7d"
 
 [agents]
@@ -131,10 +124,7 @@ func TestParseFull(t *testing.T) {
 	if c.URL.TTL != "7d" || c.URL.RatePerMinute != 30 {
 		t.Errorf("url = %+v", c.URL)
 	}
-	if c.Sources["sql"].DSN != "$DOCS_READONLY_DSN" || c.Sources["sql"].TTL != "24h" || c.Sources["metrics"].URL != "https://m.example/q" || c.Sources["metrics"].TTL != DefaultSourceTTL {
-		t.Errorf("sources = %+v", c.Sources)
-	}
-	if c.Records.Source != RecordsFrontmatter || c.Records.Path != "records/" || c.Records.Table != "tasks" || c.Notify.Slack == "" || !c.Notify.GitHubIssues || c.Notify.EscalateAfter != "7d" {
+	if c.Records.Source != RecordsFrontmatter || c.Records.Path != "records/" || c.Records.Table != "tasks" || c.Notify.Slack == "" || c.Notify.EscalateAfter != "7d" {
 		t.Errorf("records/notify = %+v %+v", c.Records, c.Notify)
 	}
 	if c.Agents.MaxDefsPerRun != 20 || !c.Agents.MCP || c.Agents.SessionHook != "ds map --budget 2000" || c.ID.SuffixLength != 8 || c.ID.SuffixAlphabet != DefaultSuffixAlphabet {
@@ -187,40 +177,48 @@ func TestParseErrors(t *testing.T) {
 		"run env not table":   {"[scan]\ndocs=[\"d\"]\n[run]\nenv = 1\n", ErrType},
 		"run env inner":       {"[scan]\ndocs=[\"d\"]\n[run.env]\nstaging = 1\n", ErrType},
 		"run env value":       {"[scan]\ndocs=[\"d\"]\n[run.env.staging]\nX = 1\n", ErrType},
-		"sources not table":   {"sources = 1\n[scan]\ndocs=[\"d\"]\n", ErrType},
-		"sources unknown key": {"[scan]\ndocs=[\"d\"]\n[sources.sql]\nnope = 1\n", ErrUnknown},
-		"performance shape":   {"performance = 1\n[scan]\ndocs=[\"d\"]\n", ErrType},
-		"plugins shape":       {"[scan]\ndocs=[\"d\"]\n[plugins]\nverbs = 1\n", ErrType},
-		"review shape":        {"[scan]\ndocs=[\"d\"]\n[review]\ncommand = 1\n", ErrType},
-		"ledger shape":        {"[scan]\ndocs=[\"d\"]\n[ledger]\nshard = \"yes\"\n", ErrType},
-		"spec version":        {"spec = \"9.0\"\n[scan]\ndocs=[\"d\"]\n", ErrSpec},
-		"bad prefix":          {"prefix = \"Bad Prefix\"\n[scan]\ndocs=[\"d\"]\n", ErrValue},
-		"no scan":             {"prefix = \"ds\"\n", ErrNoScan},
-		"bad include mode":    {"[scan]\ndocs=[\"d\"]\n[include]\nmode = \"copy\"\n", ErrValue},
-		"bad unacked":         {"[scan]\ndocs=[\"d\"]\n[check]\nunacked = \"ignore\"\n", ErrValue},
-		"bad threshold":       {"[scan]\ndocs=[\"d\"]\n[check]\nfuzzy_threshold = 1.5\n", ErrValue},
-		"bad records":         {"[scan]\ndocs=[\"d\"]\n[records]\nsource = \"Not Valid\"\n", ErrValue},
-		"bad limit":           {"[scan]\ndocs=[\"d\"]\n[include]\nmax_lines = 0\n", ErrValue},
-		"env default unknown": {"[scan]\ndocs=[\"d\"]\n[env]\ndefault = \"qa\"\nknown = [\"prod\"]\n", ErrValue},
-		"syntax no equals":    {"[scan]\ndocs\n", ErrSyntax},
-		"syntax array table":  {"[[scan]]\n", ErrSyntax},
-		"syntax bad header":   {"[scan\n", ErrSyntax},
-		"syntax empty key":    {"[scan]\n.docs = [\"d\"]\n", ErrSyntax},
-		"syntax dup key":      {"[scan]\ndocs=[\"d\"]\ndocs=[\"e\"]\n", ErrSyntax},
-		"syntax value table":  {"[scan]\ndocs=[\"d\"]\n[scan.docs]\nx=1\n", ErrSyntax},
-		"syntax missing val":  {"[scan]\ndocs =\n", ErrSyntax},
-		"syntax bad string":   {"[scan]\ndocs = [\"unterminated]\n", ErrSyntax},
-		"syntax trailing":     {"prefix = \"ds\" extra\n", ErrSyntax},
-		"syntax bad literal":  {"prefix = 'open\n", ErrSyntax},
-		"syntax literal tail": {"prefix = 'a' b\n", ErrSyntax},
-		"syntax bad escape":   {"prefix = \"\\q\"\n", ErrSyntax},
-		"syntax dangling esc": {"prefix = \"abc\\", ErrSyntax},
-		"syntax bad value":    {"prefix = nope\n", ErrSyntax},
-		"syntax multi array":  {"[scan]\ndocs = [\"a\",\n", ErrSyntax},
-		"syntax nested array": {"[scan]\ndocs = [[\"a\"]]\n", ErrSyntax},
-		"syntax quoted key":   {"\"unterminated = 1\n", ErrSyntax},
-		"syntax header path":  {"[scan.]\n", ErrSyntax},
-		"syntax dotted value": {"prefix = \"ds\"\nprefix.x = 1\n", ErrSyntax},
+		// Bug 120: keys the spec names but nothing reads are refused, not
+		// accepted and ignored.
+		"sources not implemented":       {"[scan]\ndocs=[\"d\"]\n[sources.sql]\ndsn = \"x\"\n", ErrNotImplemented},
+		"github_issues not implemented": {"[scan]\ndocs=[\"d\"]\n[notify]\ngithub_issues = true\n", ErrNotImplemented},
+		// Bug 120: env.known holds every environment the config names.
+		"run.env not in env.known": {"[scan]\ndocs=[\"d\"]\n[env]\nknown = [\"prod\"]\n[run.env.stagng]\nX = \"1\"\n", ErrValue},
+		// Bug 121: [id] is validated when the config loads, not at mint.
+		"suffix_length too short":   {"[scan]\ndocs=[\"d\"]\n[id]\nsuffix_length = 4\n", ErrValue},
+		"suffix_length too long":    {"[scan]\ndocs=[\"d\"]\n[id]\nsuffix_length = 33\n", ErrValue},
+		"suffix_alphabet too short": {"[scan]\ndocs=[\"d\"]\n[id]\nsuffix_alphabet = \"abc\"\n", ErrValue},
+		"performance shape":         {"performance = 1\n[scan]\ndocs=[\"d\"]\n", ErrType},
+		"plugins shape":             {"[scan]\ndocs=[\"d\"]\n[plugins]\nverbs = 1\n", ErrType},
+		"review shape":              {"[scan]\ndocs=[\"d\"]\n[review]\ncommand = 1\n", ErrType},
+		"ledger shape":              {"[scan]\ndocs=[\"d\"]\n[ledger]\nshard = \"yes\"\n", ErrType},
+		"spec version":              {"spec = \"9.0\"\n[scan]\ndocs=[\"d\"]\n", ErrSpec},
+		"bad prefix":                {"prefix = \"Bad Prefix\"\n[scan]\ndocs=[\"d\"]\n", ErrValue},
+		"no scan":                   {"prefix = \"ds\"\n", ErrNoScan},
+		"bad include mode":          {"[scan]\ndocs=[\"d\"]\n[include]\nmode = \"copy\"\n", ErrValue},
+		"bad unacked":               {"[scan]\ndocs=[\"d\"]\n[check]\nunacked = \"ignore\"\n", ErrValue},
+		"bad threshold":             {"[scan]\ndocs=[\"d\"]\n[check]\nfuzzy_threshold = 1.5\n", ErrValue},
+		"bad records":               {"[scan]\ndocs=[\"d\"]\n[records]\nsource = \"Not Valid\"\n", ErrValue},
+		"bad limit":                 {"[scan]\ndocs=[\"d\"]\n[include]\nmax_lines = 0\n", ErrValue},
+		"env default unknown":       {"[scan]\ndocs=[\"d\"]\n[env]\ndefault = \"qa\"\nknown = [\"prod\"]\n", ErrValue},
+		"syntax no equals":          {"[scan]\ndocs\n", ErrSyntax},
+		"syntax array table":        {"[[scan]]\n", ErrSyntax},
+		"syntax bad header":         {"[scan\n", ErrSyntax},
+		"syntax empty key":          {"[scan]\n.docs = [\"d\"]\n", ErrSyntax},
+		"syntax dup key":            {"[scan]\ndocs=[\"d\"]\ndocs=[\"e\"]\n", ErrSyntax},
+		"syntax value table":        {"[scan]\ndocs=[\"d\"]\n[scan.docs]\nx=1\n", ErrSyntax},
+		"syntax missing val":        {"[scan]\ndocs =\n", ErrSyntax},
+		"syntax bad string":         {"[scan]\ndocs = [\"unterminated]\n", ErrSyntax},
+		"syntax trailing":           {"prefix = \"ds\" extra\n", ErrSyntax},
+		"syntax bad literal":        {"prefix = 'open\n", ErrSyntax},
+		"syntax literal tail":       {"prefix = 'a' b\n", ErrSyntax},
+		"syntax bad escape":         {"prefix = \"\\q\"\n", ErrSyntax},
+		"syntax dangling esc":       {"prefix = \"abc\\", ErrSyntax},
+		"syntax bad value":          {"prefix = nope\n", ErrSyntax},
+		"syntax multi array":        {"[scan]\ndocs = [\"a\",\n", ErrSyntax},
+		"syntax nested array":       {"[scan]\ndocs = [[\"a\"]]\n", ErrSyntax},
+		"syntax quoted key":         {"\"unterminated = 1\n", ErrSyntax},
+		"syntax header path":        {"[scan.]\n", ErrSyntax},
+		"syntax dotted value":       {"prefix = \"ds\"\nprefix.x = 1\n", ErrSyntax},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -397,7 +395,6 @@ func TestDurationKeys(t *testing.T) {
 		{"url", "ttl", "12h", []string{"soon", "7 days", "-1d", "7"}},
 		{"notify", "escalate_after", "2w", []string{"weird", "1y", "d"}},
 		{"check", "snapshot_max_age", "30d", []string{"soon", "30 days"}},
-		{"sources.prod", "ttl", "90m", []string{"often", "1.5.h"}},
 		{"run", "timeout", "300ms", []string{"nonsense", "0s", "-1s", "7d"}},
 	} {
 		key := tc.section + "." + tc.key

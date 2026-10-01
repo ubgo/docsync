@@ -123,6 +123,9 @@ func (a *App) githubCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			bodies := commentBodies(rep, gh.server+"/"+gh.repo, sha)
+			for doc, body := range bodies {
+				bodies[doc] = a.cmdText(body)
+			}
 			if dry {
 				for _, doc := range sortedKeys(bodies) {
 					fmt.Fprintf(out, "%s\n", bodies[doc])

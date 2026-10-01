@@ -25,13 +25,12 @@ func FuzzParse(f *testing.F) {
 
 // TestParseOntoLeavesTheBaseAlone pins that reading a file onto a base never
 // writes into the base's maps. An organisation hook that shares one map
-// between calls would otherwise carry one repository's owners, sources, or
+// between calls would otherwise carry one repository's owners or
 // run environment into the next repository's config.
 func TestParseOntoLeavesTheBaseAlone(t *testing.T) {
 	t.Parallel()
 	base := Default()
 	base.Owners["@org"] = []string{"alice"}
-	base.Sources["jira"] = SourceConfig{}
 	base.Run.Env["staging"] = map[string]string{"A": "1"}
 	file := "[scan]\ncode = [\"**\"]\n[owners]\n\"@repo\" = [\"bob\"]\n[run.env.staging]\nB = \"2\"\n"
 	got, err := ParseOnto(base, strings.NewReader(file))
@@ -46,8 +45,5 @@ func TestParseOntoLeavesTheBaseAlone(t *testing.T) {
 	}
 	if _, ok := base.Run.Env["staging"]["B"]; ok {
 		t.Error("the file's run env leaked into the base's inner map")
-	}
-	if _, ok := got.Sources["jira"]; !ok {
-		t.Error("the base's sources were lost")
 	}
 }

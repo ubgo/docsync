@@ -87,8 +87,13 @@ func buildInfo(read func() (*debug.BuildInfo, bool)) BuildInfo {
 	return out
 }
 
-// String is the one line `ds version` and `ds --version` print.
-func (b BuildInfo) String() string {
+// String is the version line under the default name.
+func (b BuildInfo) String() string { return b.Line(DefaultName) }
+
+// Line is the one line `ds version` and `ds --version` print, naming the
+// binary as it was built (cli.WithName): a custom build reported itself as
+// ds, so its users could not tell which binary they were running.
+func (b BuildInfo) Line(name string) string {
 	commit := b.Commit
 	if len(commit) > 12 {
 		commit = commit[:12]
@@ -96,7 +101,7 @@ func (b BuildInfo) String() string {
 	if b.Dirty {
 		commit += " (dirty: uncommitted changes)"
 	}
-	return fmt.Sprintf("ds %s, commit %s, %s, %s", b.Version, commit, b.Time, b.Go)
+	return fmt.Sprintf("%s %s, commit %s, %s, %s", name, b.Version, commit, b.Time, b.Go)
 }
 
 func (a *App) versionCmd() *cobra.Command {
@@ -111,7 +116,7 @@ func (a *App) versionCmd() *cobra.Command {
 			if asJSON {
 				return printJSON(cmd.OutOrStdout(), b)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), b)
+			fmt.Fprintln(cmd.OutOrStdout(), b.Line(a.name))
 			return nil
 		},
 	}
