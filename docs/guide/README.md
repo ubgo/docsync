@@ -1,6 +1,6 @@
 # docsync guide
 
-The user guide for docsync: what it does, how to set it up, and the reference for every directive, command, config key and integration. Every command and every output shown in these pages was run against the `ds` binary; where the binary does less than [the spec](../SPEC.md) describes, the pages say what it does today.
+The user guide for docsync: what it does, how to set it up, and the reference for every directive, command, config key and integration. Every example in these pages is a test: the project's gate runs each command against the `ds` binary and fails when a page shows output `ds` does not print, so the pages and the tool cannot drift apart. Where the binary does less than [the spec](../SPEC.md) describes, the pages say what it does today. How the pages are written and run is in [CONTRIBUTING.md](../../CONTRIBUTING.md#writing-guide-pages).
 
 ## Start here
 

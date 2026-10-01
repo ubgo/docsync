@@ -214,7 +214,8 @@ The repository holds several Go modules: the root library, `cli`, `ext/structure
 ```sh
 task install            # build ds and the resolver plugins into bin/, symlinked onto PATH (DEST=~/.local/bin)
 task uninstall          # remove those symlinks
-task                    # fmt check, vet, staticcheck, race tests, 100% coverage gate
+task                    # the full gate: fmt, vet, staticcheck, race tests, 100% coverage, e2e, guide examples, corpus, extract:diff
+task docs:test          # run every example in docs/guide against the built ds (PAGE=../docs/guide/<page>.md for one)
 task conformance        # only the conformance suite and the JSON contract goldens
 task conformance:update # regenerate expectations after an intentional rule change, then read the diff
 task fuzz -- ./directive FuzzParse
@@ -222,7 +223,7 @@ task fuzz -- ./directive FuzzParse
 
 `task install` symlinks rather than copies, so a later `task cli:build` is live immediately with no reinstall; it refuses to overwrite anything in the destination that is not already one of its own links, and `task install DEST=/some/dir` picks another directory.
 
-Every package holds 100% statement coverage and the gate fails otherwise. A rule without a conformance fixture is not yet a rule: `TestConformanceStatesCovered` fails when a finding state has no fixture producing it.
+Every package holds 100% statement coverage and the gate fails otherwise. [CONTRIBUTING.md](CONTRIBUTING.md#how-docsync-is-tested) lists every check `task` runs and the class of bug each one catches, and how the guide pages are tested. A rule without a conformance fixture is not yet a rule: `TestConformanceStatesCovered` fails when a finding state has no fixture producing it.
 
 ### Releasing
 

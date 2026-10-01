@@ -13,7 +13,7 @@ vars:
 
 tasks:
   default:
-    desc: Run the full gate on every module (fmt, vet, lint, race tests, 100% coverage)
+    desc: Run the full gate on every module (fmt, vet, lint, race tests, 100% coverage, js, dogfood, corpus, extract:diff, e2e, guide examples, cross-builds)
     cmds:
       - task: fmt:check
       - task: vet

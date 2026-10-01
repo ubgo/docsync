@@ -1,10 +1,42 @@
 # docsync — repo rules
 
+## Start here
+
+A new session reads this section first; it is the map. The rules below it are the detail.
+
+**What docsync is.** A Go CLI (`ds`) and library that binds documentation sentences to the code, config and facts they describe, and fails a check when the thing behind a sentence changes. Public at `github.com/ubgo/docsync`, Apache-2.0.
+
+**Where everything lives.**
+
+| Need | Read |
+|---|---|
+| What the tool does, for a user | `docs/guide/README.md` (13 pages: how it works, getting started, directives, languages, every command and config key, CI, agents, integrations, library, cross-repo, secrets and runs, troubleshooting) |
+| The normative design | `docs/SPEC.md`; section 38 lists what is specified but not built |
+| How it is tested, and why each check exists | `CONTRIBUTING.md`, "How docsync is tested" (table of every gate) and "Writing guide pages" (the guide is executable) |
+| What changed, release by release | `CHANGELOG.md` |
+| Every fixed bug, by docsync's own number | `testdata/fixed-bugs.txt` (bug numbers, never GitHub `#N`) |
+| Every absolute sentence in the spec and README, and the test that pins it | `testdata/promises.txt` |
+| A real user's report and its regression cases | `docs/FIELD-FINDINGS-*.md`, `scripts/e2e/field-findings.sh` |
+| Build, test, release commands | `Taskfile.yml` (`task --list`); releasing is the README's "Releasing" section |
+| Private history (pre-public git bundle, old issues, internal repo names) | `docsi/` (gitignored symlink to the private repo; never published) |
+
+**Current state (2026-10-01).** Latest releases: `ds/v0.1.5` and `cli/v0.1.5`, library `v0.1.3`, `ext/structured/v0.1.1`, `ext/treesitter/v0.1.2`, `ext/records/sqlite/v0.1.1`. Every bug found so far is fixed: 109 entries in `testdata/fixed-bugs.txt`, numbered 1 to 129 with gaps where a fix area left its reserved range unused, so the next bug is 130. 0.1.5 fixed 81 of them, found by writing the guide by running every behaviour as a user would. GitHub issues: none open. Remaining work is the unbuilt list in SPEC section 38, and whatever real use turns up next.
+
+**How to work here.**
+
+1. Run `task` before saying anything is done; it is the whole gate (see Workflow). `task docs:test PAGE=../docs/guide/<page>.md` runs one guide page.
+2. A bug becomes a test first: reproduce it with `bin/ds`, write the unit test and, if it spans commands, an e2e case; see the test fail on the unfixed code; then fix. Add it to `testdata/fixed-bugs.txt` with the next number and reference it as `bug N` in the test.
+3. A user-visible change updates the guide page that shows it (the page is a test and will fail otherwise), the spec, and `CHANGELOG.md` under `[Unreleased]`.
+4. Anything that changes an extractor, a grammar table or what a hash covers: run `task extract:diff` and say what it reports. A changed hash re-flags every acked citation in every repository using docsync.
+5. Windows and Linux are checked by `.github/workflows/windows.yml`, manual only: `gh workflow run windows.yml`, then read the result once with `gh run view`. Run it before a release.
+6. Never commit, push, tag or release without the owner's go-ahead for that change. Releases go through volt in dependency order (README, Releasing), each module's `go.mod` re-pinned with `GOWORK=off go mod tidy` once its dependencies are tagged; then fix the release page titles and notes (volt's defaults are thin).
+7. Never mention Claude, AI or Anthropic in commits, PRs, issues, release notes or docs, and never hard-wrap markdown.
+
 Read `docs/SPEC.md` before changing behaviour; it is normative and every rule has a fixture under `testdata/conformance`. If the spec and the fixtures disagree, the fixtures win and the spec gets fixed in the same change.
 
 ## Invariants
 
-- The root module `github.com/ubgo/docsync` imports the standard library only. No exceptions, ever. Anything that needs a dependency lives in a sub-module (`cli/`, `mcp/`, `ext/...`) with its own `go.mod`.
+- The root module `github.com/ubgo/docsync` imports the standard library only. No exceptions, ever. Anything that needs a dependency lives in a sub-module (`cli/`, `ext/...`) with its own `go.mod`.
 - The library never writes a file, reads the environment or `$HOME`, or opens the network. Operations that would write return an `Edit`; the CLI applies it. Hooks for git, providers, and URLs come in through functional options.
 - Every package holds 100% statement coverage. `task` runs `scripts/coverage-gate.sh` and fails below that. Reach coverage by testing the behaviour, never by deleting the branch to dodge it, and never by excluding files.
 - Closed sets are named constants with a `*Values` list beside them. No bare state, verb, key, or severity strings at use sites.
@@ -20,7 +52,7 @@ Bindings are deliberately few: only where a doc sentence restates a value that l
 
 ## Workflow
 
-- `task` is the gate: gofumpt check, vet, staticcheck, race tests, coverage gate, `dogfood`, `corpus`, `extract:diff` against `HEAD`, and `e2e`. Run it before saying anything is done.
+- `task` is the gate: gofumpt check, vet, staticcheck, race tests, coverage gate, `js`, `dogfood`, `corpus`, `extract:diff` against `HEAD`, `e2e`, `docs:test` and `xbuild`. Run it before saying anything is done. `CONTRIBUTING.md` has the table of every check and the class of bug each one catches.
 - `task e2e` drives the built binary through `scripts/e2e/*.sh`: several commands in sequence, git history, merges, more than one repo — the things unit tests cannot reach, and where every one of the first twelve bugs lived. A behaviour that spans commands gets a case there. Each matrix prints `---- N passed, M failed ----`; `run.sh` fails on a failed case, a missing tally, or a shell error (`command not found`, `line N:`), because a check that never ran must not count as passing. `integrations.sh` runs the Docusaurus plugin and remark transformer and a real Hugo build against the built binary, because their own tests use a fake `ds` and a fake accepts any flag or field; it prints `SKIP` when `node` or `hugo` is absent.
 - `task corpus` runs the built binary over the last commit of real third-party repositories (never their working tree, which is someone's half-finished work) in every language with a syntax tier (default, where present on this machine: `ubgo/auth` and `99designs/gqlgen` in Go, `Aider-AI/aider` in Python, `vercel/ai-chatbot` and `stackblitz/bolt.new` in TypeScript and TSX; add more with `CORPUS=/path/a:/path/b`) and asserts **invariants only** — every def starts on the first code line below its directive, no two ids share a block, no block closes more brackets than it opens (the language-neutral form of "an entry's extent swallowed its holder's closing paren or brace"), every recorded id locates back to its own range, a second scan of unchanged source gives the same ledger. There are no expected values, so nothing in it encodes what the author thought the corpus contained, and the checks are computed from the files and the ledger rather than read off the tool's own findings — an invariant that reads a finding only confirms the tool agrees with itself. It prints SKIP and succeeds when no corpus is present. Why it exists: every other gate here tests docsync against code shaped like the code in this repository, which is how a constant inside `const ( … )` went unhandled through 245 e2e cases, fuzzing, dogfooding and five modules at 100% statements until a consumer reported it (bug 18). 18 such groups exist across all of this repo's fixtures; 211 in the one repository that found the bug.
 
