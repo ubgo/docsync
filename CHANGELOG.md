@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-04
+
+A release of the `ds` binary and the `cli` module (0.1.6) and the library (0.1.4); the tier modules are unchanged. Remote defs can now bind whole blocks (GitHub issue 3), and the VS Code extension works in a real editor.
+
 ### Added
 
 - A remote def can bind a whole block without a directive in the target file. `pick=yaml:tasks.deploy` binds a Taskfile task (the key and everything under it), `pick=toml:server` a TOML table, and `pick=symbol:Manifest` a declaration in a code file, found and hashed exactly as `ds def file#Name` would. A change inside the block flags its citations; moving it within the file is reported as `moved`. JSON objects and HCL blocks already worked this way (bugs 132 and 133).
