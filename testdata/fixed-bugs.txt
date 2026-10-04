@@ -112,3 +112,7 @@
 129 a repo-mode copy that only moved was reported tampered, and old-style copies failed check on upgrade
 130 the VS Code extension never started: its client ran ds lsp --stdio, which ds rejected
 131 clicking a ds: link in markdown in VS Code failed with Unable to resolve resource
+132 a remote def could not bind a YAML mapping or TOML table: the pick refused it as a multi-line value
+133 a remote def could not bind a code symbol: pick=symbol: was unsupported
+134 a multi-line value pick said "use ds:block" even when the citation already was ds:block
+135 pick=yaml: split keys at the first colon, so namespaced Taskfile tasks (state:bootstrap) could not be picked

@@ -536,7 +536,7 @@ func (s *System) scanOptions() (scan.Options, error) {
 	if err != nil {
 		return scan.Options{}, fmt.Errorf("secret.paths: %w", err)
 	}
-	return scan.Options{Prefix: s.cfg.Prefix, Repo: s.repo, Include: include, Exclude: exclude, Generated: generated, Secret: secret, Registry: s.registry, MaxFileKB: s.cfg.Scan.MaxFileKB, MaxLineChars: s.cfg.Scan.MaxLineChars, Pickers: s.pickers, Cache: s.cache}, nil
+	return scan.Options{Prefix: s.cfg.Prefix, Repo: s.repo, Include: include, Exclude: exclude, Generated: generated, Secret: secret, Registry: s.registry, MaxFileKB: s.cfg.Scan.MaxFileKB, MaxLineChars: s.cfg.Scan.MaxLineChars, Pickers: s.pickers, Symbol: s.symbolBlock, Cache: s.cache}, nil
 }
 
 // ExtractFile runs the scan pipeline over one file's bytes -- the tier that

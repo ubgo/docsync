@@ -377,6 +377,8 @@ The table is keyed by the file's base name before its extension, so a name that 
 | `line:N` `regex:'…'` (first group) `url` `after:'…'` `between:'a','b'` | any |
 | `file` | asset |
 
+A structured pick that names a key holding a mapping, a sequence or a block scalar, a TOML table, a JSON object or array, or an HCL block returns the key and everything under it as a range, cited with `ds:block`. `symbol:<name>` on a remote def binds the block the syntax tier of the target file binds for that name, found and hashed exactly as `ds def file#name` would, so a declaration can be cited without a directive in its file.
+
 Defaults make `pick` rare: a yaml line picks its key's value, a markdown link picks its text, a code symbol picks its block, a bare-text def picks to the next blank line.
 
 **Key paths.** A YAML key ends at a colon followed by whitespace or the end of the line, so a colon anywhere else is part of the key: `tasks.wfsys:up` addresses the Taskfile task `wfsys:up` with no quoting. A segment that contains a dot is quoted, `tasks."a.b".desc`, and quoting any segment is always allowed. Outside YAML the first colon still ends a key, since a Java properties file writes `key:value` with no space. Paths are compared segment by segment, never as joined strings, which is what makes a key holding a dot reachable at all.
@@ -393,7 +395,7 @@ Defaults make `pick` rare: a yaml line picks its key's value, a markdown link pi
 <!-- ds:def id=api-port-h3v8n2wd file=config/app.json pick=json:$.server.port type=int -->
 ```
 
-Remote defs hash the extracted value, report `pick failed` when the key disappears, and do not follow a moved target. A remote def is recorded at the lines its value is written on in the target (a JSON key's own line, not line 1), and two remote defs picking different values from one line are two blocks. This is also sidecar mode for teams that will not put directives in source, with that same known weakness.
+Remote defs hash the extracted value or block, report `pick failed` when the key disappears, and do not follow a target that moves to another file. Within the file, a pick by key, table, section or symbol follows its block wherever it moves, which is reported as `moved`; `line:N` is the one pick bound to a line number, and it breaks when lines are added above it. A remote def is recorded at the lines its value is written on in the target (a JSON key's own line, not line 1), and two remote defs picking different values from one line are two blocks. This is also sidecar mode for teams that will not put directives in source, with that same known weakness.
 
 **Custom extractors** are executables `ds-pick-<format>` that receive a file and a pick expression and print one value or one range.
 

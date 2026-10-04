@@ -3,6 +3,8 @@ package extract
 import (
 	"strings"
 
+	"github.com/ubgo/docsync/internal/keypath"
+
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/sentence"
 )
@@ -128,7 +130,7 @@ func bindConfig(o occurrence, lines []string, yaml bool, carriers map[int]bool, 
 func keyPath(lines []string, lineNo int, keyLine string, yaml bool) string {
 	parts := keyParts(lines, lineNo, keyLine, yaml)
 	for i, s := range parts {
-		parts[i] = quoteSegment(s)
+		parts[i] = keypath.Quote(s)
 	}
 	return strings.Join(parts, ".")
 }
@@ -162,7 +164,7 @@ func keyParts(lines []string, lineNo int, keyLine string, yaml bool) []string {
 	for i := lineNo - 2; i >= 0; i-- {
 		t := strings.TrimSpace(lines[i])
 		if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
-			return append(splitKeyPath(strings.Trim(t, "[]")), key)
+			return append(keypath.Split(strings.Trim(t, "[]")), key)
 		}
 	}
 	return []string{key}
@@ -185,7 +187,7 @@ func keyOf(line string, yaml bool) string {
 		}
 		return ""
 	}
-	i := keyEnd(t, yaml)
+	i := keypath.End(t, yaml)
 	if i <= 0 {
 		return ""
 	}
@@ -194,61 +196,6 @@ func keyOf(line string, yaml bool) string {
 		return ""
 	}
 	return k
-}
-
-// keyEnd returns where a key ends: the first `=`, or the first `:` that ends
-// it. In YAML that is a colon followed by whitespace or the end of the line,
-// because a colon anywhere else is part of the key -- `wfsys:up:` declares the
-// key `wfsys:up`, which is how every Taskfile names a namespaced task. Reading
-// the first colon made all of them unaddressable. Other formats keep the first
-// colon, since a Java properties file writes `key:value` with no space.
-func keyEnd(t string, yaml bool) int {
-	for i := 0; i < len(t); i++ {
-		switch t[i] {
-		case '=':
-			return i
-		case ':':
-			if !yaml || i+1 == len(t) || t[i+1] == ' ' || t[i+1] == '\t' {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-// quoteSegment spells one key-path segment so the path round-trips: a key that
-// contains the path separator, or begins with a quote, is written quoted.
-func quoteSegment(k string) string {
-	if strings.ContainsAny(k, ".\"'") {
-		return `"` + k + `"`
-	}
-	return k
-}
-
-// splitKeyPath is the inverse of the spelling quoteSegment produces: it splits
-// on dots outside quotes and removes the quotes, so `tasks."a.b".desc` is
-// three segments and `tasks.wfsys:up` is two.
-func splitKeyPath(s string) []string {
-	var out []string
-	var cur strings.Builder
-	var q byte
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case q != 0 && c == q:
-			q = 0
-		case q != 0:
-			cur.WriteByte(c)
-		case c == '"' || c == '\'':
-			q = c
-		case c == '.':
-			out = append(out, cur.String())
-			cur.Reset()
-		default:
-			cur.WriteByte(c)
-		}
-	}
-	return append(out, cur.String())
 }
 
 func indentOf(l string) int {

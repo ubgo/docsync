@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/ubgo/docsync/internal/keypath"
+
 	"github.com/ubgo/docsync/block"
 )
 
@@ -170,19 +172,19 @@ func TestKeyPathSegments(t *testing.T) {
 		"single":           {"single"},
 		`"only.one"`:       {"only.one"},
 	} {
-		if got := splitKeyPath(in); !slices.Equal(got, want) {
-			t.Errorf("splitKeyPath(%q) = %q, want %q", in, got, want)
+		if got := keypath.Split(in); !slices.Equal(got, want) {
+			t.Errorf("keypath.Split(%q) = %q, want %q", in, got, want)
 		}
 	}
 	// A segment is quoted only when it has to be, so an ordinary path reads
 	// as it always did and one holding a dot still round-trips.
 	for k, want := range map[string]string{"port": "port", "wfsys:up": "wfsys:up", "a.b": `"a.b"`, `x"y`: `"x"y"`} {
-		if got := quoteSegment(k); got != want {
-			t.Errorf("quoteSegment(%q) = %q, want %q", k, got, want)
+		if got := keypath.Quote(k); got != want {
+			t.Errorf("keypath.Quote(%q) = %q, want %q", k, got, want)
 		}
 	}
 	for _, k := range []string{"port", "wfsys:up", "a.b"} {
-		if got := splitKeyPath(quoteSegment(k)); len(got) != 1 || got[0] != k {
+		if got := keypath.Split(keypath.Quote(k)); len(got) != 1 || got[0] != k {
 			t.Errorf("round trip of %q = %q", k, got)
 		}
 	}

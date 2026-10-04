@@ -10,9 +10,11 @@
 // (`heading`, `section`, `paragraph`, `link`), the structured vocabulary for
 // formats that need no dependency (`json`, `env`, `ini`, `csv`, and line-mode
 // `yaml` and `toml` for the common flat and nested-map cases), and `file`.
-// `symbol:` needs a grammar and is answered with ErrUnsupported so the syntax
-// tier in ext/treesitter can claim it. A picker plugin (Picker interface in the
-// root package) may override any scheme.
+// `symbol:` needs a grammar, so this package answers it with ErrUnsupported:
+// on a remote def the scanner hands it to the host's resolver
+// (scan.Options.Symbol), which asks the target file's own tier, as `ds def
+// file#Name` does. A picker plugin (Picker interface in the root package) may
+// add schemes.
 package pick
 
 import (
@@ -23,6 +25,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/ubgo/docsync/internal/keypath"
 )
 
 // Scheme names. Kept as constants so the dispatcher, the docs, and the
@@ -58,10 +62,13 @@ var (
 	// ErrNotFound means the expression is valid but nothing in the content
 	// matched. `check` reports this as `pick failed`.
 	ErrNotFound = errors.New("pick: nothing matched")
-	// ErrMultiLine means a value-producing pick yielded more than one line,
-	// which the one-line rule forbids; the caller should use a Range pick or
-	// cite with ds:block.
-	ErrMultiLine = errors.New("pick: value spans more than one line; use ds:block")
+	// ErrMultiLine means a value-producing pick (line, regex, a scalar key)
+	// yielded more than one line, which the one-line rule forbids. The way out
+	// is a pick that names a block -- a key or table holding the lines, a
+	// section, a symbol -- cited with ds:block. The message used to say only
+	// "use ds:block", which read as a fault in the citation even when the
+	// citation already was ds:block (bug 134).
+	ErrMultiLine = errors.New("pick: the picked value spans more than one line; pick the key, table, section or symbol that holds those lines to bind them as a block")
 	// ErrUnsupported means the scheme needs an extractor this package does not
 	// have (a grammar). Plugins answer it; the root reports it honestly.
 	ErrUnsupported = errors.New("pick: scheme not supported without a plugin")
@@ -749,7 +756,10 @@ func pickYAML(arg string, lines []string) (Result, error) {
 	if arg == "" {
 		return Result{}, fmt.Errorf("%w: yaml wants a key path", ErrBadExpr)
 	}
-	want := strings.Split(arg, ".")
+	// One grammar with the config tier (internal/keypath): a key ends at a
+	// colon followed by whitespace, so `tasks.wfsys:up` names the Taskfile
+	// task `wfsys:up`, and a segment holding a dot is quoted (bug 135).
+	want := keypath.Split(arg)
 	depth := 0
 	var stack []int // indentation of each matched ancestor
 	for i, l := range lines {
@@ -761,24 +771,51 @@ func pickYAML(arg string, lines []string) (Result, error) {
 			stack = stack[:len(stack)-1]
 			depth--
 		}
-		key, rest, ok := strings.Cut(strings.TrimSpace(l), ":")
-		if !ok || key != want[depth] {
+		t := strings.TrimSpace(l)
+		end := keypath.End(t, true)
+		if end < 0 || keypath.Unquote(strings.TrimSpace(t[:end])) != want[depth] {
 			continue
 		}
+		rest := t[end+1:]
 		rest = strings.TrimSpace(stripInlineComment(rest))
 		if depth == len(want)-1 {
 			if rest == "" || isBlockScalar(rest) {
-				return Result{}, fmt.Errorf("%w: yaml %s is a map or block scalar, not a value", ErrMultiLine, arg)
+				// A mapping, a sequence or a block scalar: the key and
+				// everything under it, as a range for ds:block. It used to
+				// be refused as a multi-line value, so a remote def could not
+				// bind a Taskfile task or a compose service without a
+				// directive written into that file (bug 132).
+				return rangeResult(lines, i+1, yamlSubtreeEnd(lines, i, indent)), nil
 			}
 			return valueResult(unquote(rest), i+1)
 		}
 		if rest != "" {
-			return Result{}, fmt.Errorf("%w: yaml %s: %q is a scalar, expected a map", ErrNotFound, arg, key)
+			return Result{}, fmt.Errorf("%w: yaml %s: %q is a scalar, expected a map", ErrNotFound, arg, want[depth])
 		}
 		stack = append(stack, indent)
 		depth++
 	}
 	return Result{}, fmt.Errorf("%w: yaml %s", ErrNotFound, arg)
+}
+
+// yamlSubtreeEnd returns the 1-based last line of the subtree whose key is on
+// line i at the given indentation: every following line indented deeper, plus
+// sequence items written at the key's own indentation (`key:` then `- x`,
+// which YAML allows), with trailing blank and comment lines left out.
+func yamlSubtreeEnd(lines []string, i, indent int) int {
+	end := i + 1
+	for j := i + 1; j < len(lines); j++ {
+		t := strings.TrimSpace(lines[j])
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		in := len(lines[j]) - len(strings.TrimLeft(lines[j], " "))
+		if in < indent || (in == indent && t != "-" && !strings.HasPrefix(t, "- ")) {
+			break
+		}
+		end = j + 1
+	}
+	return end
 }
 
 // isBlockScalar reports a YAML literal or folded block indicator (`|`, `>`,
@@ -803,6 +840,11 @@ func pickTOML(arg string, lines []string) (Result, error) {
 		}
 		if t[0] == '[' && strings.HasSuffix(t, "]") {
 			table = strings.Trim(t, "[]")
+			if strings.TrimSpace(table) == arg {
+				// A whole table: its header and every line up to the next
+				// header, as a range for ds:block (bug 132).
+				return rangeResult(lines, i+1, tomlTableEnd(lines, i)), nil
+			}
 			continue
 		}
 		k, v, ok := strings.Cut(t, "=")
@@ -818,6 +860,23 @@ func pickTOML(arg string, lines []string) (Result, error) {
 		}
 	}
 	return Result{}, fmt.Errorf("%w: toml %s", ErrNotFound, arg)
+}
+
+// tomlTableEnd returns the 1-based last line of the table whose header is on
+// line i: the line before the next header, with trailing blank and comment
+// lines left out.
+func tomlTableEnd(lines []string, i int) int {
+	end := i + 1
+	for j := i + 1; j < len(lines); j++ {
+		t := strings.TrimSpace(lines[j])
+		if strings.HasPrefix(t, "[") {
+			break
+		}
+		if t != "" && !strings.HasPrefix(t, "#") {
+			end = j + 1
+		}
+	}
+	return end
 }
 
 // KeyValue returns the value part of a `key: value` or `key = value` line

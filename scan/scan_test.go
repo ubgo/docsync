@@ -954,3 +954,61 @@ func countOutside(m fstest.MapFS, prefix string) int {
 	}
 	return n
 }
+
+// TestRemoteSymbolPick: a remote def with pick=symbol: is bound by the
+// resolver the host supplies -- the block an in-file def on that symbol would
+// bind -- and a failure is a problem at the directive (bug 133). With no
+// resolver the scheme stays unsupported.
+func TestRemoteSymbolPick(t *testing.T) {
+	t.Parallel()
+	fsys := fstest.MapFS{
+		"src/m.go":       {Data: []byte("package m\n\nvar Manifest = []string{\n\t\"A\",\n}\n")},
+		"secrets/k.go":   {Data: []byte("package k\n\nvar Key = \"x\"\n")},
+		"docs/remote.md": {Data: []byte("<!-- ds:def id=manifest-a2b6f8jk file=src/m.go pick=symbol:Manifest -->\n<!-- ds:def id=gone-b3c7g9kl file=src/m.go pick=symbol:Gone -->\n<!-- ds:def id=key-c4d8h2lm file=secrets/k.go pick=symbol:Key -->\n")},
+	}
+	o := opts(t)
+	o.Include = sets(t, "src/**", "docs/**", "secrets/**")
+	o.Symbol = func(path string, src []byte, name string) (block.Block, error) {
+		if name == "Gone" {
+			return block.Block{}, errors.New("no such symbol")
+		}
+		var b block.Block
+		b.Kind = block.KindFunc
+		b.Pos = block.Position{File: "elsewhere", Start: 3, End: 5}
+		b.SetContent("var " + name + " = …")
+		return b, nil
+	}
+	res, err := Scan(context.Background(), fsys, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defs := map[string]block.Block{}
+	for _, b := range res.Defs {
+		defs[b.ID] = b
+	}
+	m := defs["manifest-a2b6f8jk"]
+	if m.Pos != (block.Position{File: "src/m.go", Start: 3, End: 5}) || m.Kind != block.KindFunc || m.Content != "var Manifest = …" || m.Hash == "" || m.Symbol != "symbol:Manifest" {
+		t.Errorf("symbol remote def = %+v", m)
+	}
+	if k := defs["key-c4d8h2lm"]; !k.IsSecret() || k.Content != "" {
+		t.Errorf("a symbol picked under [secret] paths is secret and withheld: %+v", k)
+	}
+	if _, ok := defs["gone-b3c7g9kl"]; ok {
+		t.Error("a symbol the resolver cannot find must not bind")
+	}
+	found := false
+	for _, p := range res.Problems {
+		found = found || (errors.Is(p.Err, ErrRemotePick) && strings.Contains(p.Err.Error(), "no such symbol"))
+	}
+	if !found {
+		t.Errorf("problems = %v", res.Problems)
+	}
+	o.Symbol = nil
+	res, _ = Scan(context.Background(), fsys, o)
+	for _, p := range res.Problems {
+		if strings.Contains(p.Err.Error(), "Manifest") || strings.Contains(p.Err.Error(), "symbol") {
+			return
+		}
+	}
+	t.Errorf("without a resolver, symbol: must be reported unsupported: %v", res.Problems)
+}

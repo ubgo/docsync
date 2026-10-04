@@ -8,10 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A remote def can bind a whole block without a directive in the target file. `pick=yaml:tasks.deploy` binds a Taskfile task (the key and everything under it), `pick=toml:server` a TOML table, and `pick=symbol:Manifest` a declaration in a code file, found and hashed exactly as `ds def file#Name` would. A change inside the block flags its citations; moving it within the file is reported as `moved`. JSON objects and HCL blocks already worked this way (bugs 132 and 133).
 - `task vscode:try` opens a small demo repository in a VS Code window running the docsync extension from `editors/vscode`, with a cited value that has changed, so the code lens, hover, go-to-definition and `ds:` links can be tried without installing anything; `task vscode:package` builds the installable `.vsix`.
 
 ### Fixed
 
+- `pick=yaml:` split a key at its first colon, so a namespaced Taskfile task such as `tasks.state:bootstrap` could not be picked, although `ds def Taskfile.yml#tasks.state:bootstrap` worked. The pick and the config tier now share one key-path grammar: a key ends at a colon followed by whitespace, and a segment holding a dot is quoted (`tasks."a.b"`) (bug 135).
+- A pick whose value spans several lines said "use ds:block", which read as a fault in the citation even when it already was `ds:block`. It now says to pick the key, table, section or symbol that holds those lines (bug 134).
 - The VS Code extension never started: VS Code's language client runs the server as `ds lsp --stdio`, and `ds lsp` rejected the flag and exited. `ds lsp` now accepts `--stdio`, and the extension no longer asks for it, so it also works with an older `ds` (bug 130).
 - In VS Code, clicking a `[text](ds:cfg?id=…)` or `ds:block` link in markdown failed with "Unable to resolve resource". The extension now opens what it names: it reveals the block in its file and shows the id, location and current body (bug 131).
 

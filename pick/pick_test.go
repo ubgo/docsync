@@ -160,8 +160,17 @@ func TestStructuredSchemes(t *testing.T) {
 		{"yaml quoted", "yaml:auth.host", yamlDoc, Result{KindValue, "example.com", "", 4, 4}, nil},
 		{"yaml deeper", "yaml:auth.nested.deep", yamlDoc, Result{KindValue, "yes", "", 6, 6}, nil},
 		{"yaml top after dedent", "yaml:other", yamlDoc, Result{KindValue, "1", "", 9, 9}, nil},
-		{"yaml map not value", "yaml:auth", yamlDoc, Result{}, ErrMultiLine},
-		{"yaml block scalar not value", "yaml:auth.block", yamlDoc, Result{}, ErrMultiLine},
+		// A mapping or block scalar is the key and its subtree, a range for
+		// ds:block, so a remote def can bind a Taskfile task (bug 132). The error a
+		// value pick still gives is worded for what it is (bug 134).
+		{"yaml map is a range", "yaml:auth", yamlDoc, Result{KindRange, "", "auth:\n  port: 8081   # comment\n  host: \"example.com\"\n  nested:\n    deep: yes\n  block: |\n    text", 2, 8}, nil},
+		{"yaml nested map is a range", "yaml:auth.nested", yamlDoc, Result{KindRange, "", "  nested:\n    deep: yes", 5, 6}, nil},
+		{"yaml block scalar is a range", "yaml:auth.block", yamlDoc, Result{KindRange, "", "  block: |\n    text", 7, 8}, nil},
+		{"yaml sequence at the key's indent", "yaml:tasks", "tasks:\n- a\n- b\nnext: 1\n", Result{KindRange, "", "tasks:\n- a\n- b", 1, 3}, nil},
+		{"yaml subtree leaves out trailing blanks and comments", "yaml:k", "k:\n  a: 1\n\n# c\nz: 2\n", Result{KindRange, "", "k:\n  a: 1", 1, 2}, nil},
+		{"toml table is a range", "toml:server", tomlDoc, Result{KindRange, "", "[server]\nport = 8081 # c\nhost = 'h'", 2, 4}, nil},
+		{"toml last table is a range", "toml:server.tls", tomlDoc, Result{KindRange, "", "[server.tls]\nenabled = true", 5, 6}, nil},
+		{"toml table leaves out trailing comments", "toml:a", "[a]\nx = 1\n# c\n\n[b]\n", Result{KindRange, "", "[a]\nx = 1", 1, 2}, nil},
 		{"yaml scalar where map expected", "yaml:auth.port.x", yamlDoc, Result{}, ErrNotFound},
 		{"yaml missing", "yaml:auth.nope", yamlDoc, Result{}, ErrNotFound},
 		{"yaml empty arg", "yaml:", yamlDoc, Result{}, ErrBadExpr},
@@ -173,7 +182,13 @@ func TestStructuredSchemes(t *testing.T) {
 		{"toml empty arg", "toml:", tomlDoc, Result{}, ErrBadExpr},
 		{"toml line without equals ignored", "toml:server.port", "[server]\njunk line\nport = 1\n", Result{KindValue, "1", "", 3, 3}, nil},
 		{"toml comments and blanks skipped", "toml:port", "# c\n\nport = 2\n", Result{KindValue, "2", "", 3, 3}, nil},
-		{"yaml folded scalar not value", "yaml:a", "a: >-\n  text\n", Result{}, ErrMultiLine},
+		// A key ends at a colon followed by whitespace, as in the config tier,
+		// so namespaced Taskfile tasks are addressable (bug 135).
+		{"yaml namespaced task", "yaml:tasks.state:bootstrap", "tasks:\n  state:bootstrap:   # note\n    desc: x\n  other: 1\n", Result{KindRange, "", "  state:bootstrap:   # note\n    desc: x", 2, 3}, nil},
+		{"yaml namespaced task value", "yaml:tasks.infra:up.desc", "tasks:\n  infra:up:\n    desc: hello\n", Result{KindValue, "hello", "", 3, 3}, nil},
+		{"yaml quoted key holding a dot", `yaml:a."b.c"`, "a:\n  \"b.c\": 5\n", Result{KindValue, "5", "", 2, 2}, nil},
+		{"yaml colon inside a value line is not a key end", "yaml:url", "url: http://x\n", Result{KindValue, "http://x", "", 1, 1}, nil},
+		{"yaml folded scalar is a range", "yaml:a", "a: >-\n  text\n", Result{KindRange, "", "a: >-\n  text", 1, 2}, nil},
 		{"yaml pipe-like value is fine", "yaml:a", "a: \"|x\"\n", Result{KindValue, "|x", "", 1, 1}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

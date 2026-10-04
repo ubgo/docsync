@@ -480,6 +480,8 @@ ds init
 |---|---|
 | `json:$.server.port` | a JSON value by path |
 | `yaml:server.port`, `toml:server.port`, `ini:server.port`, `env:API_KEY`, `hcl:resource.aws_instance.web.instance_type` | a key's value |
+| `yaml:tasks.deploy`, `toml:server`, `json:$.scripts`, `hcl:resource.aws_instance.web` | a key that holds a mapping, list, table, object or block: the key and everything under it, as a block for `ds:block` |
+| `symbol:Manifest`, `symbol:Store.Save` | a declaration in a code file, by name: the block `ds def file#Name` would bind, with the same hash |
 | `csv:r2c2`, `csv:col=port` | a CSV cell |
 | `line:3` | one line of the target |
 | `regex:'secrets\.(\w+)'` | the first capture group of the first match |
@@ -597,6 +599,63 @@ Two remote defs whose different picks land on the same line of the same file are
 $ ds scan
 9 files, 12 defs, 0 refs, 0 problems, 0 skipped
 ```
+
+### Binding a whole block from another file
+
+A remote def can bind a block, not only a value, so a runbook can cite a Taskfile task or a Go declaration without a directive written into that file. That matters when the file belongs to someone else, or when a comment in it would break a tool that reads it.
+
+<!-- doctest
+mkdir ../blocks
+cd ../blocks
+git init -q -b main .
+ds init
+-->
+
+```yaml file=Taskfile.yml
+version: '3'
+tasks:
+  deploy:
+    desc: Run one image tag
+    cmds:
+      - lath run deploy release
+```
+
+```go file=manifest.go
+package params
+
+// Manifest lists every key.
+var Manifest = []string{
+	"APP_KEY",
+	"DB_PASSWORD",
+}
+```
+
+```markdown file=docs/run.md
+# Run
+
+<!-- ds:def id=task-deploy-a1a1a1a1 file=Taskfile.yml pick=yaml:tasks.deploy -->
+<!-- ds:def id=manifest-b2b2b2b2 file=manifest.go pick=symbol:Manifest -->
+
+Deploy with [the deploy task](ds:block?id=task-deploy-a1a1a1a1). Keys are [the manifest](ds:block?id=manifest-b2b2b2b2).
+```
+
+```
+$ ds scan
+3 files, 2 defs, 2 refs, 0 problems, 0 skipped
+$ ds locate task-deploy-a1a1a1a1
+Taskfile.yml:3-6 @ …
+$ ds read manifest-b2b2b2b2
+var Manifest = []string{
+	"APP_KEY",
+	"DB_PASSWORD",
+}
+```
+
+`yaml:tasks.deploy` binds the task's key and body; `symbol:Manifest` binds the declaration the Go parser finds under that name, exactly as an in-file `ds def manifest.go#Manifest` would, and hashes it the same way. Neither file was changed. Any edit inside the task or the list flags the sentences that cite it, with a diff. Because these picks are by key and by name, moving the task or the declaration within its file is reported as `moved` and still resolves; `line:N` is the one pick that does not follow its block, so it is the fragile choice for anything that may gain lines above it.
+
+<!-- doctest
+cd ../pick
+-->
 
 ## ds:block — cite or show a block
 

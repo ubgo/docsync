@@ -452,6 +452,38 @@ func (s *System) locateSymbol(path string, src []byte, tgt extract.Target) (bloc
 	return locateTarget(ex, path, src, tgt)
 }
 
+// symbolBlock answers a remote def's `pick=symbol:<name>` (bug 133): the block
+// the tier that scans path binds for name, located exactly as `ds def
+// path#name` locates it and then bound by a directive written above it in
+// memory, so the content, extent and hash are an in-file def's. The file is
+// never changed.
+func (s *System) symbolBlock(path string, src []byte, name string) (block.Block, error) {
+	if name == "" {
+		return block.Block{}, fmt.Errorf("%w: symbol: wants a name", extract.ErrBadTarget)
+	}
+	ex, err := s.registry.For(path)
+	if err != nil {
+		return block.Block{}, err
+	}
+	located, err := locateTarget(ex, path, src, extract.Target{Symbol: name, Prefix: s.cfg.Prefix})
+	if err != nil {
+		return block.Block{}, err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
+	bound, ok := probeAt(ex, path, src, lines, located, s.cfg.Prefix, "")
+	if !ok {
+		return block.Block{}, fmt.Errorf("%w: the %s tier binds no block for %q in %s", extract.ErrSymbolNotFound, ex.Name(), name, path)
+	}
+	// In a format whose directive trails the key on its own line (YAML,
+	// TOML), the probe sits inside the bound lines, and the tier's content
+	// carried it -- a remote def's block held `# ds:def id=probe-…`. The
+	// file's own lines over the same extent are the block instead.
+	if strings.Contains(bound.Content, probeID) {
+		bound.SetContent(strings.Join(lines[bound.Pos.Start-1:bound.Pos.End], "\n"))
+	}
+	return bound, nil
+}
+
 // mentions reports whether line holds name as a whole word: not inside a
 // longer identifier. It only picks the lines worth asking the tier about, so
 // it errs towards yes; a phrase (a markdown heading) is matched as text.

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ubgo/docsync/internal/keypath"
+
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/directive"
 )
@@ -268,7 +270,7 @@ func findHeading(lines []string, symbol string) int {
 // holding a dot is reached by quoting it (`tasks."a.b"`) and a key holding a
 // colon needs no quoting at all (`tasks.wfsys:up`).
 func findKey(lines []string, symbol string, yaml bool) int {
-	want := splitKeyPath(symbol)
+	want := keypath.Split(symbol)
 	for i, l := range lines {
 		k := keyOf(l, yaml)
 		if k == "" {

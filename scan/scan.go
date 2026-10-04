@@ -155,6 +155,10 @@ var (
 	ErrCfgBlockForm = errors.New("scan: ds:cfg is link form only; write [value](ds:cfg?id=…) in the sentence")
 )
 
+// SymbolResolver returns the block a tier binds for name in the file at path
+// with content src, or an error naming why it cannot.
+type SymbolResolver func(path string, src []byte, name string) (block.Block, error)
+
 // Options configures a scan. Include and Exclude are compiled glob sets;
 // Registry defaults to extract.Default().
 type Options struct {
@@ -169,6 +173,12 @@ type Options struct {
 	MaxLineChars int
 	// Pickers are plugin pick= schemes (§37.3 Picker), by scheme name.
 	Pickers map[string]pick.Picker
+	// Symbol resolves `pick=symbol:<name>` on a remote def: the block the
+	// tier that scans the target file binds for that name, as an in-file
+	// `ds def file#name` would, content and hash included. A scan has no
+	// grammar of its own, so without it the scheme stays unsupported (bug
+	// 133).
+	Symbol SymbolResolver
 	// Cache remembers extraction per file and content hash, so a check
 	// after a small change re-extracts only what changed (§16 "incremental
 	// by default"). nil extracts everything.
@@ -599,6 +609,10 @@ func resolveRemote(fsys fs.FS, def extract.Def, opts Options, res *Result) {
 	if expr == "" {
 		expr = pick.SchemeFile
 	}
+	if scheme, name := pick.SplitScheme(expr); scheme == pick.SchemeSymbol && opts.Symbol != nil {
+		resolveRemoteSymbol(def, target, src, expr, strings.TrimSpace(name), opts, res)
+		return
+	}
 	r, err := pick.PickWith(opts.Pickers, expr, string(src))
 	if err != nil {
 		res.Problems = append(res.Problems, Problem{Pos: def.Block.DirectivePos, Err: fmt.Errorf("%w: %s: %v", ErrRemotePick, target, err)})
@@ -625,6 +639,28 @@ func resolveRemote(fsys fs.FS, def extract.Def, opts Options, res *Result) {
 	}
 	// Judged on the picked value only: the text a remote def reads from is a
 	// whole file, and one address anywhere in it says nothing about the rest.
+	res.Defs = append(res.Defs, redactSecret(b, "", globbed))
+}
+
+// resolveRemoteSymbol binds a remote def picked by symbol: the block the
+// target's tier binds for name, so its content, extent and hash are those of
+// an in-file def on the same declaration, and a move within the file still
+// resolves because the pick is by name, not by line (bug 133).
+func resolveRemoteSymbol(def extract.Def, target string, src []byte, expr, name string, opts Options, res *Result) {
+	got, err := opts.Symbol(target, src, name)
+	if err != nil {
+		res.Problems = append(res.Problems, Problem{Pos: def.Block.DirectivePos, Err: fmt.Errorf("%w: %s: %v", ErrRemotePick, target, err)})
+		return
+	}
+	b := def.Block
+	b.Pos = block.Position{File: target, Start: got.Pos.Start, End: got.Pos.End}
+	b.Kind = got.Kind
+	b.Content, b.Hash = got.Content, got.Hash
+	b.Symbol = expr
+	globbed := opts.Secret.MatchAny(target)
+	if globbed {
+		b.Args = withKey(b.Args, block.KeySecret, block.TrueValue)
+	}
 	res.Defs = append(res.Defs, redactSecret(b, "", globbed))
 }
 
