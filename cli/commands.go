@@ -207,6 +207,7 @@ func (a *App) doctorCmd() *cobra.Command {
 			// can tell a repo that already exists.
 			rows = append(rows, st.gitignoreRow(), st.gitattributesRow(), a.blocksRow(st), a.notifyStateRow(st))
 			rows = append(append(rows, a.workspaceRows(cfg)...), a.resolverRows(cfg)...)
+			rows = append(rows, a.updateRow())
 			for _, row := range rows {
 				row[2] = a.cmdText(row[2])
 			}

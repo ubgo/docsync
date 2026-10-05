@@ -8,6 +8,7 @@ require (
 	github.com/ubgo/docsync/ext/records/sqlite v0.1.1
 	github.com/ubgo/docsync/ext/structured v0.1.1
 	github.com/ubgo/docsync/ext/treesitter v0.1.2
+	golang.org/x/mod v0.38.0
 	golang.org/x/sys v0.47.0
 )
 
@@ -26,7 +27,6 @@ require (
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/zclconf/go-cty v1.16.3 // indirect
-	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect

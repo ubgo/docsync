@@ -76,6 +76,8 @@ go install github.com/ubgo/docsync/cli/cmd/ds-resolve-aws@latest   # a secret-re
 
 Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64, windows/amd64 and windows/arm64, with a `checksums.txt`. The Windows builds are run on real Windows machines by `.github/workflows/windows.yml` (the Go tests of every module, then `scripts/windows-smoke.ps1` against the published binary); `ds:run` and `ds review --ai` run their commands under `sh`, which Git for Windows provides; name another shell with `[run] shell = "pwsh"`, and if the shell is missing `ds` says so and stops rather than skipping. Check what you are running with `ds version`.
 
+To update, run `ds update`, which installs the newest release and its plugins after the same checksum check. A release build also checks once a day by itself, before a command run at a terminal, and installs a newer release first; it stays out of CI, piped output and `--json`, and `DS_UPDATE=notify` or `DS_UPDATE=off` turns it down ([`ds update`](docs/guide/cli.md#ds-update)).
+
 The library, for Go programs that embed docsync (standard library only):
 
 ```sh

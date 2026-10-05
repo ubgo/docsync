@@ -116,6 +116,11 @@ type App struct {
 	// published blocks (§20.1).
 	indexFS      fs.FS
 	indexEntries []workspace.Entry
+	// args are the arguments Run was given, which an automatic update
+	// re-runs on the new binary.
+	args []string
+	// upd finds and installs releases (update.go); tests replace it.
+	upd updater
 	// closers are handles a command opened (the sqlite record source);
 	// Run closes them when the command returns.
 	closers []io.Closer
@@ -208,12 +213,16 @@ func Run(args []string, opts ...Option) int {
 	if a.vcs == nil {
 		a.vcs, a.gitVCS = Git{Dir: a.dir}, true
 	}
-	root := a.root()
+	if a.upd.source == nil {
+		a.upd = a.defaultUpdater()
+	}
 	if args == nil {
 		// cobra reads os.Args when given nil; an embedder passing nil means
 		// "no arguments", so make that explicit.
 		args = []string{}
 	}
+	a.args = args
+	root := a.root()
 	root.SetArgs(args)
 	root.SetIn(a.stdin)
 	root.SetOut(a.stdout)
@@ -249,6 +258,7 @@ func (a *App) root() *cobra.Command {
 		Use:           a.name,
 		Version:       stamped(buildInfo(debug.ReadBuildInfo), releaseVersion).Line(a.name),
 		Short:         "keep docs bound to the code they describe",
+		Long:          rootLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// --dir runs every command as if started in that directory, as
@@ -259,10 +269,14 @@ func (a *App) root() *cobra.Command {
 		// does not discover one.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			a.dirFlag = dir != ""
-			return a.locate(dir, cmd.Name() != initCmdName)
+			if err := a.locate(dir, cmd.Name() != initCmdName); err != nil {
+				return err
+			}
+			return a.autoUpdate(cmd)
 		},
 	}
 	root.PersistentFlags().StringVar(&dir, flagDir, "", "run as if started in this directory (the repository root)")
+	root.PersistentFlags().Bool(flagNoUpdate, false, "do not check for, or install, a newer release before this command")
 	// The version line already names the program; cobra's default template
 	// would print "ds version ds v…".
 	root.SetVersionTemplate("{{.Version}}\n")
@@ -270,10 +284,21 @@ func (a *App) root() *cobra.Command {
 		a.initCmd(), a.doctorCmd(), a.defCmd(), a.scanCmd(), a.checkCmd(), a.ackCmd(), a.refreshCmd(), a.renderCmd(),
 		a.mapCmd(), a.contextCmd(), a.factsCmd(), a.whyCmd(), a.findCmd(), a.readCmd(), a.locateCmd(), a.impactCmd(), a.statusCmd(),
 		a.triageCmd(), a.auditCmd(), a.renameCmd(), a.graphCmd(), a.blameCmd(), a.reportCmd(), a.adoptCmd(), a.repairCmd(), a.versionCmd(), a.undoCmd(), a.pruneCmd(),
-		a.syncCmd(), a.publishCmd(), a.mcpCmd(), a.notifyCmd(), a.lspCmd(), a.reviewCmd(), a.githubCmd(), a.exportCmd(),
+		a.syncCmd(), a.publishCmd(), a.mcpCmd(), a.notifyCmd(), a.lspCmd(), a.reviewCmd(), a.githubCmd(), a.exportCmd(), a.updateCmd(),
 	)
 	return root
 }
+
+// rootLong is `ds --help`'s text: what the tool is, then the environment
+// variables it reads, which no flag lists and which are otherwise found only
+// by reading the guide.
+const rootLong = `keep docs bound to the code they describe
+
+Environment:
+  DS_UPDATE  auto | notify | off: whether a release build installs a newer
+             release by itself before a command (default auto; see update --help)
+  NO_COLOR   any value turns colour off
+  CI         set by CI systems: check defaults to --frozen, and nothing updates itself`
 
 // cmdText rewrites the commands a message names from `ds` to this binary's
 // name (cli.WithName), the same rule the library applies to remedies.

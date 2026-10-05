@@ -51,6 +51,7 @@ const (
 	// session-start hook (§26.10); an empty agents.session_hook installs none.
 	DefaultSessionHook   = "ds map --budget 2000"
 	DefaultEscalateAfter = "7d"
+	DefaultUpdateMode    = UpdateAuto
 )
 
 // Closed-set values.
@@ -71,6 +72,15 @@ const (
 	// behaviour, for a repository that opts out knowingly.
 	SentenceWording  = "wording"
 	SentencePosition = "position"
+
+	// The update modes of a release build of ds, least to most restrictive:
+	// UpdateAuto installs a newer release before running a command,
+	// UpdateNotify only says one exists, UpdateOff does neither. A
+	// repository can make the binary more restrictive, never less, so a team
+	// can pin every member to one version.
+	UpdateAuto   = "auto"
+	UpdateNotify = "notify"
+	UpdateOff    = "off"
 )
 
 // IncludeModeValues, UnackedValues, RecordsValues are the canonical lists.
@@ -79,6 +89,9 @@ var (
 	UnackedValues     = []string{UnackedError, UnackedWarn}
 	RecordsValues     = []string{RecordsFrontmatter, RecordsSQLite, RecordsHTTP}
 	SentenceValues    = []string{SentenceWording, SentencePosition}
+	// UpdateModeValues is ordered least restrictive first; callers combine
+	// several sources by taking the latest in this list.
+	UpdateModeValues = []string{UpdateAuto, UpdateNotify, UpdateOff}
 )
 
 // Sentinel errors.
@@ -144,6 +157,14 @@ type Config struct {
 	Plugins   PluginsConfig
 	Review    ReviewConfig
 	Ledger    LedgerConfig
+	Update    UpdateConfig
+}
+
+// UpdateConfig is [update]: how a release build of ds keeps itself current
+// while working in this repository. The library never updates anything; the
+// CLI reads this key.
+type UpdateConfig struct {
+	Mode string
 }
 
 // ReviewConfig is [review]: the command `review --ai` pipes findings and
@@ -345,6 +366,7 @@ func Default() Config {
 		Run:     RunConfig{Timeout: DefaultRunTimeout, Shell: DefaultRunShell, Env: map[string]map[string]string{}},
 		URL:     URLConfig{TTL: DefaultURLTTL, RatePerMinute: DefaultURLRate},
 		Records: RecordsConfig{Source: DefaultRecords},
+		Update:  UpdateConfig{Mode: DefaultUpdateMode},
 		Notify: NotifyConfig{
 			EscalateAfter: DefaultEscalateAfter,
 			Snapshot: SnapshotNotifyConfig{
@@ -419,6 +441,10 @@ func (c Config) Validate() error {
 	// code need not set it.
 	if c.Check.Sentence != "" && !in(c.Check.Sentence, SentenceValues) {
 		return fmt.Errorf("%w: check.sentence %q", ErrValue, c.Check.Sentence)
+	}
+	// Empty means the default, as for check.sentence.
+	if c.Update.Mode != "" && !in(c.Update.Mode, UpdateModeValues) {
+		return fmt.Errorf("%w: update.mode %q", ErrValue, c.Update.Mode)
 	}
 	if c.Check.FuzzyThreshold <= 0 || c.Check.FuzzyThreshold > 1 {
 		return fmt.Errorf("%w: check.fuzzy_threshold %v must be in (0,1]", ErrValue, c.Check.FuzzyThreshold)
@@ -631,6 +657,10 @@ func (c *Config) apply(doc map[string]value) error {
 		case "ledger":
 			err = applyTable(v, map[string]func(value) error{
 				"shard": func(x value) (e error) { c.Ledger.Shard, e = x.boolean(); return },
+			})
+		case "update":
+			err = applyTable(v, map[string]func(value) error{
+				"mode": func(x value) (e error) { c.Update.Mode, e = x.str(); return },
 			})
 		case "plugins":
 			err = applyTable(v, map[string]func(value) error{

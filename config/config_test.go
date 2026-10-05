@@ -485,3 +485,31 @@ func TestSentenceMode(t *testing.T) {
 		}
 	}
 }
+
+// TestUpdateMode pins [update] mode: auto by default, the three modes
+// accepted, anything else refused, and an empty mode (a config built in
+// code) left to the default.
+func TestUpdateMode(t *testing.T) {
+	t.Parallel()
+	const scan = "[scan]\ncode = [\"**\"]\n"
+	c, err := Parse(strings.NewReader(scan))
+	if err != nil || c.Update.Mode != UpdateAuto {
+		t.Errorf("default = %q %v", c.Update.Mode, err)
+	}
+	for _, v := range UpdateModeValues {
+		c, err := Parse(strings.NewReader(scan + "[update]\nmode = \"" + v + "\"\n"))
+		if err != nil || c.Update.Mode != v {
+			t.Errorf("%s: %q %v", v, c.Update.Mode, err)
+		}
+	}
+	if _, err := Parse(strings.NewReader(scan + "[update]\nmode = \"never\"\n")); !errors.Is(err, ErrValue) {
+		t.Errorf("an unknown mode = %v", err)
+	}
+	if _, err := Parse(strings.NewReader(scan + "[update]\nauto = false\n")); !errors.Is(err, ErrUnknown) {
+		t.Errorf("an unknown key = %v", err)
+	}
+	c.Update.Mode = ""
+	if err := c.Validate(); err != nil {
+		t.Errorf("empty mode: %v", err)
+	}
+}

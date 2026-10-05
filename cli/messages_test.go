@@ -37,7 +37,7 @@ var fileExtensions = map[string]bool{"tsv": true, "json": true, "toml": true, "m
 
 // configTables are the top-level tables of .ds/config.toml; a dotted word
 // that does not start with one is not a config key ("internal.go").
-var configTables = map[string]bool{"scan": true, "include": true, "check": true, "policy": true, "owners": true, "secret": true, "env": true, "resolve": true, "run": true, "url": true, "records": true, "notify": true, "agents": true, "id": true, "review": true, "ledger": true, "plugins": true}
+var configTables = map[string]bool{"scan": true, "include": true, "check": true, "policy": true, "owners": true, "secret": true, "env": true, "resolve": true, "run": true, "url": true, "records": true, "notify": true, "agents": true, "id": true, "review": true, "ledger": true, "plugins": true, "update": true}
 
 // messageExceptions are matches that look like a command or a key and are
 // not one, each with the reason.

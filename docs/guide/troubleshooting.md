@@ -61,6 +61,7 @@ gitattributes   ok    acks.tsv merges without conflicts
 blocks          ok    3 bodies, 3 live
 notify          ok    no state yet (first notify will create .ds/notified.json)
 workspace       ok    none; this repository is its own workspace
+update          …
 ```
 
 It exits non-zero when any row is `FAIL`, so a setup script can run it as a gate; a `WARN` does not change the exit code.

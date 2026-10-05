@@ -24,6 +24,7 @@ This page describes `.ds/config.toml`: every section and key `ds` accepts, its t
 - [`[id]`](#id)
 - [`[ledger]`](#ledger)
 - [`[plugins]`](#plugins)
+- [`[update]`](#update)
 - [Keys that are accepted but do nothing yet](#keys-that-are-accepted-but-do-nothing-yet)
 - [A complete example](#a-complete-example)
 
@@ -145,7 +146,7 @@ ds: include: max_lines: config: wrong value type: want integer (line 12)
 cp ../good.toml .ds/config.toml
 -->
 
-**A closed set must hold one of its values** (`include.mode`, `check.unacked`, `check.sentence`, the `notify.snapshot` tiers and classes). With `unacked = "warning"`:
+**A closed set must hold one of its values** (`include.mode`, `check.unacked`, `check.sentence`, `update.mode`, the `notify.snapshot` tiers and classes). With `unacked = "warning"`:
 
 <!-- doctest
 perl -pi -e 's/unacked = "error"/unacked = "warning"/' .ds/config.toml
@@ -846,6 +847,40 @@ picks = ["jq"]
 
 Resolver plugins (`ds-resolve-<provider>`) are found by provider name and need no entry here, and record plugins are named by `[records] source`.
 
+## update
+
+How a release build of `ds` keeps itself current while someone works in this repository. The [`ds update`](cli.md#ds-update) section describes the automatic check; this key lets a team turn it down for everyone.
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `mode` | string | `"auto"` | `"auto"` installs a newer release before running a command; `"notify"` only says, once a day, that one exists; `"off"` does neither. |
+
+```toml file=.ds/config.toml append=true
+
+[update]
+mode = "notify"
+```
+
+```console
+$ ds doctor | head -1
+config          ok    spec 1.0, prefix ds
+```
+
+The setting in effect is the strictest of this key and each user's `DS_UPDATE` environment variable. A repository set to `"off"` keeps every member on the version they installed; it cannot force updates on someone who set `DS_UPDATE=off`. A value outside the three is refused when the config loads:
+
+<!-- doctest
+perl -pi -e 's/mode = "notify"/mode = "sometimes"/' .ds/config.toml
+-->
+
+```console
+$ ds check
+ds: config: invalid value: update.mode "sometimes"
+```
+
+<!-- doctest
+cp ../good.toml .ds/config.toml
+-->
+
 ## Keys that are refused because they are not built yet
 
 The [specification](../SPEC.md#23-configuration) describes these, but the current build does not act on them, so a config that sets them does not load, naming the key and what to use instead. Accepting them would let a team believe a channel or a source was configured when nothing reads it.
@@ -973,6 +1008,9 @@ shard = false                       # true writes .ds/ledger/<dir>.tsv
 [plugins]
 verbs = []                          # ds-<verb> executables
 picks = []                          # ds-pick-<scheme> executables
+
+[update]
+mode = "auto"                       # "notify" only says a release exists; "off" neither checks nor says
 ```
 
 ```console
@@ -987,6 +1025,7 @@ glob README.md     WARN  matches no files
 workspace          ok    none; this repository is its own workspace
 resolve github     ok    ds-resolve-github is on PATH
 resolve 1password  ok    ds-resolve-onepassword is on PATH
+update             …
 $ ds check
 2 ok
 ```

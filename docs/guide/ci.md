@@ -293,6 +293,7 @@ $ CI=true ds doctor
 …
 notify         WARN  no state on this runner; dedupe and escalation will not work. Cache .ds/notified.json between runs (see the nightly workflow template)
 workspace      ok    none; this repository is its own workspace
+update         …
 ```
 
 The nightly template restores the file with `actions/cache` before running `ds notify`. Do the same on any CI that runs it.

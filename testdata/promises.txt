@@ -163,3 +163,4 @@ commit-ack-keys	test	any other key is refused.
 ack-scope-named	test	An id with neither `--doc` and `--line` nor `--all` is refused, so no sentence is approved without being named.
 local-index-never-pushed	test	a local directory that is the top of its own git repository is committed and never pushed
 init-agents-always-mcp	test	`.mcp.json` always; `.cursor/mcp.json`, `.vscode/mcp.json` and `.gemini/settings.json` where that client's directory exists
+update-stays-out	test	It never runs in CI

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `ds update` updates `ds` and the `ds-resolve-*` plugins beside it to the newest release, in colour at a terminal: it prints the current version, checks, downloads the archive for the machine, verifies it against the release's `checksums.txt` before replacing anything, and says what changed. `--check` (or `--dry-run`) only reports, `--version vX.Y.Z` installs a named release (also to go back), `--force` reinstalls, and `--json` prints the result. A development build or a `go install` build is told how it is updated instead of being overwritten.
+- A release build keeps itself current: at most once a day, before a command run at a terminal, it checks for a newer release (waiting at most two seconds), installs it and runs the command on it. It stays out of CI, `--json`, piped output, `ds doctor` and the `lsp` and `mcp` servers; a failed check is silent and a failed install is one warning, after which the command runs on the current version. Turn it down with `DS_UPDATE=notify` (only say a release exists) or `DS_UPDATE=off`, for one run with `--no-update`, or for a whole team with the new `[update] mode` key in `.ds/config.toml`; the strictest setting wins.
+- The update settings show up where they are needed: the message before an automatic install names `DS_UPDATE=notify` and `DS_UPDATE=off`, the notify-mode notice says how to stop it, `ds update` ends with the mode in effect and what set it, `ds doctor` has an `update` row (mode, source, last check; `WARN` when a release is waiting), and `ds --help` now has an Environment section listing `DS_UPDATE`, `NO_COLOR` and `CI`.
+
 ## [0.1.6] - 2026-10-04
 
 A release of the `ds` binary and the `cli` module (0.1.6) and the library (0.1.4); the tier modules are unchanged. Remote defs can now bind whole blocks (GitHub issue 3), and the VS Code extension works in a real editor.

@@ -18,7 +18,7 @@ The examples run in order in one small Go repository, shown in [The example repo
 - [Reporting and publishing pages](#reporting-and-publishing-pages): [`report`](#ds-report), [`render`](#ds-render), [`export`](#ds-export-hugo), [`notify`](#ds-notify), [`github comment`](#ds-github-comment)
 - [Across repositories](#across-repositories): [`sync`](#ds-sync), [`publish`](#ds-publish)
 - [Editors and agents](#editors-and-agents): [`lsp`](#ds-lsp), [`mcp`](#ds-mcp)
-- [Maintenance](#maintenance): [`refresh`](#ds-refresh), [`rename`](#ds-rename), [`undo`](#ds-undo), [`repair`](#ds-repair), [`prune`](#ds-prune), [`version`](#ds-version), [`completion`](#ds-completion)
+- [Maintenance](#maintenance): [`refresh`](#ds-refresh), [`rename`](#ds-rename), [`undo`](#ds-undo), [`repair`](#ds-repair), [`prune`](#ds-prune), [`version`](#ds-version), [`update`](#ds-update), [`completion`](#ds-completion)
 
 ## Conventions
 
@@ -180,6 +180,8 @@ ds doctor
 
 No flags. Each row is `ok`, `WARN` or `FAIL`. Any `FAIL` makes it exit `2`; a `WARN` leaves the exit code alone, so a setup script can run it and stop on a broken repository.
 
+The last row, `update`, says whether this binary updates itself, which setting decided that (`default`, `DS_UPDATE`, or the repository's `[update] mode`), and what the last daily check found, from memory rather than the network: `WARN` when a newer release is waiting, which does not change the exit code. A build that no release made says so, and that it is updated by rebuilding or `go install` (see [ds update](#ds-update)).
+
 ```console
 $ ds doctor
 config          ok    spec 1.0, prefix ds
@@ -194,6 +196,7 @@ gitattributes   ok    acks.tsv merges without conflicts
 blocks          ok    0 bodies, 0 live
 notify          ok    no state yet (first notify will create .ds/notified.json)
 workspace       ok    none; this repository is its own workspace
+update          …
 ```
 
 A config that does not load is a `FAIL` row naming the key and line:
@@ -1579,6 +1582,98 @@ $ ds version --json
 ```
 
 `ds --version` prints the same as `ds version`, on one line.
+
+### ds update
+
+Updates `ds`, and the `ds-resolve-*` plugins installed beside it, to the newest release. The archive is checked against the release's `checksums.txt` before anything is replaced, and the plugins are replaced with the program so the two never come from different releases.
+
+```text
+ds update [--check | --dry-run] [--version vX.Y.Z] [--force] [--json]
+```
+
+<!-- doctest:skip downloads a release from GitHub, which needs the network and a release build -->
+```console
+$ ds update
+Current version: v0.1.5
+Checking for updates to latest version...
+↑ Updating ds v0.1.5 → v0.1.6
+✓ Downloaded and verified ds_v0.1.6_darwin_arm64.tar.gz  (14.8 MB, sha256 matches checksums.txt)
+✓ Installed ds and 6 plugins in /usr/local/bin
+✓ ds is now v0.1.6  what changed: https://github.com/ubgo/docsync/releases/tag/ds/v0.1.6
+Automatic updates: auto (default) · change with DS_UPDATE=notify|off or [update] mode in .ds/config.toml
+$ ds update
+Current version: v0.1.6
+Checking for updates to latest version...
+✓ ds is up to date (v0.1.6)
+Automatic updates: auto (default) · change with DS_UPDATE=notify|off or [update] mode in .ds/config.toml
+```
+
+At a terminal the marks and versions are coloured; `NO_COLOR` or `TERM=dumb` turns that off, and so does piping the output.
+
+| Flag | What it does |
+|---|---|
+| `--check`, `--dry-run` | Say whether a newer release exists and change nothing. |
+| `--version vX.Y.Z` | Install that release instead of the newest, which is how to go back to an older one. |
+| `--force` | Install even when already on that version (to repair a damaged install), or over a development build. |
+| `--json` | Print `current`, `latest`, `update_available`, `updated`, `installed` (the files written), `url` (the release notes), and `auto_update` and `auto_update_from` (the automatic mode and what set it). |
+
+Only a binary installed from a release archive (`install.sh`, `install.ps1`, or the archive by hand) replaces itself. A development build is told to rebuild, and a `go install` build is given the command that updates it:
+
+```console
+$ ds update
+ds: this is a development build (v…
+```
+
+When the directory holding `ds` is not writable, as `/usr/local/bin` usually is not, the error says so; run `sudo ds update`, or reinstall into a directory you own with `INSTALL_DIR=$HOME/.local/bin`.
+
+#### Automatic updates
+
+A release build also checks on its own, at most once a day, before a command run at a terminal. By default it installs a newer release first and then runs your command on it:
+
+<!-- doctest:skip needs a release build, a terminal and the network -->
+```console
+$ ds check
+↑ Updating ds v0.1.5 → v0.1.6 before running check
+  DS_UPDATE=notify to only be told, DS_UPDATE=off to stop · ds update --help
+✓ Updated to v0.1.6  what changed: https://github.com/ubgo/docsync/releases/tag/ds/v0.1.6
+12 ok
+```
+
+It is built not to get in the way:
+
+- It never runs in CI (when `CI` is set), under `--json`, when the output is piped or redirected, or before `update`, `version`, `doctor`, `help`, `completion`, `lsp` and `mcp`, so pipelines, scripts, editors and agents keep the version they started with.
+- The check waits at most two seconds. Offline, it is skipped silently and not retried until the next day.
+- If an install fails, you get one warning and your command runs on the version you have. That release is then announced, not downloaded again on every run.
+- What it remembers (when it last checked, the newest release, a release that failed to install) is in `docsync/update.json` under your user cache directory. Deleting it costs one extra check.
+
+To turn it down:
+
+| Scope | How | Effect |
+|---|---|---|
+| One run | `ds check --no-update` | No check, no install. |
+| You, everywhere | `export DS_UPDATE=notify` in your shell profile | Says once a day that a newer release exists; you run `ds update` when you choose. |
+| You, everywhere | `export DS_UPDATE=off` | Neither checks nor says anything. |
+| Everyone in a repository | `[update] mode = "notify"` or `"off"` in `.ds/config.toml` | The same, for every member; see [configuration](configuration.md#update). |
+
+The strictest setting wins: a repository can turn updating down but not up, so a team that pins one version stays on it whatever its members set.
+
+You do not have to remember any of this to find it:
+
+- The message printed before an automatic update names both settings: `DS_UPDATE=notify to only be told, DS_UPDATE=off to stop · ds update --help`. In notify mode the once-a-day notice ends with `DS_UPDATE=off to stop these`.
+- `ds update` ends with the mode in effect, what set it, and how to change it, for example `Automatic updates: notify (DS_UPDATE) · change with DS_UPDATE=notify|off or [update] mode in .ds/config.toml`. With `--json` the same is in `auto_update` and `auto_update_from`.
+- `ds doctor` has an `update` row with the mode, its source and the last check.
+- `ds --help` lists the environment variables `ds` reads:
+
+```console
+$ ds --help | head -7
+keep docs bound to the code they describe
+
+Environment:
+  DS_UPDATE  auto | notify | off: whether a release build installs a newer
+             release by itself before a command (default auto; see update --help)
+  NO_COLOR   any value turns colour off
+  CI         set by CI systems: check defaults to --frozen, and nothing updates itself
+```
 
 ### ds completion
 

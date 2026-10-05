@@ -34,7 +34,7 @@ go install github.com/ubgo/docsync/cli/cmd/ds-resolve-aws@latest   # only if you
 
 Or download an archive from the [releases page](https://github.com/ubgo/docsync/releases): the `ds/v…` releases carry `ds` and the resolver plugins in one archive for darwin/arm64, linux/amd64, linux/arm64, windows/amd64 and windows/arm64, with a `checksums.txt`.
 
-Check what you are running with `ds version`. On Windows, `ds:run` and `ds review --ai` run their commands under `sh`, which Git for Windows provides; see [Secrets and runs](secrets-and-runs.md) for naming another shell.
+Check what you are running with `ds version`, and update with `ds update`; an install from a release also updates itself once a day before a command run at a terminal, which `DS_UPDATE=off` turns off ([details](cli.md#ds-update)). On Windows, `ds:run` and `ds review --ai` run their commands under `sh`, which Git for Windows provides; see [Secrets and runs](secrets-and-runs.md) for naming another shell.
 
 ## 2. Initialise the repository
 
@@ -110,6 +110,7 @@ gitattributes   ok    acks.tsv merges without conflicts
 blocks          ok    0 bodies, 0 live
 notify          ok    no state yet (first notify will create .ds/notified.json)
 workspace       ok    none; this repository is its own workspace
+update          …
 ```
 
 ## 3. Define your first blocks
