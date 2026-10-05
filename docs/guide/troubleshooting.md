@@ -75,6 +75,7 @@ It exits non-zero when any row is `FAIL`, so a setup script can run it as a gate
 | `gitignore` | `.ds/.gitignore` misses machine-local files, which would then be committed | add the lines it names; never `ds init --force` |
 | `gitattributes` | `acks.tsv merge=union` is missing, so acks on two branches conflict at merge | add the line it names |
 | `blocks` | how many stored block bodies are still needed | `ds prune --dry-run` shows what could go |
+| `update` | whether this binary updates itself, which setting decided it, and what the last daily check found; `WARN` when a newer release is waiting | `ds update`, or let the next automatic update install it; see [ds update](cli.md#ds-update) |
 
 The two housekeeping rows look like this when a repository predates them:
 
@@ -705,6 +706,12 @@ removed nothing (--dry-run)
 ```
 
 **My Go program reports drift that `ds check` does not.** The program extracts with different tiers than the `ds` that wrote the ledger, so the same code hashes differently. Register the structured and tree-sitter tiers; see [Using docsync as a Go library](library.md#register-the-same-tiers-as-the-binary-that-wrote-the-ledger).
+
+**`ds` updated itself before my command.** A release build checks once a day, at a terminal, and installs a newer release before running the command. To be told instead, set `DS_UPDATE=notify` in your shell profile; to stop it, `DS_UPDATE=off`; for one run, `--no-update`; for everyone in a repository, `[update] mode = "notify"` or `"off"` in `.ds/config.toml`. To go back to the release you had, `ds update --version vX.Y.Z`.
+
+**An automatic update failed.** The warning names the cause, usually a directory you cannot write such as `/usr/local/bin`; the command ran on the version you have, and that release is now only announced, not retried. Run `sudo ds update`, or reinstall into a directory you own with `INSTALL_DIR=$HOME/.local/bin`.
+
+**`ds` never updates itself.** It does not in CI, under `--json`, when output is piped, in a `go install` or development build, or when `DS_UPDATE` or the repository's `[update] mode` turns it down. The `update` row of `ds doctor` shows the mode in effect and which setting decided it; CI, `--json` and piped output are skipped whatever the mode.
 
 **Which build am I running?** `ds version` prints the version, the commit it was built from, and whether that tree had uncommitted changes.
 

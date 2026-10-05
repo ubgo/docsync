@@ -53,7 +53,7 @@ Without one, the release installer downloads the prebuilt binary and checks it a
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | INSTALL_DIR=$HOME/.local/bin sh
 ```
 
-Pin a release in CI with `@v0.1.7` (Go) or `VERSION=v0.1.7` (installer) if you do not want `latest` to change under you.
+Pin a release in CI with `@v0.1.7` (Go) or `VERSION=v0.1.7` (installer) if you do not want `latest` to change under you. A pipeline also keeps the version it installed: `ds` never updates itself when `CI` is set, which every major CI system does, or when its output is not a terminal ([ds update](cli.md#ds-update)).
 
 ## Frozen by default under CI
 
