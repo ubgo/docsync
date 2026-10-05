@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-05
+
+A release of the `ds` binary and the `cli` module (0.1.7) and the library (0.1.5, which adds the `[update]` config key); the tier modules are unchanged. `ds` can now update itself.
+
 ### Added
 
 - `ds update` updates `ds` and the `ds-resolve-*` plugins beside it to the newest release, in colour at a terminal: it prints the current version, checks, downloads the archive for the machine, verifies it against the release's `checksums.txt` before replacing anything, and says what changed. `--check` (or `--dry-run`) only reports, `--version vX.Y.Z` installs a named release (also to go back), `--force` reinstalls, and `--json` prints the result. A development build or a `go install` build is told how it is updated instead of being overwritten.

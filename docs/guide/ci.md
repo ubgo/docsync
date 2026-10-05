@@ -53,7 +53,7 @@ Without one, the release installer downloads the prebuilt binary and checks it a
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | INSTALL_DIR=$HOME/.local/bin sh
 ```
 
-Pin a release in CI with `@v0.1.6` (Go) or `VERSION=v0.1.6` (installer) if you do not want `latest` to change under you.
+Pin a release in CI with `@v0.1.7` (Go) or `VERSION=v0.1.7` (installer) if you do not want `latest` to change under you.
 
 ## Frozen by default under CI
 
@@ -114,7 +114,7 @@ jobs:
 ```yaml
       - uses: ubgo/docsync/integrations/github@main
         with:
-          version: v0.1.6
+          version: v0.1.7
           args: --strict
 ```
 
@@ -221,7 +221,7 @@ The repository root has a `.pre-commit-hooks.yaml` with two hooks. Both run the 
 ```yaml
 repos:
   - repo: https://github.com/ubgo/docsync
-    rev: ds/v0.1.6
+    rev: ds/v0.1.7
     hooks:
       - id: docsync-impact
         verbose: true

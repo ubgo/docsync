@@ -16,7 +16,7 @@ It downloads the newest `ds` release for your machine, checks it against the rel
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | INSTALL_DIR=$HOME/.local/bin sh   # no sudo
-curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | VERSION=v0.1.6 sh                # a specific release
+curl -fsSL https://raw.githubusercontent.com/ubgo/docsync/main/install.sh | VERSION=v0.1.7 sh                # a specific release
 ```
 
 On Windows (PowerShell), which installs to `%LOCALAPPDATA%\ds` and adds it to your PATH:

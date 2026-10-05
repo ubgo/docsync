@@ -255,7 +255,7 @@ The minimal configuration is none, when `ds` is on `PATH` and the workspace fold
 ```yaml
 repos:
   - repo: https://github.com/ubgo/docsync
-    rev: ds/v0.1.6
+    rev: ds/v0.1.7
     hooks:
       - id: docsync-impact
         verbose: true
