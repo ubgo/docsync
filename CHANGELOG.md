@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-Fixes GitHub issue 4 and bugs 136 to 143: copies `ds refresh` cannot write are reported instead of staying `stale`, and directives are read only where they are real.
+## [0.1.8] - 2026-10-11
+
+A release of the `ds` binary and the `cli` module (0.1.8), the library (0.1.6) and `ext/structured` (0.1.2); `ext/treesitter` and `ext/records/sqlite` are unchanged. Fixes GitHub issue 4 and bugs 136 to 143: copies `ds refresh` cannot write are reported instead of staying `stale`, and directives are read only where they are real.
 
 ### Changed
 
