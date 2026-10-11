@@ -754,7 +754,7 @@ func (s *System) checkScan(res scan.Result, opts CheckOptions) (Report, error) {
 		Unreadable: unreadable(res.Skipped),
 		Opts: check.Options{
 			MaxLines: s.cfg.Include.MaxLines, FuzzyThreshold: s.cfg.Check.FuzzyThreshold,
-			UnackedIsWarning: s.cfg.Check.Unacked == config.UnackedWarn, Strict: opts.Strict,
+			UnackedIsWarning: s.cfg.Check.Unacked == config.UnackedWarn, Strict: opts.Strict, RepoMode: s.cfg.Include.Mode == config.IncludeRepo,
 			Wording:    s.cfg.Check.Sentence != config.SentencePosition,
 			OldContent: s.oldContent, BodyAt: s.bodyAt, CommentPrefixes: commentPrefixes,
 			TestResults: s.tests, CommitExists: s.commitExists, URLCheck: urlCheck, Resolve: resolver, StoredHashes: s.storedHashes, Local: s.localHook(),
@@ -785,23 +785,80 @@ func commentPrefixes(file string) []string {
 // fragment `refresh` maintains, closed by a line carrying the block's short
 // hash. src is the document's current bytes (the caller read them, so the
 // caller decides what a read failure means); it returns the new bytes and
-// how many regions changed. Nothing is written.
+// how many regions changed. Nothing is written. FencesReport also says
+// which copies could not be written and why.
 func (s *System) Fences(res scan.Result, doc string, src []byte) ([]byte, int) {
+	out, n, _ := s.fences(res, doc, src, true)
+	return out, n
+}
+
+// CopyNote is one thing refresh has to say about a repo-mode copy: that it
+// was skipped, and why, or that it was written with less than the code
+// (only the caption and link), and why.
+//
+// Fences used to drop every such reason. A copy it could not render kept
+// its old closer, check then called it `stale` with "run ds refresh" as the
+// fix, and refresh said "0 repo-mode copies rewritten" and nothing else, so
+// the one command named as the fix never said why it did nothing (bug 136).
+type CopyNote struct {
+	Doc  string
+	Line int
+	ID   string
+	// Skipped is true when no copy was written; false for a copy written
+	// with a caption only.
+	Skipped bool
+	Reason  string
+}
+
+// FencesReport is Fences plus a note for every copy in doc that was skipped
+// or written without its code, in line order. A skip is never silent: the
+// copy keeps whatever it held, and the note says why (bug 136).
+//
+// It follows [include] mode, where Fences writes every copy whatever the
+// mode. In repo mode every block-position citation gets a copy. In build
+// mode a page is rendered at build time and owes no copy, so none is
+// inserted, but a copy already in the page (left from repo mode, or pasted)
+// is still brought up to date. check compares such a copy with its block
+// in either mode, and before this a build-mode refresh never touched it, so
+// check reported it stale with "run ds refresh" as the fix, forever
+// (bug 141).
+func (s *System) FencesReport(res scan.Result, doc string, src []byte) ([]byte, int, []CopyNote) {
+	return s.fences(res, doc, src, s.cfg.Include.Mode == config.IncludeRepo)
+}
+
+// fences rewrites the copies in doc; insert adds one under every citation
+// that has none, and without it only copies already present are touched.
+func (s *System) fences(res scan.Result, doc string, src []byte, insert bool) ([]byte, int, []CopyNote) {
 	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
 	type edit struct {
 		start, end int // 1-based lines to replace; end < start means insert after start-1
 		text       []string
 	}
 	var edits []edit
+	var notes []CopyNote
+	defs := s.defsByID(res)
 	for _, ref := range res.Refs {
-		if ref.Pos.File != doc || ref.Verb != extract.VerbBlock || ref.Carrier != block.CarrierBlock {
+		if ref.Pos.File != doc || ref.Verb != extract.VerbBlock || ref.Carrier != block.CarrierBlock || (!insert && ref.Region == nil) {
 			continue
 		}
-		b, ok := s.LocateID(res, ref.ID)
+		// The def a copy is rendered from is the one check compares it with:
+		// the same env= and branch= resolution. Taking the first def of the
+		// id ignored env=, so a copy citing env=prod was rendered from (or,
+		// failing that, skipped for) another environment's block, and check
+		// reported it stale against prod forever (bug 137).
+		env := ref.Args[block.KeyEnv]
+		if env == "" {
+			env = s.cfg.Env.Default
+		}
+		b, ok := check.ResolveDef(defs[ref.ID], env, ref.Args[block.KeyBranch])
 		if !ok {
+			notes = append(notes, CopyNote{Doc: doc, Line: ref.Pos.Start, ID: ref.ID, Skipped: true, Reason: ref.ID + " is not defined" + forEnv(env)})
 			continue
 		}
-		frag, ok, _ := render.Fragment(check.WithPublishedBody(b, s.bodyAt), ref, s.cfg.Prefix, s.cfg.Include.MaxLines)
+		frag, ok, why := render.Fragment(check.WithPublishedBody(b, s.bodyAt), ref, s.cfg.Prefix, s.cfg.Include.MaxLines)
+		for _, n := range why {
+			notes = append(notes, CopyNote{Doc: doc, Line: ref.Pos.Start, ID: ref.ID, Skipped: !ok, Reason: n.Message})
+		}
 		if !ok {
 			continue
 		}
@@ -816,7 +873,7 @@ func (s *System) Fences(res scan.Result, doc string, src []byte) ([]byte, int) {
 		}
 	}
 	if len(edits) == 0 {
-		return src, 0
+		return src, 0, notes
 	}
 	// Apply bottom-up so earlier line numbers stay valid.
 	sort.SliceStable(edits, func(i, j int) bool { return edits[i].start > edits[j].start })
@@ -835,7 +892,15 @@ func (s *System) Fences(res scan.Result, doc string, src []byte) ([]byte, int) {
 	if bytes.Contains(src, []byte("\r\n")) {
 		eol = "\r\n"
 	}
-	return []byte(strings.Join(lines, eol)), len(edits)
+	return []byte(strings.Join(lines, eol)), len(edits), notes
+}
+
+// forEnv names the environment a lookup was for, when there was one.
+func forEnv(env string) string {
+	if env == "" {
+		return ""
+	}
+	return " for env=" + env
 }
 
 // RenderOptions tunes Render.

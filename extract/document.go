@@ -84,7 +84,10 @@ func (Document) Extract(p string, src []byte, prefix string) Found {
 	} else {
 		headings = asciidocHeadings(lines)
 	}
-	occs := scanComments(lines, st, prefix, &f)
+	// A def written as a bare line, outside any comment, is read too, so
+	// the scan reports it as damage, as the code tiers already did; it was
+	// silently ignored here (bug 143).
+	occs := withBareDefs(scanComments(lines, st, prefix, &f), lines, prefix)
 	carrier := carrierLines(occs)
 	for _, o := range occs {
 		if o.dir.Verb != VerbDef {

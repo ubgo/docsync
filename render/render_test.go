@@ -486,3 +486,45 @@ func TestRunOutputWithFences(t *testing.T) {
 		t.Errorf("output holding a three-backtick fence needs a longer one:\n%s", out)
 	}
 }
+
+// Every way Fragment declines or degrades a copy says why, in words refresh
+// prints as they are: past the end, not a range at all, a secret, no
+// snapshot for at=, and over the line cap (bugs 136 and 138). ok is false
+// exactly when nothing is written.
+func TestFragmentSaysWhyItSkips(t *testing.T) {
+	t.Parallel()
+	at := func(args map[string]string) block.Reference {
+		args["id"] = save.ID
+		return block.Reference{Verb: "block", ID: save.ID, Pos: block.Position{File: "d.md", Start: 3}, Carrier: block.CarrierBlock, Args: args}
+	}
+	for _, c := range []struct {
+		b    block.Block
+		args map[string]string
+		max  int
+		ok   bool
+		note string
+	}{
+		{save, map[string]string{"lines": "1-5"}, 40, false, "lines=1-5 is outside the block's 4 lines"},
+		{save, map[string]string{"lines": "5"}, 40, false, "lines=5 is outside the block's 4 lines"},
+		{save, map[string]string{"lines": "abc"}, 40, false, "lines=abc is not a line range (want a or a-b, counting from 1)"},
+		{save, map[string]string{"lines": "0-3"}, 40, false, "lines=0-3 is not a line range (want a or a-b, counting from 1)"},
+		{save, map[string]string{"lines": "3-2"}, 40, false, "lines=3-2 is not a line range (want a or a-b, counting from 1)"},
+		{secret, map[string]string{}, 40, false, secret.ID + " is a secret; ds:block refuses to render it"},
+		{save, map[string]string{"at": "deadbeef"}, 40, true, "no snapshot for " + save.ID + " at deadbeef; rendering the link only"},
+		{save, map[string]string{}, 2, true, save.ID + " renders 4 lines, over the cap of 2; cite it instead"},
+	} {
+		r := at(c.args)
+		r.ID, r.Args["id"] = c.b.ID, c.b.ID
+		text, ok, notes := Fragment(c.b, r, "ds", c.max)
+		if ok != c.ok || len(notes) != 1 || notes[0].Message != c.note || notes[0].Line != 3 {
+			t.Errorf("%v: ok=%v notes=%+v, want ok=%v %q", c.args, ok, notes, c.ok, c.note)
+		}
+		if ok && strings.Contains(text, "```") {
+			t.Errorf("%v: a degraded copy carries code: %q", c.args, text)
+		}
+	}
+	// The last line of the block is in range.
+	if _, ok, notes := Fragment(save, at(map[string]string{"lines": "4-4"}), "ds", 40); !ok || len(notes) != 0 {
+		t.Errorf("lines=4-4 = %v %+v", ok, notes)
+	}
+}

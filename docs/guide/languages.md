@@ -51,6 +51,8 @@ extractors     ok    sql, python, javascript, tsx, typescript, go, hcl, toml, ya
 
 The syntax tiers parse the file with a real grammar, so a def binds exactly one declaration. The structured tiers parse YAML, TOML and HCL and bind a key. The `config` tier reads line-oriented config. The `code` tier is a heuristic for every other language with a comment syntax: it recognises common declaration shapes, matches braces, and otherwise binds up to the next blank line. The `text` tier reads everything else.
 
+Where a link `[x](ds:…)` is read: in a comment it is a citation in every tier, YAML, TOML and HCL included, because a comment is the primary carrier. In code, a link inside a string literal is a citation too, because strings hold prose such as help text, errors and UI text; a whole-line directive inside a string is not one, because that is fixture or example text. The values of a parsed YAML, TOML or HCL file are data and are not read for links. In JSON, CSV and `go.sum` nothing is a citation (see [below](#json-csv-and-other-files-without-comments)).
+
 ## Two ways to create a def
 
 `ds def` writes the directive for you, in the file's own comment syntax, and prints the new id. Use `--dry-run` to see where it would go.
@@ -1417,6 +1419,8 @@ doc/bad.json:2  delete (no comment syntax here)
 ```
 
 `ds repair --apply` makes the fix: the line is deleted from a file with no comment syntax, and commented out in a file that has one.
+
+A `ds:` link inside one of these files is data, not a citation. A JSON string such as `"note": "we cite it with [Port](ds:cfg?id=…)"` can only be a value that mentions docsync (a note, a fixture, a memory exported by another tool), so `ds check` ignores it, as the editor extension does. Only a whole-line directive is reported, as above, because that line breaks the file.
 
 ## Images and other whole files
 

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Fixes GitHub issue 4 and bugs 136 to 143: copies `ds refresh` cannot write are reported instead of staying `stale`, and directives are read only where they are real.
+
+### Changed
+
+- SPEC "Reading directives" now says where each kind of directive is read, as a table. A link `[x](ds:…)` in a comment or in a string literal in code is a citation, because strings hold prose such as help text, errors and UI text; a whole-line directive is one only in a comment, never in a string, where it is fixture text; a link in bare code is still read. The reasons are in SPEC §36. Behaviour in code files is unchanged; the formats with no comment syntax and the YAML, TOML and HCL comments changed as listed under Fixed.
+
+### Fixed
+
+- Repo mode: a `ds:block` whose `lines=` range runs past the end of the block (or is not a range, such as `lines=abc` or `lines=5-3`) is now reported by `ds check` as `range`, an error in repo mode, with "adjust lines=" as the fix. It used to be reported as `stale` with "run `ds refresh`" as the fix, forever: refresh could not write that copy, said only "0 repo-mode copies rewritten", and `ds ack` did not clear it. A bad range is reported before a changed block, because no refresh can bring the copy up to date until the range fits. A block that shrinks under a citation that used to fit reports the same (bug 136, GitHub issue 4).
+- `ds refresh` never skips a repo-mode copy silently. It prints `skipped <doc>:<line>: <reason>` for each copy it could not write and a `N repo-mode copies skipped` line, and `link only <doc>:<line>: <reason>` for a copy written with only its caption and link (a block over `max_lines`, an `at=` with no snapshot); `--dry-run` prints the same. The existing count lines are unchanged. The library has `System.FencesReport`, which returns the same notes as `CopyNote` values; `Fences` is unchanged (bug 136).
+- Repo mode: a copy citing `env=` was rendered from the first def of the id rather than the one its environment names, so an `env=prod` copy could not be written and was reported `stale` forever. Refresh now resolves the def exactly as `check` does (bug 137).
+- A `ds:` link inside a JSON, CSV or `go.sum` file (for example a note stored as a JSON string that describes how a repository cites its code) was read as a citation and reported `broken`. These formats have no comment syntax and no prose, so such a link is data; `check` and the editor extension now ignore it. A whole-line directive in them is still reported as damage (bug 139).
+- A whole-line `ds:block` outside a comment was read as a citation in JSON, CSV and `go.sum`, and in files that take `#` or `//` comments but are read line by line (`.gitignore`, `.dockerignore`, `go.mod`, `go.work`, `.vue`, `.svelte`). It cites nothing there and is now reported as `directive is not inside a comment`, as a whole-line `ds:def` already was (bug 140).
+- Build mode: a repo-mode copy already in a page (left from repo mode, or pasted) was compared with its block and reported `stale` with "run `ds refresh`" as the fix, but refresh only touched copies in repo mode. `ds refresh` now brings such copies up to date in build mode too, and names any it cannot write; it still adds none, and says nothing about copies when a page holds none (bug 141).
+- A link-form directive inside a YAML, TOML or HCL comment (`# see [8081](ds:cfg?id=…)`) cited nothing: those tiers read only the comment form of a directive. A comment is the primary carrier, so it is now a citation there, as it already was in INI, shell and code comments. Text outside comments is read as before (bug 142).
+- A `ds:def` written as a bare line outside a comment was silently ignored in INI, env, properties, HTML, Markdown, AsciiDoc and reStructuredText files; it is now read and reported as `directive is not inside a comment`, as the code tiers already did, so `ds repair` can comment it (bug 143).
+- A block-position `ds:block` of a secret, which never renders, is reported as a `problem` naming a carrier that works (`ds:cfg` or `ds:chain`). In repo mode it used to be `stale` forever; in build mode it passed silently and rendered nothing (bug 138).
+
 ## [0.1.7] - 2026-10-05
 
 A release of the `ds` binary and the `cli` module (0.1.7) and the library (0.1.5, which adds the `[update]` config key); the tier modules are unchanged. `ds` can now update itself.

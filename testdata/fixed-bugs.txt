@@ -116,3 +116,11 @@
 133 a remote def could not bind a code symbol: pick=symbol: was unsupported
 134 a multi-line value pick said "use ds:block" even when the citation already was ds:block
 135 pick=yaml: split keys at the first colon, so namespaced Taskfile tasks (state:bootstrap) could not be picked
+136 repo mode: a lines= range past the block's end was reported stale with "run ds refresh" forever, while refresh skipped the copy without saying why (GitHub issue 4)
+137 repo mode: refresh rendered a copy from the first def of an id and ignored env=, so an env=prod copy was skipped and reported stale forever
+138 repo mode: a ds:block of a secret was reported stale with "run ds refresh" forever, though refresh never renders a secret
+139 a ds: link inside a JSON string (or a CSV cell) was read as a citation and reported broken; formats with no comment syntax carry no citations
+140 a whole-line ds:block outside a comment was read as a citation in JSON, CSV, go.sum, and the comment-carrying files the text tier reads (.gitignore, .dockerignore, go.mod, go.work, .vue, .svelte), not reported as damage
+141 build mode: a copy already in a page was compared and reported stale with "run ds refresh" forever, while refresh never touched copies in build mode
+142 the YAML, TOML and HCL tiers ignored a link-form directive inside a comment, which the INI, shell and code tiers read
+143 a ds:def written as a bare line outside a comment was silently ignored in INI, env, properties, HTML, Markdown, AsciiDoc and reStructuredText, not reported as damage

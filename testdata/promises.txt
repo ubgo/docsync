@@ -164,3 +164,5 @@ ack-scope-named	test	An id with neither `--doc` and `--line` nor `--all` is refu
 local-index-never-pushed	test	a local directory that is the top of its own git repository is committed and never pushed
 init-agents-always-mcp	test	`.mcp.json` always; `.cursor/mcp.json`, `.vscode/mcp.json` and `.gemini/settings.json` where that client's directory exists
 update-stays-out	test	It never runs in CI
+repo-copy-not-stale	test	never as `stale`, whose fix is a refresh that would change nothing
+string-holds-no-directive	test	because strings in code hold prose but never directives

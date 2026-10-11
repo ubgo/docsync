@@ -149,7 +149,7 @@ This is every state in `check.StateValues`, with the severity and fix the code a
 | `broken` | error | the id is not defined (with "did you mean" for near misses), was deleted, has no def for the cited environment, its repo left the workspace, its `at=` commit does not exist, or a frozen run has no record of it | fix the id, re-add the def, or `ds sync` for a foreign id |
 | `pick failed` | error | a def's `pick=` or remote `file=` yields nothing, or many lines where one is needed | fix the def's `file=` or `pick=` |
 | `too-large` | error | a block-position citation would render more than `include.max_lines` (default 40) | add `lines=a-b`, or cite it as a link |
-| `range` | warning | `lines=` reaches past the block's end, or `ds:cfg` points at a multi-line block | adjust `lines=`, or use `ds:block` or a narrower `pick=` |
+| `range` | warning (error for a repo-mode copy) | `lines=` reaches past the block's end or is not a range (`abc`, `0-3`, `5-3`), or `ds:cfg` points at a multi-line block; in repo mode it is an error, because `ds refresh` cannot write that copy, and it is reported before any `stale` | adjust `lines=`, or use `ds:block` or a narrower `pick=` |
 | `expired` | error | a `ds:claim` is past `reviewed` plus `expires`, a claim's `about=` id changed, or a page is past `review_every` | reread it, then `ds ack --doc D --line N` (claim) or `ds ack --doc D` (page) |
 | `sunset` | error | a citation of a def past its `sunset=` date | remove the citation |
 | `deprecated` | info | a citation of a def past its `deprecated=` date | plan to move the citation |
@@ -162,7 +162,7 @@ This is every state in `check.StateValues`, with the severity and fix the code a
 | `orphan` | warning | a page's `covers` names an id that is not defined | remove it from `covers`, or restore the def |
 | `uncovered` | info | a def nothing cites or covers | cite it, or remove the def |
 | `unknown` | warning (error with `--strict`) | an unknown verb or key in a directive | fix the spelling, or register the verb |
-| `problem` | error | the scan could not use a directive: a duplicated id, a bare directive outside a comment, a missing key, a def in a generated file | as the message says; see below |
+| `problem` | error | the scan could not use a directive: a duplicated id, a bare directive outside a comment, a missing key, a def in a generated file; or a block-position `ds:block` of a secret, which never renders | as the message says; see below |
 | `dead` | error | a `ds:url` returned 400 or above, or a status other than its `expect=` | update or remove the link |
 | `retitled` | warning | a `ds:url` page title no longer contains `title=` | confirm it is still the right page |
 | `url moved` | warning | a `ds:url` redirects | update the link |
@@ -171,7 +171,7 @@ This is every state in `check.StateValues`, with the severity and fix the code a
 | `out of sync` | error | with `--resolve`, a copy's hash differs from its truth's | run the sync job, then ack the runbooks |
 | `stale copy` | error | with `--resolve`, after the truth was rotated, a copy still holds its previous value | run the sync job of that copy |
 | `rotated` | warning | with `--resolve` and `store_hash`, the truth changed since its hash was stored | run the syncs of its copies, ack the runbooks |
-| `stale` | error | a repo-mode copy was rendered from an older version of its block | `ds refresh` |
+| `stale` | error | a repo-mode copy was rendered from an older version of its block | `ds refresh`; if refresh says it skipped the copy, see below |
 | `tampered` | error | a repo-mode copy was edited by hand | edit the source block, then `ds refresh` |
 | `unscanned` | error | a file that held citations or blocks could not be read this time (too large, a line too long outside prose, binary, unreadable); its last state is kept | make it readable, or raise the `[scan.limits]` value named |
 
@@ -452,6 +452,22 @@ cd ../repo
 ### "I ran ds scan and the finding is still there"
 
 That is by design. `ds scan` records where blocks are; it never approves anything. A citation is measured against the hash it was acked at, or the hash it had when first scanned if nobody has acked it, so rescanning cannot make a change disappear. Read the sentence, then `ds ack <id> --doc <doc> --line <n> --note '…'`, or edit it first. Several identical changes can be acked as one decision with `ds triage` and `ds triage --ack-group N`. Reverting the code also clears the finding, because the hash returns to the acked one.
+
+### ds refresh says it skipped a copy
+
+In repo mode, and in build mode for a copy already in a page, `ds refresh` names every copy it could not write, with the reason, and leaves that copy as it was:
+
+```text
+0 repo-mode copies rewritten
+skipped docs/part.md:3: lines=4-7 is outside the block's 6 lines
+1 repo-mode copies skipped
+```
+
+The reasons are a `lines=` range past the block's end or not a range at all, an id that is not defined (or not for the cited `env=`), and a `ds:block` of a secret, which never renders. `ds check` reports each as `range`, `broken` or `problem`, with a fix that works; `ds ack` clears none of them, because nothing changed that a reader could approve. Fix the directive and run `ds refresh` again. Releases up to 0.1.7 reported these copies as `stale` with "run `ds refresh`" as the fix, which never changed anything. A copy written with only its caption and link (a block over `max_lines`, an `at=` with no snapshot) is listed as `link only`; `check` reports the first as `too-large`.
+
+### A link in a JSON or CSV file is not a citation
+
+A `[x](ds:…)` link inside a JSON, CSV or `go.sum` file is data, not a citation, so `ds check` does not report it and the editor extension does not hover it. These formats have no comments and no prose, so such a link can only sit in a string value or a cell: a note, a fixture, or a memory another tool exported that mentions docsync. Cite the value from a page instead, with a remote def (`file=` and `pick=`) if the value lives in the JSON file. A whole-line `ds:block` or `ds:def` in one of these files breaks the file and is reported as `directive is not inside a comment`.
 
 ### A directive in a file that has no comments
 

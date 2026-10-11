@@ -120,7 +120,7 @@ Why glued: `// ds is the datastore` must never parse as a directive. Why no posi
 
 #### 7.1 Carriers: where a directive may sit
 
-The same text, byte for byte, inside whatever the host already treats as a comment, or inside a markdown link target as a URL scheme with the arguments as a query string.
+The same text, byte for byte, inside whatever the host already treats as a comment, or inside a markdown link target as a URL scheme with the arguments as a query string. The link form is read wherever prose is: in prose, in a comment, and in a string literal in code; the whole-line form only in a comment, or as a line of its own in plain text. "Reading directives" in Part VII has the full table.
 
 | Host | Written as | What `ds:def` binds to |
 |---|---|---|
@@ -250,7 +250,7 @@ As a link: a citation, rendered as a permalink with hover preview; the sentence 
 | `title`, `strip=comments`, `collapse=true`, `lang` | | rendering |
 | `label` | | sub-claim name, only to make ack messages readable |
 
-Copies: **the repository never holds a copy of a block.** Rendering happens at build from live source. Rendered blocks above `include.max_lines` (default 40) warn "too large, cite it instead." Snapshots are the one deliberate copy and any size is allowed. `include.mode = repo` is an opt-in for teams whose docs are read raw on GitHub: `ds refresh` writes a fence between `<!-- ds:block … -->` and `<!-- /ds:block -->` and `check` reports hand edits as `tampered` and drift as `stale`. Nobody types a fence by hand in either mode.
+Copies: **the repository never holds a copy of a block.** Rendering happens at build from live source. Rendered blocks above `include.max_lines` (default 40) warn "too large, cite it instead." Snapshots are the one deliberate copy and any size is allowed. `include.mode = repo` is an opt-in for teams whose docs are read raw on GitHub: `ds refresh` writes a fence between `<!-- ds:block … -->` and `<!-- /ds:block -->` and `check` reports hand edits as `tampered` and drift as `stale`. A copy refresh cannot write (a `lines=` that does not fit the block, an id with no def for the cited environment, a secret) is skipped with its reason printed, and `check` reports it as `range`, `broken` or `problem`, never as `stale`, whose fix is a refresh that would change nothing. In build mode a fence already in a page (left from repo mode) is still compared, so `refresh` keeps it current too, and adds none. Nobody types a fence by hand in either mode.
 
 Why the link is generated: a hand-written `#L40-L58` points at the wrong lines after any edit above it, a commit permalink points at old code forever, a file link cannot name a function, and none of them can report that the code behind them changed.
 
@@ -597,7 +597,7 @@ Incremental by default: a file whose bytes did not change is not re-extracted, a
 | `broken` | id not found, no hash match, or `at=` commit missing, or repo removed from workspace | error | fix the reference or the def |
 | `pick failed` | the def's extractor yields nothing, or many lines where one is required | error | fix the def |
 | `too-large` | a rendered block over the line cap | error | `lines=` or cite |
-| `range` | a fragment beyond the block's current length | warning | fix `lines=` |
+| `range` | a fragment beyond the block's current length, or a `lines=` that is not a range | warning, error for a repo-mode copy (refresh cannot write it) | fix `lines=` |
 | `stale` / `tampered` | repo-mode fence differs from source / was hand-edited | error | `ds refresh` |
 | `expired` | a claim or a page past `expires` or `review_every` | error | review, then `ds ack --doc D --line N` renews a claim and `ds ack --doc D` records a page review |
 | `sunset` | a cite of a def past its `sunset` date | error | remove the cite |
@@ -732,7 +732,7 @@ Every command finds the repository root the way git finds `.git`: the nearest di
 | `ds impact [--staged] [--json]` | before committing: which sentences, pages, repos, and owners this change will flag |
 | `ds ack <id>… [--doc] [--line] [--group N] [--note] [--all] [--delegated-by human] [--dry-run]` | records approval against the current hash and sentence, with actor kind; `--dry-run` lists each sentence it would approve, quoted, and at which hash, and records nothing |
 | `ds triage [--ack-group N --note …]` | groups `unacked` findings by diff similarity |
-| `ds refresh [--dry-run]` | updates ledger locations for moved blocks; in repo mode rewrites fences |
+| `ds refresh [--dry-run]` | updates ledger locations for moved blocks; in repo mode rewrites fences, in build mode rewrites only fences already in a page, and names each copy it skipped or wrote with only a link, with the reason |
 | `ds render <doc> [--at tag-or-sha]` | expands directives to plain markdown with permalinks; `--at` renders the doc consistent with that commit |
 | `ds status [--json]` | per-reference state for renderers to paint freshness on the page |
 | `ds facts [--json] [--cited-by doc]` | every one-line def with its current value and citers |
@@ -1248,11 +1248,23 @@ Someone rotates in 1Password and forgets the sync. Nightly `check --resolve` rep
 
 Each line is a rule the implementation follows and a fixture in the suite.
 
-**Reading directives.** A directive inside a string, a code fence, an indented code block, or inline code is not one. Strings exist only in code: in markdown, HTML, AsciiDoc and reStructuredText a quote is punctuation, so an apostrophe before a trailing directive does not hide it. A continued directive is read the same way by `check` and `render`, keys from every line. One directive per comment. If comments already use `ds:`, change the prefix; `check --explain` prints every match. Double quotes for spaces, single quotes for values containing double quotes, a continuation line for both; no escapes. Ids are lowercase ASCII.
+**Reading directives.** A whole-line directive (`// ds:def …`, `<!-- ds:block … -->`) and a link-form directive (`[x](ds:…)`) are read in different places, because strings in code hold prose but never directives:
+
+| Where it sits | Whole-line directive | Link `[x](ds:…)` |
+|---|---|---|
+| a comment, in any tier | a directive | a citation |
+| a string literal in code | not one: fixture or example text | a citation: help text, errors, UI and JSX text are prose |
+| bare code, outside any comment or string | not one; a `ds:def` there is reported as `directive is not inside a comment` | read as a citation; `[x](ds:…)` is not valid code in any language docsync ships (§36) |
+| prose: markdown, HTML, AsciiDoc, reStructuredText, plain text | a directive in the format's own carrier (an HTML comment, a bare line in plain text) | a citation |
+| a code fence, an indented code block, inline code | not one | not one |
+| a format with no comment syntax: JSON, CSV, `go.sum` | damage, reported as `directive is not inside a comment` | data, not a citation: it can only sit in a string or a cell |
+| a value in a parsed YAML, TOML or HCL file | not one | data; only the file's comments are read |
+
+Strings exist only in code: in markdown, HTML, AsciiDoc and reStructuredText a quote is punctuation, so an apostrophe before a trailing directive does not hide it. A continued directive is read the same way by `check` and `render`, keys from every line. One directive per comment. If comments already use `ds:`, change the prefix; `check --explain` prints every match. Double quotes for spaces, single quotes for values containing double quotes, a continuation line for both; no escapes. Ids are lowercase ASCII.
 
 **Finding the block.** Decorators, attributes, and doc comments between the directive and the code are skipped; in Python and Go the directive may sit anywhere in the leading comment block. Nested declarations bind to the innermost, recorded as `Class.method`. Frontmatter is never part of a block. A markdown section ends at the next heading of level ≤ the defining one, so skipped levels are handled. Nothing to bind to is an error. Generated paths refuse minting.
 
-**What changed.** Hashes are computed after normalization and, where a grammar exists, over the token stream, so formatters never cry wolf. Comment-only edits flag `frozen` and not `stable`. A fragment beyond the block's length renders what exists and reports `range`. `rewritten?` uses a diff ratio of 0.8 or higher.
+**What changed.** Hashes are computed after normalization and, where a grammar exists, over the token stream, so formatters never cry wolf. Comment-only edits flag `frozen` and not `stable`. A fragment beyond the block's length renders nothing and reports `range`; in repo mode that is reported before `stale`, since no refresh can write the copy until the range fits. `rewritten?` uses a diff ratio of 0.8 or higher.
 
 **Ids and branches.** A duplicated `def` line is a hard error; `ds def --fix` re-mints the second and prints old→new; the tool never guesses which is original. Prefix collisions are allowed; `report` lists busy prefixes. Ids ignore branches; the index keeps one row per published branch; `branch=` selects. A published branch is a def of its own everywhere a def is compared — change tracking, snapshot staleness, the editor — so publishing a feature branch never makes main look changed or behind; and `assert=` reads the default branch's published test run, never a branch's, so a red feature branch cannot fail main's citations. A branch's published citations are likewise not the default branch's: upstream `check` does not see them, and only the `undo` guard, where a def still cited on an open branch must not be stranded, counts them.
 
@@ -1333,6 +1345,14 @@ Questions that were open during design and how they were closed.
 | library and CLI | dependency-free root module, heavy tiers in `ext/` sub-modules, CLI and MCP as separate modules, every CLI operation an exported function | modelled on ubgo/dotenv; lets any Go project embed docsync or ship a custom binary |
 | plugins | Go capability interfaces plus a JSON process protocol | Go for speed and typing, processes for any language |
 | who writes files | never the library; it returns `Edit` values and the caller applies them | no hidden state, testable without a filesystem |
+| a `ds:` link inside a string literal in code | a citation | strings hold prose such as help text, errors, UI and JSX text, and a missed citation drifts silently while a false one fails loudly and is fixed with one exclude line, so for a drift tool the silent miss is the worse failure |
+| a whole-line directive inside a string | not a directive | it is fixture or example text, which is what the rule "a directive inside a string is not one" was written to protect |
+| a `ds:` link in bare code, outside any comment or string | read as a citation, as before | `[x](ds:…)` is not valid code in any shipped language and a corpus count found none, while excluding it needs a lexer per language that knows multi-line strings and docstrings, and getting that wrong would drop real citations silently |
+| links and whole-line directives in JSON, CSV and `go.sum` | a link is data, a whole-line directive is damage (bugs 139 and 140) | these formats have no comments and no prose, so anything in them that looks like a directive is a value or a broken line |
+| a link inside a YAML, TOML or HCL comment | a citation (bug 142) | a comment is the primary carrier (§7.1), in every tier alike |
+| a repo-mode copy `ds refresh` cannot write | named by refresh with its reason, reported by check as `range`, `broken` or `problem`, an error where a copy is owed (issue 4, bugs 136 to 138) | a skip nobody is told about left check saying "run ds refresh" forever, a fix that changed nothing |
+| copies in build mode | refresh updates copies already in a page and adds none (bug 141) | check compares any copy a page holds, in either mode, so refresh must be able to bring it up to date, but a build-mode page is rendered at build time and owes no new copy |
+| how bug classes are tested | a generated copy combination matrix and a generated directive placement property, beside the example tests | example tests cover what their author imagined, and both bug classes were combinations of features and positions nobody had pictured |
 
 ### 37. Architecture: library first, CLI second, plugins everywhere
 

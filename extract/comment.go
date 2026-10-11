@@ -467,6 +467,16 @@ func scanLinks(lines []string, prefix string, f *Found, sentenceOf func(line str
 	return out
 }
 
+// ScanLinks is scanLinks for a tier outside this package: it finds the
+// link-form directives in lines and returns them as references, recording
+// a malformed one as a Problem on f. A tier that should read links only in
+// its comments passes the comment text of each line and "" for the rest,
+// keeping line numbers; ext/structured does that for YAML, TOML and HCL
+// (bug 142). One link grammar, so no tier can drift from the others.
+func ScanLinks(lines []string, prefix string, f *Found, sentenceOf func(line string, col int) string) []Ref {
+	return scanLinks(lines, prefix, f, sentenceOf)
+}
+
 // splitLines splits file bytes into lines with CRLF tolerated. A trailing
 // newline does not produce an empty last line.
 func splitLines(src []byte) []string {

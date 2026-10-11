@@ -335,7 +335,7 @@ max_line_chars = 4000
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `mode` | `"build"` or `"repo"` | `"build"` | `build`: the code is inserted only when the page is rendered (`ds render`, the site plugins). `repo`: `ds refresh` writes the code into the page between `<!-- ds:block … -->` and `<!-- /ds:block -->`, for docs read raw on GitHub, and `check` reports the copy as `stale` when the code changes and `tampered` when someone edits it by hand. |
+| `mode` | `"build"` or `"repo"` | `"build"` | `build`: the code is inserted only when the page is rendered (`ds render`, the site plugins). `repo`: `ds refresh` writes the code into the page between `<!-- ds:block … -->` and `<!-- /ds:block -->`, for docs read raw on GitHub, and `check` reports the copy as `stale` when the code changes and `tampered` when someone edits it by hand. A copy `refresh` cannot write (a `lines=` that does not fit, a secret) is named by `refresh` and reported by `check` as an error of its own kind. |
 | `max_lines` | integer | `40` | A rendered block longer than this is a `too-large` error; show a fragment with `lines=a-b` or cite it with a link instead. |
 
 ```toml

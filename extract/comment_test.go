@@ -254,3 +254,38 @@ func TestCodeTiersReadBareDefs(t *testing.T) {
 		t.Errorf("ScanCode missed a bare def: %+v", defs)
 	}
 }
+
+// ScanLinks is the link grammar for tiers outside this package: it keeps
+// line numbers when given "" for lines it should not read, and records a
+// malformed link as a problem (bug 142).
+func TestScanLinksExported(t *testing.T) {
+	t.Parallel()
+	var f Found
+	refs := ScanLinks([]string{"", "see [x](ds:cfg?id=port-k7m2p4xq)", "bad: ds:block?id=x&id=y"}, "ds", &f, nil)
+	if len(refs) != 1 || refs[0].Reference.Pos.Start != 2 || refs[0].Reference.ID != "port-k7m2p4xq" {
+		t.Errorf("refs = %+v", refs)
+	}
+	if len(f.Problems) != 1 || f.Problems[0].Pos.Start != 3 {
+		t.Errorf("problems = %+v", f.Problems)
+	}
+}
+
+// A def written as a bare line outside any comment is read by the config,
+// document and markdown tiers too, as a bare-line def, so the scan reports
+// it; those tiers ignored it, though the code tier read it (bug 143).
+func TestBareDefReadByEveryCommentTier(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		ex   Extractor
+		file string
+	}{{Config{}, "a.ini"}, {Document{}, "a.adoc"}, {Markdown{}, "a.md"}} {
+		f := tc.ex.Extract(tc.file, []byte("ds:def id=port-k7m2p4xq\nport: 8081\n"), "ds")
+		if len(f.Defs) != 1 || f.Defs[0].Block.Carrier != block.CarrierBareLine {
+			t.Errorf("%s: defs = %+v", tc.file, f.Defs)
+		}
+	}
+	// In markdown a fenced example is code, not damage.
+	if f := (Markdown{}).Extract("b.md", []byte("```\nds:def id=port-k7m2p4xq\n```\n"), "ds"); len(f.Defs) != 0 {
+		t.Errorf("fenced example read as a def: %+v", f.Defs)
+	}
+}

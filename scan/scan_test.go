@@ -1012,3 +1012,109 @@ func TestRemoteSymbolPick(t *testing.T) {
 	}
 	t.Errorf("without a resolver, symbol: must be reported unsupported: %v", res.Problems)
 }
+
+// A format with no comment syntax (JSON, CSV, go.sum) has no prose either:
+// every word of a valid file is a string, a cell or syntax. A link-form
+// directive found in one is data that happens to mention docsync -- a lore
+// memory describing how a repository cites its code -- never a citation,
+// and reading it as one reported `broken` for an id written as `...`
+// (bug 139). A whole-line `ds:block` there was still read as a citation and
+// not reported, though the same line as a `ds:def` was damage (bug 140): it
+// is damage too now. The same link in plain text, markdown or a code comment
+// is still a citation.
+func TestLinkInDataFormatIsNotACitation(t *testing.T) {
+	t.Parallel()
+	link := "cited with [`Name`](ds:block?id=...) and [8081](ds:cfg?id=port-k7m2p4xq)"
+	for name, tc := range map[string]struct {
+		file, src string
+		want      int
+		damage    bool
+	}{
+		"json string":          {"m.json", "{\n  \"body\": \"" + link + "\"\n}\n", 0, false},
+		"jsonl":                {"m.jsonl", "{\"body\": \"" + link + "\"}\n", 0, false},
+		"csv cell":             {"d.csv", "note\n\"" + link + "\"\n", 0, false},
+		"json bare block line": {"m.json", "ds:block id=port-k7m2p4xq\n{\"a\": 1}\n", 0, true},
+		"go.sum bare block":    {"go.sum", "ds:block id=port-k7m2p4xq\n", 0, true},
+		"plain text":           {"notes.txt", link + "\n", 2, false},
+		"plain text bare line": {"notes.txt", "ds:block id=port-k7m2p4xq\n", 1, false},
+		// .gitignore takes # comments but is read by the text tier, which
+		// took a bare line as its carrier (bug 140).
+		"gitignore bare block": {".gitignore", "ds:block id=port-k7m2p4xq\n*.log\n", 0, true},
+		// A type with no carrier rule cannot be judged, so it stays text.
+		"unknown type bare line": {"NOTES", "ds:block id=port-k7m2p4xq\n", 1, false},
+		"markdown":               {"d.md", link + "\n", 2, false},
+		"go comment":             {"a.go", "package a\n\n// " + link + "\n", 2, false},
+		"json bare def":          {"p.json", "ds:def id=a-k7m2p4xq\n{\"a\": 1}\n", 0, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fsys := fstest.MapFS{tc.file: file(tc.src)}
+			inc, _ := glob.CompileAll([]string{"**"})
+			res, err := Scan(context.Background(), fsys, Options{Prefix: "ds", Include: inc})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(res.Refs) != tc.want {
+				t.Errorf("refs = %+v, want %d", res.Refs, tc.want)
+			}
+			damage := false
+			for _, p := range res.Problems {
+				if errors.Is(p.Err, ErrBareDirective) && p.Pos.File == tc.file && p.Pos.Start == 1 {
+					damage = true
+				}
+			}
+			if damage != tc.damage {
+				t.Errorf("damage reported = %v, want %v: %+v", damage, tc.damage, res.Problems)
+			}
+		})
+	}
+}
+
+// CitesNothing is the rule the scan applies, for readers outside it.
+func TestCitesNothing(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		p    string
+		c    block.Carrier
+		want bool
+	}{
+		{"m.json", block.CarrierLink, true},
+		{"m.json", block.CarrierBareLine, true},
+		{".gitignore", block.CarrierBareLine, true},
+		{".gitignore", block.CarrierComment, false},
+		{"notes.txt", block.CarrierBareLine, false},
+		{"d.md", block.CarrierLink, false},
+	} {
+		if got := CitesNothing(tc.p, tc.c); got != tc.want {
+			t.Errorf("CitesNothing(%q, %s) = %v, want %v", tc.p, tc.c, got, tc.want)
+		}
+	}
+}
+
+// FuzzNoCitationInData holds the property of bugs 139 and 140 for any
+// content: whatever a file in a format with no comment syntax holds,
+// scanning it yields no reference. The placement property in
+// cli/cmd/ds/placement_test.go checks chosen positions in every format;
+// this searches the inputs nobody chose.
+func FuzzNoCitationInData(f *testing.F) {
+	for _, seed := range []string{
+		"{\"note\": \"see [8081](ds:cfg?id=port-k7m2p4xq)\"}\n",
+		"ds:block id=port-k7m2p4xq\n",
+		"a,b\n\"see [8081](ds:cfg?id=port-k7m2p4xq)\",x\n",
+		"<!-- ds:block id=port-k7m2p4xq -->\n",
+		"// ds:block id=port-k7m2p4xq\n",
+	} {
+		f.Add(seed)
+	}
+	inc, _ := glob.CompileAll([]string{"**"})
+	f.Fuzz(func(t *testing.T, src string) {
+		for _, name := range []string{"m.json", "d.csv", "go.sum"} {
+			res, err := Scan(context.Background(), fstest.MapFS{name: file(src)}, Options{Prefix: "ds", Include: inc})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(res.Refs) != 0 {
+				t.Fatalf("%s %q: references %+v", name, src, res.Refs)
+			}
+		}
+	})
+}

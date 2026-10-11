@@ -25,6 +25,10 @@ var hclExts = map[string]bool{".hcl": true, ".tf": true, ".tfvars": true}
 // directives (§7.1 lists `#` for HCL).
 var hclMarkers = []string{"#", "//"}
 
+// hclLinkMarkers adds the one-line block comment, `/* … */`, where a link
+// is read too: HCL has block comments, and a link in one is in a comment.
+var hclLinkMarkers = append(append([]string{}, hclMarkers...), "/*")
+
 // ErrHCL wraps a parse failure; the file then falls back to the heuristic
 // code tier so no directive is lost.
 var ErrHCL = errors.New("structured: hcl parse failed; fell back to line mode")
@@ -51,6 +55,7 @@ func (hclTier) Extract(p string, src []byte, prefix string) extract.Found {
 	body, _ := file.Body.(*hclsyntax.Body)
 	entries := hclEntries(body, "", src)
 	bindEntries(lines, entries, prefix, hclMarkers, &f)
+	bindLinks(lines, prefix, hclLinkMarkers, &f)
 	return f
 }
 

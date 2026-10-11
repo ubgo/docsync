@@ -175,6 +175,11 @@ type Options struct {
 	FuzzyThreshold   float64
 	UnackedIsWarning bool
 	Strict           bool
+	// RepoMode is [include] mode = "repo": every block-position ds:block
+	// is a copy `ds refresh` writes into the page, so a copy refresh cannot
+	// write (a bad lines=) is an error, not a warning (bug 136). A citation
+	// that already has a copy region is treated the same without it.
+	RepoMode bool
 	// Wording holds an ack to the sentence it approved (SPEC §18): a cited
 	// sentence rewritten since its ack, or acked under an older sentence
 	// rule, is unacked. False is [check] sentence = "position".
@@ -882,9 +887,57 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 		r.emit(f)
 		return
 	}
+	blockLen := def.Pos.End - def.Pos.Start + 1
+	if def.Content != "" {
+		blockLen = strings.Count(def.Content, "\n") + 1
+	}
+	repoCopy := ref.Region != nil && ref.Verb == extract.VerbBlock && ref.Carrier == block.CarrierBlock
+	// A copy refresh has not written yet has no region, but in repo mode
+	// the page still owes it one.
+	owesCopy := repoCopy || (r.in.Opts.RepoMode && ref.Verb == extract.VerbBlock && ref.Carrier == block.CarrierBlock)
+	// A block-position cite that no renderer can fill is reported for what
+	// it is, and before the repo-mode copy comparison below. `ds refresh`
+	// skips such a copy, so its closer keeps the hash it had and the
+	// comparison would call it `stale` with "run ds refresh" as the fix: a
+	// remedy that changes nothing, forever, and that `ds ack` does not
+	// clear either (bugs 136 and 138). A bad range wins over a changed
+	// block for the same reason: until lines= fits, no refresh can bring
+	// the copy up to date, and once it fits the next refresh does both.
+	if ref.Verb == extract.VerbBlock && ref.Carrier == block.CarrierBlock && def.IsSecret() {
+		f := base
+		f.State = StateProblem
+		f.Message = fmt.Sprintf("%s is a secret; %s:block refuses to render it", def.ID, r.in.Prefix)
+		f.Remedy.Fix = fmt.Sprintf(remedySecretBlock, def.ID, r.in.Prefix, ref.Pos.File, ref.Pos.Start)
+		r.emit(f)
+		return
+	}
+	shown := blockLen
+	if ls := ref.Args[keyLines]; ls != "" && ref.Verb == extract.VerbBlock {
+		a, b, err := linerange.Parse(ls)
+		if err != nil || b > blockLen {
+			f := base
+			f.State = StateRange
+			f.Message = fmt.Sprintf("lines=%s outside the block's %d lines", ls, blockLen)
+			if err != nil {
+				f.Message = fmt.Sprintf("lines=%s is not a line range (want a or a-b, counting from 1); the block has %d lines", ls, blockLen)
+			}
+			f.Remedy.Fix = fmt.Sprintf(remedyRange, ref.Pos.File, ref.Pos.Start, blockLen)
+			r.emit(f)
+			if owesCopy {
+				// The owner's call (bug 136): in build mode a bad range
+				// renders nothing and stays a warning, but a repo-mode
+				// page owes a copy refresh cannot write, so it is an
+				// error there. One state, two severities, like unacked
+				// under check.unacked = "warn".
+				r.out[len(r.out)-1].Severity = SeverityError
+			}
+			return
+		}
+		shown = b - a + 1
+	}
 	// Repo-mode copies (§9.2): the closer's hash says which block the copy
 	// was rendered from; the text says whether a hand touched it.
-	if ref.Region != nil && ref.Verb == extract.VerbBlock && ref.Carrier == block.CarrierBlock {
+	if repoCopy {
 		if ref.Region.Hash != textnorm.Short(def.Hash) {
 			f := base
 			f.State = StateStale
@@ -932,11 +985,7 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 			return
 		}
 	}
-	// Presentation checks.
-	blockLen := def.Pos.End - def.Pos.Start + 1
-	if def.Content != "" {
-		blockLen = strings.Count(def.Content, "\n") + 1
-	}
+	// Presentation checks; lines= was judged above.
 	if ref.Verb == extract.VerbCfg && blockLen > 1 {
 		f := base
 		f.State = StateRange
@@ -946,19 +995,6 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 		return
 	}
 	if ref.Verb == extract.VerbBlock {
-		shown := blockLen
-		if ls := ref.Args[keyLines]; ls != "" {
-			a, b, err := linerange.Parse(ls)
-			if err != nil || b > blockLen {
-				f := base
-				f.State = StateRange
-				f.Message = fmt.Sprintf("lines=%s outside the block's %d lines", ls, blockLen)
-				f.Remedy.Fix = fmt.Sprintf(remedyRange, ref.Pos.File, ref.Pos.Start, blockLen)
-				r.emit(f)
-				return
-			}
-			shown = b - a + 1
-		}
 		if ref.Carrier == block.CarrierBlock && shown > r.in.Opts.MaxLines {
 			f := base
 			f.State = StateTooLarge

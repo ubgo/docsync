@@ -6,6 +6,7 @@ import (
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/directive"
 	"github.com/ubgo/docsync/extract"
+	"github.com/ubgo/docsync/sentence"
 )
 
 // bindEntries is the format-independent half of every structured tier:
@@ -141,6 +142,24 @@ func covering(entries []entry, line int) (entry, bool) {
 		}
 	}
 	return best, found
+}
+
+// bindLinks reads the link-form directives in the file's comments (SPEC
+// §7.1: a comment is the primary carrier). The structured tiers read only
+// the comment form of a directive, so `# see [8081](ds:cfg?id=…)` cited
+// nothing in YAML, TOML or HCL while the same comment cited in INI or shell
+// (bug 142). Text outside comments is left alone here.
+func bindLinks(lines []string, prefix string, markers []string, f *extract.Found) {
+	comments := make([]string, len(lines))
+	found := false
+	for i, l := range lines {
+		if text, _, ok := commentAt(l, "", markers); ok {
+			comments[i], found = text, true
+		}
+	}
+	if found {
+		f.Refs = append(f.Refs, extract.ScanLinks(comments, prefix, f, sentence.Bind)...)
+	}
 }
 
 // markerAt returns the comment marker t starts with, or "".

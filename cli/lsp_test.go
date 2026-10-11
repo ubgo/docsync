@@ -550,3 +550,30 @@ func TestRPCResponseCarriesExactlyOneOfResultAndError(t *testing.T) {
 		}
 	}
 }
+
+// An open JSON buffer is read the way a scan reads the file: a ds: link in a
+// string value is data, so hovering it shows nothing, while the same text in
+// a markdown buffer is a citation (bug 139).
+func TestLSPLinkInJSONIsNotACitation(t *testing.T) {
+	t.Parallel()
+	dir, v := initialised(t)
+	abs, _ := filepath.Abs(dir)
+	text := `"[x](ds:cfg?id=auth-port-h3v8n2wd)"` + "\n"
+	write(t, dir, "notes/m.json", text)
+	write(t, dir, "docs/m.md", text)
+	open := func(uri string) string {
+		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{"textDocument": map[string]any{"uri": uri, "text": text}}})
+		return string(raw)
+	}
+	jsonURI, mdURI := fileURI(filepath.Join(abs, "notes/m.json")), fileURI(filepath.Join(abs, "docs/m.md"))
+	resps := lspRun(t, dir, v, frame(open(jsonURI), docReq(1, "textDocument/hover", jsonURI, 0), open(mdURI), docReq(2, "textDocument/hover", mdURI, 0), `{"jsonrpc":"2.0","method":"exit"}`))
+	if len(resps) != 2 {
+		t.Fatalf("responses = %+v", resps)
+	}
+	if resps[0].Result != nil {
+		t.Errorf("hover on a link in a JSON string = %+v", resps[0].Result)
+	}
+	if raw, _ := json.Marshal(resps[1].Result); !strings.Contains(string(raw), "auth-port-h3v8n2wd") {
+		t.Errorf("hover on the same link in markdown = %s", raw)
+	}
+}

@@ -1,0 +1,12 @@
+{
+  "exit_code": 1,
+  "findings": [
+    {
+      "doc": "docs/r.md",
+      "line": 5,
+      "id": "save-a2b6f8jk",
+      "state": "range",
+      "severity": "error"
+    }
+  ]
+}

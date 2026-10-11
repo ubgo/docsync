@@ -126,7 +126,7 @@ docs/verbs.md
 2 warning, 2 ok
 ```
 
-Directives inside code fences, indented code blocks, inline code spans and string literals are not directives, which is why this page can show them.
+Directives inside code fences, indented code blocks and inline code spans are not directives, which is why this page can show them. In code, a whole-line directive inside a string literal is not one either, because a string holding `// ds:def …` is a fixture or an example. A link `[x](ds:…)` inside a string literal is a citation, because strings in code hold prose such as help text, errors and UI text, and a citation missed there would drift silently. In a JSON, CSV or `go.sum` file a link is data and a whole-line directive is reported as damage, because those formats have no prose. [SPEC "Reading directives"](../SPEC.md) has the full table.
 
 ## Ids
 
@@ -763,7 +763,7 @@ $ ds check
 2 ok
 ```
 
-- `broken` when the id is not defined, `range` when `lines=` falls outside the block, and `too-large` when a block-position cite would render more than `[include] max_lines` lines (default 40):
+- `broken` when the id is not defined, `range` when `lines=` falls outside the block or is not a range (a warning, and an error in repo mode, where `ds refresh` cannot write that copy), and `too-large` when a block-position cite would render more than `[include] max_lines` lines (default 40):
 
 ```markdown file=docs/more.md
 # More

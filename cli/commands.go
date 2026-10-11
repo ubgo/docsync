@@ -1038,15 +1038,19 @@ func (a *App) refreshCmd() *cobra.Command {
 			}
 			sys, st := ld.sys, ld.st
 			out := cmd.OutOrStdout()
-			if sys.Config().Include.Mode == config.IncludeRepo {
-				res, err := sys.Scan(cmd.Context())
-				if err != nil {
-					return err
-				}
-				regions, docs, err := a.writeFences(sys, res, st, dry)
-				if err != nil {
-					return err
-				}
+			// In build mode only copies already in a page are refreshed
+			// (bug 141), and nothing is said when there are none, so a
+			// build-mode refresh reads as it always did.
+			repoMode := sys.Config().Include.Mode == config.IncludeRepo
+			res, err := sys.Scan(cmd.Context())
+			if err != nil {
+				return err
+			}
+			regions, docs, notes, err := a.writeFences(sys, res, st, dry)
+			if err != nil {
+				return err
+			}
+			if repoMode || regions > 0 || len(notes) > 0 {
 				if dry {
 					// --dry-run said nothing about copies, the one thing
 					// refresh writes into pages (bug 105).
@@ -1057,6 +1061,7 @@ func (a *App) refreshCmd() *cobra.Command {
 				} else {
 					fmt.Fprintf(out, "%d repo-mode copies rewritten\n", regions)
 				}
+				printCopyNotes(out, notes)
 			}
 			rep, err := sys.Check(cmd.Context(), docsync.CheckOptions{})
 			if err != nil {
@@ -1109,7 +1114,9 @@ func (a *App) refreshCmd() *cobra.Command {
 //
 // It returns how many copies changed and the docs holding them, in path
 // order; with dry set it computes exactly that and writes nothing.
-func (a *App) writeFences(sys *docsync.System, res scan.Result, st *Store, dry bool) (int, []string, error) {
+// It also returns, for every doc, the copies it skipped or wrote without
+// their code, and why.
+func (a *App) writeFences(sys *docsync.System, res scan.Result, st *Store, dry bool) (int, []string, []docsync.CopyNote, error) {
 	seen := map[string]bool{}
 	var docs []string
 	for _, r := range res.Refs {
@@ -1121,13 +1128,15 @@ func (a *App) writeFences(sys *docsync.System, res scan.Result, st *Store, dry b
 	sort.Strings(docs)
 	total := 0
 	var changed []string
+	var notes []docsync.CopyNote
 	for _, doc := range docs {
 		p := filepath.Join(st.Root, filepath.FromSlash(doc))
 		src, err := os.ReadFile(p)
 		if err != nil {
-			return total, changed, err
+			return total, changed, notes, err
 		}
-		out, n := sys.Fences(res, doc, src)
+		out, n, why := sys.FencesReport(res, doc, src)
+		notes = append(notes, why...)
 		if n == 0 {
 			continue
 		}
@@ -1138,10 +1147,40 @@ func (a *App) writeFences(sys *docsync.System, res scan.Result, st *Store, dry b
 		}
 		// WriteFile keeps an existing file's mode.
 		if err := os.WriteFile(p, out, filePerm); err != nil {
-			return total, changed, err
+			return total, changed, notes, err
 		}
 	}
-	return total, changed, nil
+	return total, changed, notes, nil
+}
+
+// Labels for the lines printCopyNotes writes: a copy refresh could not
+// write at all, and one it wrote with only its caption and link.
+const (
+	copySkipped  = "skipped"
+	copyLinkOnly = "link only"
+)
+
+// copyLabelValues is every label printCopyNotes can print, in order.
+var copyLabelValues = []string{copySkipped, copyLinkOnly}
+
+// printCopyNotes reports each copy refresh skipped or wrote without its
+// code, then how many were skipped. A skipped copy used to be silent: the
+// count line said "0 repo-mode copies rewritten" and nothing else, while
+// check kept telling the reader to run refresh (bug 136). Nothing is
+// printed when there is nothing to say, so a clean refresh reads as before.
+func printCopyNotes(w io.Writer, notes []docsync.CopyNote) {
+	skipped := 0
+	for _, n := range notes {
+		label := copyLinkOnly
+		if n.Skipped {
+			label = copySkipped
+			skipped++
+		}
+		fmt.Fprintf(w, "%s %s:%d: %s\n", label, n.Doc, n.Line, n.Reason)
+	}
+	if skipped > 0 {
+		fmt.Fprintf(w, "%d repo-mode copies skipped\n", skipped)
+	}
 }
 
 func (a *App) renderCmd() *cobra.Command {

@@ -49,6 +49,7 @@ func (tomlTier) Extract(p string, src []byte, prefix string) extract.Found {
 		return f
 	}
 	bindEntries(lines, entries, prefix, yamlMarkers, &f)
+	bindLinks(lines, prefix, yamlMarkers, &f)
 	return f
 }
 

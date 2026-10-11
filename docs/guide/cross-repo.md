@@ -483,7 +483,7 @@ docs/limits.md
 1 error
 ```
 
-`ds refresh --dry-run` lists the pages whose copies would be rewritten and the moved blocks, and writes nothing. `ds render` on a page that holds copies replaces each copy with its fresh rendering, so a page is never shown twice.
+`ds refresh --dry-run` lists the pages whose copies would be rewritten, the copies it would skip and why, and the moved blocks, and writes nothing. `ds render` on a page that holds copies replaces each copy with its fresh rendering, so a page is never shown twice.
 
 A copy of a block from another repository carries the body that repository published to the index, and names the repository instead of linking: its location is a path in the other repository, and a committed link to it would have to come from the workspace file, which a frozen check does not read. `ds render` and the site integrations link such a block into its repository, at the commit it was published from, using the URL the workspace file lists for it. A copy whose body this run cannot read (never published, or pruned) is not judged `tampered`, since there is nothing to compare it with.
 

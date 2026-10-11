@@ -561,7 +561,11 @@ func (r *renderer) blockCode(n int, d directive.Directive, id string) (string, b
 	lines := strings.Split(content, "\n")
 	if ls := d.Args[keyLines]; ls != "" && content != "" {
 		a, c, err := linerange.Parse(ls)
-		if err != nil || c > len(lines) {
+		if err != nil {
+			r.note(n, "lines=%s is not a line range (want a or a-b, counting from 1)", ls)
+			return "", true
+		}
+		if c > len(lines) {
 			r.note(n, "lines=%s is outside the block's %d lines", ls, len(lines))
 			return "", true
 		}

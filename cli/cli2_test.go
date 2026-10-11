@@ -436,7 +436,7 @@ func TestHTTPRecordsAndRepoModeRefresh(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = os.Chmod(filepath.Join(dir, "docs/sessions.md"), 0o000)
-		if _, _, err := app.writeFences(ld.sys, res, ld.st, false); err == nil {
+		if _, _, _, err := app.writeFences(ld.sys, res, ld.st, false); err == nil {
 			t.Error("unreadable doc between scan and write must surface")
 		}
 		_ = os.Chmod(filepath.Join(dir, "docs/sessions.md"), 0o644)

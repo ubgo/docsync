@@ -51,7 +51,10 @@ func (Config) Extract(p string, src []byte, prefix string) Found {
 	// `.env.*` names included, so what is read here is what `ds def` writes.
 	st, _ := StyleFor(p)
 	yaml := isYAMLPath(p)
-	occs := scanComments(lines, st, prefix, &f)
+	// A def written as a bare line, outside any comment, is read too, so
+	// the scan reports it as damage, as the code tiers already did; it was
+	// silently ignored here (bug 143).
+	occs := withBareDefs(scanComments(lines, st, prefix, &f), lines, prefix)
 	carriers := carrierLines(occs)
 	for _, o := range occs {
 		switch o.dir.Verb {

@@ -21,6 +21,7 @@ import (
 	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/match"
+	"github.com/ubgo/docsync/scan"
 )
 
 // `ds lsp` (§24 editor): a Language Server over stdio with Content-Length
@@ -435,6 +436,10 @@ func (s *lspServer) load(path string) (loaded, docsync.Report, overlay, error) {
 			ov.defs = append(ov.defs, d.Block)
 		}
 		for _, r := range found.Refs {
+			// Dropped exactly as a scan of the saved file drops it.
+			if scan.CitesNothing(path, r.Reference.Carrier) {
+				continue
+			}
 			r.Reference.Pos.File = path
 			ov.refs = append(ov.refs, r.Reference)
 		}

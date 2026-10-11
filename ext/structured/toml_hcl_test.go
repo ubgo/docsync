@@ -3,6 +3,7 @@ package structured
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -202,5 +203,41 @@ func TestTOMLAndHCLThroughSystem(t *testing.T) {
 	}
 	if len(All()) != 3 {
 		t.Error("All")
+	}
+}
+
+// A link-form directive in a comment is a citation in every structured
+// tier, as it is in INI or shell; one in a quoted value is not read here
+// (bug 142).
+func TestStructuredTiersReadLinksInComments(t *testing.T) {
+	t.Parallel()
+	link := "see [8081](ds:cfg?id=port-k7m2p4xq)"
+	for _, tc := range []struct {
+		name string
+		ex   extract.Extractor
+		file string
+		src  string
+		want []int
+	}{
+		{"yaml own line", YAML(), "a.yaml", "# " + link + "\nport: 8081\n", []int{1}},
+		{"yaml trailing", YAML(), "a.yaml", "port: 8081 # " + link + "\n", []int{1}},
+		{"yaml quoted value", YAML(), "a.yaml", "note: \"" + link + "\"\n", nil},
+		{"yaml no comment", YAML(), "a.yaml", "port: 8081\n", nil},
+		{"toml", TOML(), "a.toml", "port = 8081\n# " + link + "\n", []int{2}},
+		{"hcl hash", HCL(), "a.tf", "# " + link + "\nport = 8081\n", []int{1}},
+		{"hcl slashes", HCL(), "a.tf", "port = 8081 // " + link + "\n", []int{1}},
+		{"hcl block comment", HCL(), "a.tf", "/* " + link + " */\nport = 8081\n", []int{1}},
+	} {
+		f := tc.ex.Extract(tc.file, []byte(tc.src), "ds")
+		var got []int
+		for _, r := range f.Refs {
+			got = append(got, r.Reference.Pos.Start)
+			if r.Reference.ID != "port-k7m2p4xq" || r.Reference.Carrier != block.CarrierLink || !strings.Contains(r.Reference.Sentence, "see") {
+				t.Errorf("%s: ref = %+v", tc.name, r.Reference)
+			}
+		}
+		if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+			t.Errorf("%s: refs on lines %v, want %v (problems %v)", tc.name, got, tc.want, f.Problems)
+		}
 	}
 }

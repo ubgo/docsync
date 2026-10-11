@@ -244,7 +244,10 @@ const (
 	remedyNoSync         = "no sync= declared"
 	remedyRepoRemoved    = "repo removed: add %s back to the workspace or drop the reference at %s:%d"
 	remedyStale          = "the copy at %s:%d was rendered from an older %s; run `ds refresh`"
-	remedyTampered       = "the copy at %s:%d was edited by hand; edit the source block instead, then `ds refresh`"
+	// remedySecretBlock: a block-position cite of a secret never renders
+	// (§12), so the fix is a different carrier, never a refresh (bug 138).
+	remedySecretBlock = "%[1]s is a secret and is never rendered; remove the %[2]s:block at %[3]s:%[4]d, or cite it with a link ([text](%[2]s:cfg?id=%[1]s)) or %[2]s:chain, which never print its value"
+	remedyTampered    = "the copy at %s:%d was edited by hand; edit the source block instead, then `ds refresh`"
 )
 
 // Known keys per verb, for `unknown` warnings. Every key from the spec's

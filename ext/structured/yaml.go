@@ -70,6 +70,7 @@ func (yamlTier) Extract(p string, src []byte, prefix string) extract.Found {
 		return f
 	}
 	bindEntries(lines, collect(&root, "", len(lines), lines), prefix, yamlMarkers, &f)
+	bindLinks(lines, prefix, yamlMarkers, &f)
 	return f
 }
 

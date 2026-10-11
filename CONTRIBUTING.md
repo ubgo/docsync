@@ -47,6 +47,8 @@ These are enforced by `task`, and a pull request that works around one will not 
 | End-to-end matrices | `task e2e` (`scripts/e2e/*.sh`) | sequences of real commands on real git repositories | bugs across commands: ack, scan, commit, merge, more than one repository |
 | Guide examples | `task docs:test` | the user guide, read as a user would | the binary and its documentation disagreeing; behaviour wired differently in the shipped `ds` than in a test |
 | One-character hash property | `cli/cmd/ds/hashprop_test.go` | a rule over every input | any code character a block's hash leaves out, in every language `ds` ships |
+| Copy combination matrix | `cli/copymatrix_test.go` | the product of every copy feature, `lines=` fragment, lifecycle step, mode and starting page | a citation `ds refresh` cannot bring up to date while `ds check` keeps saying "run ds refresh" (issue 4, bugs 136 to 138 and 141) |
+| Directive placement property | `cli/cmd/ds/placement_test.go` (and `scan.FuzzNoCitationInData`) | SPEC "Reading directives", over every file type in the carrier tables and every position | a directive read where SPEC says it is not, or missed where it is: a link in a JSON string read as a citation, a link in a YAML comment dropped, a bare `ds:def` ignored (bugs 139, 140, 142 and 143) |
 | Determinism sweep | `scripts/e2e/determinism.sh` | the same command run twice | output whose order depends on random id suffixes or on timing |
 | Round trips | `scripts/e2e/round-trips.sh` | the inverse operation | `def` then `undo`, a rename and its reverse, `refresh` twice, a dry run against the real run |
 | Upgrade | `scripts/e2e/upgrade.sh` | the previous release, run on the same repository | a change that makes existing acks report drift after upgrading |

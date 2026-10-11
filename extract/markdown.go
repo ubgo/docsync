@@ -52,7 +52,10 @@ func (Markdown) Extract(p string, src []byte, prefix string) Found {
 		f.Page = frontmatterPage(lines)
 	}
 	masked := proseLines(lines, html)
-	occs := scanComments(masked, st, prefix, &f)
+	// A def written as a bare line, outside any comment and any code, is read too, so
+	// the scan reports it as damage, as the code tiers already did; it was
+	// silently ignored here (bug 143).
+	occs := withBareDefs(scanComments(masked, st, prefix, &f), masked, prefix)
 	carrier := carrierLines(occs)
 	for _, o := range occs {
 		switch o.dir.Verb {

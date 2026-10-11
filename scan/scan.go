@@ -435,6 +435,22 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 			res.Defs = append(res.Defs, redactSecret(applyPick(def.Block, opts, &res), def.Block.Content, secret))
 		}
 		for _, ref := range found.Refs {
+			// A format with no comment syntax (JSON, CSV, go.sum) has no
+			// prose either, so nothing in it is a citation (SPEC "Reading
+			// directives"): a link there sits inside a string or a cell and
+			// is data (bug 139). A whole-line directive outside a comment is
+			// damage wherever the format has comments or none at all, as a
+			// whole-line def already was; it was read as a citation in JSON,
+			// CSV, go.sum, .gitignore and .dockerignore (bug 140). Decided
+			// here, after the extraction cache, so a cached result from an
+			// older build cannot bring the reference back.
+			if bare, msg := bareRefDamage(p, ref.Reference.Carrier); bare {
+				res.Problems = append(res.Problems, Problem{Pos: block.Position{File: p, Start: ref.Reference.Pos.Start, End: ref.Reference.Pos.End}, Err: fmt.Errorf("%w: %s", ErrBareDirective, msg)})
+				continue
+			}
+			if extract.HasNoComments(p) {
+				continue
+			}
 			ref.Reference.Pos.File = p
 			if ref.Reference.Verb == extract.VerbCfg && ref.Reference.Carrier == block.CarrierBlock {
 				res.Problems = append(res.Problems, Problem{Pos: ref.Reference.Pos, Err: ErrCfgBlockForm})
@@ -454,6 +470,34 @@ func Scan(ctx context.Context, fsys fs.FS, opts Options) (Result, error) {
 	detectSharedBlocks(&res)
 	sortResult(&res)
 	return res, nil
+}
+
+// CitesNothing reports a reference that scan drops: anything in a format
+// with no comment syntax, and a whole-line directive in a format that
+// carries directives only in comments (bugs 139 and 140). It is exported
+// so an editor reading an unsaved buffer drops the same references a scan
+// of the saved file would.
+func CitesNothing(p string, c block.Carrier) bool {
+	bare, _ := bareRefDamage(p, c)
+	return bare || extract.HasNoComments(p)
+}
+
+// bareRefDamage reports a reference written as a line of its own in a file
+// whose format does not carry directives that way, and what to tell the
+// reader. Plain text carries one correctly; a format with comments, or with
+// none at all, does not, so the line cites nothing and is reported instead,
+// the way a whole-line def there is (bug 140).
+func bareRefDamage(p string, c block.Carrier) (bool, string) {
+	if c != block.CarrierBareLine {
+		return false, ""
+	}
+	if extract.HasNoComments(p) {
+		return true, p + " has no comment syntax, so this line breaks the file and cites nothing; delete it and cite from a page instead"
+	}
+	if st, known := extract.StyleFor(p); known && !st.Bare {
+		return true, p + " carries comments, so a bare directive line cites nothing there; put it in a comment"
+	}
+	return false, ""
 }
 
 // MatchAny reports whether path matches any of the glob patterns, for

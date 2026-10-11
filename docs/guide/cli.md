@@ -1362,7 +1362,7 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protoc
 
 ### ds refresh
 
-Updates the ledger for blocks that moved, and in `include.mode = "repo"` rewrites the copies of blocks between `<!-- ds:block … -->` and `<!-- /ds:block -->`.
+Updates the ledger for blocks that moved, and in `include.mode = "repo"` rewrites the copies of blocks between `<!-- ds:block … -->` and `<!-- /ds:block -->`. In build mode it adds no copies, but brings up to date any copy a page already holds (one left from repo mode), since `check` compares it in either mode.
 
 ```text
 ds refresh [--dry-run]
@@ -1430,6 +1430,33 @@ docs/code.md
   3	error    tampered           copy differs from what refresh would write
       fix: the copy at docs/code.md:3 was edited by hand; edit the source block instead, then `ds refresh`
 …
+~~~
+
+A copy `refresh` cannot write is never skipped silently. Each one is named with the reason, the same on every run and under `--dry-run`, and `check` reports it for what it is: a `lines=` range that does not fit the block is `range`, an error in repo mode because the page owes a copy nobody can write. `ds ack` does not clear it; fixing `lines=` does, on the next `refresh`. A copy written with only its caption and link (a block over `max_lines`, or an `at=` with no snapshot) is reported as `link only`. Here `Login` is 6 lines long:
+
+```markdown file=docs/part.md
+# Part of Login
+
+<!-- ds:block id=login-j3nq87mh lines=4-7 -->
+```
+
+~~~console
+$ ds refresh
+1 repo-mode copies rewritten
+skipped docs/part.md:3: lines=4-7 is outside the block's 6 lines
+1 repo-mode copies skipped
+0 moved; ledger updated
+$ ds check
+docs/part.md
+  3	error    range              lines=4-7 outside the block's 6 lines
+      fix: adjust lines= at docs/part.md:3 to fit the block's 6 lines
+…
+$ perl -pi -e 's/lines=4-7/lines=4-6/' docs/part.md
+$ ds refresh
+1 repo-mode copies rewritten
+0 moved; ledger updated
+$ ds check | tail -1
+5 info, 2 ok
 ~~~
 
 <!-- doctest
