@@ -229,7 +229,7 @@ Every package holds 100% statement coverage and the gate fails otherwise. [CONTR
 
 ### Releasing
 
-Releases are cut with [volt](https://github.com/khanakia/voltkit) (`volt status` lists what is unreleased). Modules release in dependency order, because a module's `go.mod` may only require versions that already exist:
+Releases are cut with [volt](https://github.com/ubgo/voltkit) (`volt status` lists what is unreleased). Modules release in dependency order, because a module's `go.mod` may only require versions that already exist:
 
 1. the root library: `volt release . vX.Y.Z` (tag `vX.Y.Z`);
 2. `ext/structured`, `ext/treesitter`, `ext/records/sqlite` after their `go.mod` requires the new root version: `volt release ext/structured vX.Y.Z` and so on (tags `ext/structured/vX.Y.Z`);
