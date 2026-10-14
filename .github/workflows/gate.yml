@@ -109,6 +109,17 @@ jobs:
           git clone -q --depth 1 https://github.com/stackblitz/bolt.new "$c/bolt.new"
           echo "CORPUS=$c/gqlgen:$c/aider:$c/ai-chatbot:$c/bolt.new" >> "$GITHUB_ENV"
 
+      # The guide's library examples build a program against every module
+      # with -mod=mod, so a cold module cache prints `go: downloading …` into
+      # output the page compares. A development machine's cache is warm;
+      # this makes the runner's warm too. GOWORK=off downloads each module's
+      # own requirements, the workspace pass what the go.work graph selects.
+      - name: Download modules
+        run: |
+          for d in cli ext/structured ext/treesitter ext/records/sqlite; do
+            (cd "$d" && GOWORK=off go mod download && go mod download)
+          done
+
       - name: Toolchain
         run: |
           go version

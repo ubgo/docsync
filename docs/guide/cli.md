@@ -1591,7 +1591,7 @@ removed nothing (--dry-run)
 
 ### ds version
 
-The build that is running: version, the commit it was built from, and whether that checkout had uncommitted changes.
+The build that is running: version, the commit it was built from, whether that checkout had uncommitted changes, when it was built, and the Go toolchain that built it.
 
 ```text
 ds version [--json]
@@ -1604,7 +1604,7 @@ $ ds version --json
   "commit": "56cc41c1b8f6…
   "dirty": …
   "time": "2026-10-01T04:48:39Z",
-  "go": "go1.27.1"
+  "go": "go1.…
 }
 ```
 
