@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-10-14
+
+A release of the `ds` binary and the `cli` module (0.1.9) and the library (0.1.7); the tier modules are unchanged. Fixes GitHub issues 5 to 8 and bugs 144 to 156: every directive on a line is read, a `ds:claim about=` keeps its baseline until it is renewed, and a workspace index missing on this machine no longer stops every command. Read Upgrading first if you use `about=` claims.
+
 ### Upgrading
 
 - A claim with `about=` that an older version recorded gets its baseline at the first `ds scan` with this version, taken from the blocks as the older version's last scan recorded them (`ledger.tsv`, and `foreign.tsv` for blocks of other repositories), not from the blocks as they are now. A change made since that scan is therefore still reported. A claim last renewed by an older version stays reviewed while its blocks match that renewal, and is reported `expired` (class `unknown`) once they do not. The only change this version cannot see is one made and scanned entirely under the older version, after the claim's last renewal: the older version recorded no baseline it could be compared with. For a claim about another repository's block, the older version's `foreign.tsv` held the block only if a link also cited it; otherwise that block is baselined as it is at the upgrade.

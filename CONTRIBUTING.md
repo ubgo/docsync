@@ -13,6 +13,7 @@ git clone https://github.com/ubgo/docsync.git
 cd docsync
 task install   # build ds and its plugins into bin/, symlinked onto PATH
 task           # the full gate: format, vet, staticcheck, race tests, 100% coverage, dogfood, end-to-end, cross-builds
+gh workflow run gate.yml   # the same gate on a GitHub Linux runner, with the public corpus; read it with gh run view
 ```
 
 ## Ways to contribute
@@ -58,6 +59,7 @@ These are enforced by `task`, and a pull request that works around one will not 
 | Spec promises | `promises_test.go` | every absolute sentence in the spec and README | a promise with no test behind it |
 | Real repositories | `task corpus` | code other people wrote | code shaped unlike this repository's fixtures |
 | Build comparison | `task extract:diff` | the previous commit's build | a change that silently re-hashes blocks in every repository using docsync |
+| The whole gate on Linux | `.github/workflows/gate.yml` (manual: `gh workflow run gate.yml`, `-f ref=<sha>` for another commit) | everything `task` checks, on a clean runner with every tool installed at the versions used locally | a gate that passes only on one machine: a tool, file or corpus tree present there and nowhere else; it clones the public corpus (gqlgen, aider, ai-chatbot, bolt.new) and leaves out ubgo/auth, which is private |
 | Windows and Linux | `.github/workflows/windows.yml` (manual) | other operating systems | paths, file locking, shells, and line endings |
 
 Two habits sit beside them. Features the spec describes but this build does not implement are refused when the config loads, not accepted and ignored, so a gap cannot pass for success. And a bug found anywhere, by a user or a field report, becomes a test of one of these kinds before it is fixed, listed by number in `testdata/fixed-bugs.txt`.
