@@ -68,7 +68,7 @@ $ ds find cont-func --json
 ]
 ```
 
-Continuation works for line comments (`//`, `#`, `--`). Do not split one HTML comment (`<!-- … -->`) across lines in markdown: a directive broken that way is not read at all and nothing is reported, so keep markdown directives on one line.
+Continuation works for line comments (`//`, `#`, `--`). A block comment such as `<!-- … -->` may instead be broken across lines: everything inside it is the directive, and one that never closes is reported.
 
 - **Unknown verbs and keys** are warnings, so an older `ds` can read files written for a newer one. `ds check --strict` turns them into errors:
 
@@ -124,6 +124,32 @@ docs/verbs.md
   5	warning  unknown            unknown key(s) bogus on ds:block
       fix: unknown key(s) bogus on ds:block at docs/verbs.md:5; check the spelling against the verb's key table
 2 warning, 2 ok
+```
+
+One comment holds one directive, and every comment on a line is read, so a table row can cite one block per cell and a sentence can end with two citations. Two directives inside one comment are reported, and that comment is not read:
+
+```go file=store/two.go
+package store
+
+// ds:def id=two-func-c6d7e8f9
+func Two() {}
+```
+
+```markdown file=docs/row.md
+# Exports
+
+| Function | Guarded by |
+|---|---|
+| Cont | <!-- ds:block id=cont-func-b5c6d7e8 --> |
+| Both | <!-- ds:block id=cont-func-b5c6d7e8 --> <!-- ds:block id=two-func-c6d7e8f9 --> |
+
+Wrong: <!-- ds:block id=cont-func-b5c6d7e8 ds:block id=two-func-c6d7e8f9 -->
+```
+
+```
+$ ds scan
+5 files, 2 defs, 6 refs, 1 problems, 0 skipped
+  docs/row.md:8  column 31: directive: a second directive in one comment is not read; put each directive in its own comment
 ```
 
 Directives inside code fences, indented code blocks and inline code spans are not directives, which is why this page can show them. In code, a whole-line directive inside a string literal is not one either, because a string holding `// ds:def …` is a fixture or an example. A link `[x](ds:…)` inside a string literal is a citation, because strings in code hold prose such as help text, errors and UI text, and a citation missed there would drift silently. In a JSON, CSV or `go.sum` file a link is data and a whole-line directive is reported as damage, because those formats have no prose. [SPEC "Reading directives"](../SPEC.md) has the full table.
@@ -925,7 +951,7 @@ A claim needs no def. It puts a review date on a sentence, for statements you wa
 | `owner` | who reviews it |
 | `reviewed` | the last review date, `YYYY-MM-DD` |
 | `expires` | how long a review lasts, such as `90d` |
-| `about` | comma list of ids; a change to any of them also expires the claim |
+| `about` | comma list of ids; a change to any of them that the def's `stability` flags also expires the claim, until an ack renews it |
 
 ```go file=store/limits.go
 package store
@@ -986,6 +1012,8 @@ docs/claims.md
       fix: review the claim at docs/claims.md:5 and run ds ack --doc docs/claims.md --line 5 to renew it
 1 error, 2 ok
 ```
+
+An `about=` claim is measured against what its blocks were when it was last renewed, or first scanned if it never was, so `ds scan` does not clear it; only `ds ack` does. It expires when one of those blocks changes in a way its `stability` flags (a comment edit to a `stability=api` block does not count), when a definition is removed, or when a new definition appears, such as one for another environment, or the def of an id you add to `about=`; renew the claim to accept it. A claim about an id that no longer exists is `broken`, and renewing it does not help: fix the id, or remove it from `about=`. Claims about blocks another repository publishes behave the same way; `ds sync` records their ids in `.ds/foreign.tsv`, as it does for citations.
 
 ## ds:url — an outside link that is watched
 
@@ -1391,6 +1419,7 @@ store/bad.go:3
 |---|---|
 | a def with no `id=` | `error problem extract: ds:def without id=` |
 | the same key twice | `error problem column N: directive: duplicate key` |
+| two directives in one comment | `error problem column N: directive: a second directive in one comment is not read; put each directive in its own comment` |
 | an id nobody defines | `error broken nothing-here-abcdefgh is not defined` |
 | a misspelled verb or key | `warning unknown` (an error with `--strict`) |
 | a bare `ds:def` line in Go or JSON | `error problem scan: directive is not inside a comment: …` (`ds repair --apply` comments it, or removes it in JSON) |

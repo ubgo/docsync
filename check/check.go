@@ -13,6 +13,7 @@ package check
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -508,6 +509,9 @@ func Run(in Input) Report {
 		cur[i] = ledger.FromReference(in.Repo, ref)
 	}
 	current := func(x ledger.RefRow) string {
+		if x.Verb == extract.VerbClaim {
+			return AboutBaseline(ClaimAbout(x.ToReference()), in.Defs, in.Merged)
+		}
 		def, ok := r.defs.forEnvBranch(x.ID, r.env(x.ToReference()), x.Args[block.KeyBranch])
 		if !ok {
 			return ""
@@ -754,12 +758,7 @@ func (r *runner) reference(ref block.Reference, docRepo string) {
 }
 
 func (r *runner) knownVerb(v string) bool {
-	for _, b := range extract.BuiltinVerbs {
-		if b == v {
-			return true
-		}
-	}
-	return r.in.Opts.ExtraVerbs[v]
+	return slices.Contains(extract.BuiltinVerbs, v) || r.in.Opts.ExtraVerbs[v]
 }
 
 func (r *runner) unknownKeys(ref block.Reference) []string {
@@ -770,7 +769,7 @@ func (r *runner) unknownKeys(ref block.Reference) []string {
 	}
 	var out []string
 	for k := range ref.Args {
-		if known[k] || contains(extra, k) || contains(r.in.Opts.RequiredKeys[ref.Verb], k) {
+		if known[k] || slices.Contains(extra, k) || slices.Contains(r.in.Opts.RequiredKeys[ref.Verb], k) {
 			continue
 		}
 		out = append(out, k)
@@ -787,15 +786,6 @@ func (r *runner) missingKeys(ref block.Reference) []string {
 		}
 	}
 	return out
-}
-
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *runner) env(ref block.Reference) string {
@@ -1431,14 +1421,14 @@ func (r *runner) claim(ref block.Reference, base Finding) {
 		r.emit(f)
 		return
 	}
-	// The latest ack of this claim renews the review date, and, while what
-	// the claim is about still hashes as it did then, accepts its changes.
+	// The latest ack of this claim renews the review date and records what
+	// the claim was reviewed against.
 	renewal, renewed := r.claimRenewal(ref)
 	if renewed && renewal.At.After(t) {
 		t = renewal.At
 	}
 	about := ClaimAbout(ref)
-	reviewedAbout := renewed && renewal.BlockHash != "" && renewal.BlockHash == AboutHash(about, r.in.Defs, r.in.Merged)
+	reviewed, legacy := r.claimBaseline(ref, about, renewal, renewed)
 	f := base
 	if r.in.Now.After(t.Add(d)) {
 		f.State = StateExpired
@@ -1449,18 +1439,37 @@ func (r *runner) claim(ref block.Reference, base Finding) {
 	}
 	for _, id := range about {
 		r.referenced[id] = true
-		// A claim about an id is about every environment of it.
-		for _, c := range r.changesOfID[id] {
-			if c.State == match.StateChanged && c.Flags && !reviewedAbout {
-				f.State = StateExpired
-				f.ID = id
-				f.Classes = c.Classes
-				f.Message = fmt.Sprintf("claim is about %s, which changed (%s)", id, classList(c.Classes))
-				f.Remedy.Fix = fmt.Sprintf(remedyExpired, ref.Pos.File, ref.Pos.Start, ref.Pos.File, ref.Pos.Start)
-				r.emit(f)
-				return
-			}
+	}
+	// A claim about an id nothing defines any more, or never did, is about
+	// nothing: it used to stay `ok` for good (bug 149). A renewal cannot
+	// clear it, because there is nothing to review against.
+	for _, id := range about {
+		if len(r.defs[id]) == 0 {
+			r.broken(ref, base, id)
+			return
 		}
+	}
+	if legacy {
+		// A renewal recorded by a version before per-def baselines kept
+		// only a combined hash. When the blocks no longer match it, what
+		// changed cannot be told, but that something changed since the
+		// review can: it is reported, never baselined away.
+		f.State = StateExpired
+		f.ID = about[0]
+		f.Classes = []block.Class{block.ClassUnknown}
+		f.Message = fmt.Sprintf(msgClaimChanged, about[0], block.ClassUnknown)
+		f.Remedy.Fix = fmt.Sprintf(remedyExpired, ref.Pos.File, ref.Pos.Start, ref.Pos.File, ref.Pos.Start)
+		r.emit(f)
+		return
+	}
+	if a, changed := r.aboutChange(about, reviewed); changed {
+		f.State = StateExpired
+		f.ID = a.id
+		f.Classes = a.classes
+		f.Message = a.message
+		f.Remedy.Fix = fmt.Sprintf(remedyExpired, ref.Pos.File, ref.Pos.Start, ref.Pos.File, ref.Pos.Start)
+		r.emit(f)
+		return
 	}
 	f.State = StateOK
 	f.Message = fmt.Sprintf("claim valid until %s", t.Add(d).Format(DateLayout))
@@ -1703,7 +1712,7 @@ func (r *runner) resolveChain(byID map[string]block.Block, members []string, roo
 // knownEnv applies Options.KnownEnvs to one env= value; no value, or no
 // list, is always known.
 func (r *runner) knownEnv(e string) bool {
-	return e == "" || len(r.in.Opts.KnownEnvs) == 0 || contains(r.in.Opts.KnownEnvs, e)
+	return e == "" || len(r.in.Opts.KnownEnvs) == 0 || slices.Contains(r.in.Opts.KnownEnvs, e)
 }
 
 // defEnvs reports this repo's defs whose env= is not in env.known; such a
@@ -1876,6 +1885,254 @@ func AboutHash(ids []string, defs ...[]block.Block) string {
 	return textnorm.HashLines(append(append([]string{}, ids...), parts...))
 }
 
+// AboutBaseline records what a claim is about as it is now: one entry per def
+// of every id in ids, "id|env|hash", sorted and comma-joined. Scan stores it
+// as the claim's seen_hash in refs.tsv: each def's entry is written at the
+// first scan that sees that def under the claim and is then carried
+// unchanged (ExtendAboutBaseline), and the whole baseline moves to the
+// present only when a renewal accepted the blocks as they are (bug 145).
+// Unlike AboutHash it keeps each def's own hash, so check can classify a
+// change against the def's stability and the body store, as it does for a
+// citation. Only default-branch defs count: about= names no branch, as a
+// citation without branch= reads the default branch, and a frozen check's
+// snapshot records no other. Empty when nothing defines any id.
+func AboutBaseline(ids []string, defs ...[]block.Block) string {
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	m := map[string]string{}
+	for _, set := range defs {
+		for _, b := range set {
+			if want[b.ID] && b.Args[block.KeyBranch] == "" {
+				m[aboutKey(b)] = b.Hash
+			}
+		}
+	}
+	return formatAboutBaseline(m)
+}
+
+// ExtendAboutBaseline keeps the entries of carried for the ids a claim still
+// names, and adds the entries of current for an id carried has none for.
+// Scan calls it with current empty, so a carried baseline only loses the
+// ids dropped from about=: an entry is never replaced, and a new def never
+// joins it, whether another environment of a covered id or the first def
+// of an id just added to about= — either changed what the claim is about,
+// and only a renewal accepts that (bug 152). Current is non-empty only when
+// filling a baseline an older version never wrote, for the ids its last
+// scan did not record.
+func ExtendAboutBaseline(ids []string, carried, current string) string {
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[string]string{}
+	known := map[string]bool{}
+	for k, h := range parseAboutBaseline(carried) {
+		if want[aboutKeyID(k)] {
+			out[k] = h
+			known[aboutKeyID(k)] = true
+		}
+	}
+	for k, h := range parseAboutBaseline(current) {
+		if !known[aboutKeyID(k)] {
+			out[k] = h
+		}
+	}
+	return formatAboutBaseline(out)
+}
+
+// AboutBaselineHashes lists the block hashes an AboutBaseline names, so the
+// bodies a claim is measured against stay live in the body store.
+func AboutBaselineHashes(s string) []string {
+	var out []string
+	for _, h := range parseAboutBaseline(s) {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// aboutSep separates the fields of one AboutBaseline entry and aboutJoin the
+// entries; neither occurs in an id, an environment name or a hash.
+const (
+	aboutSep  = "|"
+	aboutJoin = ","
+)
+
+// aboutKey is one def's identity within an AboutBaseline: "id|env".
+func aboutKey(b block.Block) string {
+	return b.ID + aboutSep + b.Env()
+}
+
+// aboutKeyID and aboutKeyEnv split an aboutKey.
+func aboutKeyID(k string) string {
+	id, _, _ := strings.Cut(k, aboutSep)
+	return id
+}
+
+func aboutKeyEnv(k string) string {
+	_, env, _ := strings.Cut(k, aboutSep)
+	return env
+}
+
+// formatAboutBaseline writes def key → hash in AboutBaseline's form.
+func formatAboutBaseline(m map[string]string) string {
+	parts := make([]string, 0, len(m))
+	for k, h := range m {
+		parts = append(parts, k+aboutSep+h)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, aboutJoin)
+}
+
+// parseAboutBaseline reads an AboutBaseline back into def key → hash. The
+// hash is the last field. An entry without one is dropped.
+func parseAboutBaseline(s string) map[string]string {
+	out := map[string]string{}
+	for part := range strings.SplitSeq(s, aboutJoin) {
+		if i := strings.LastIndex(part, aboutSep); i > 0 && i < len(part)-1 {
+			out[part[:i]] = part[i+1:]
+		}
+	}
+	return out
+}
+
+// aboutFinding is what expires a claim through its about= ids.
+type aboutFinding struct {
+	id      string
+	classes []block.Class
+	message string
+}
+
+// aboutChange reports the first change to a claim's about= ids that
+// expires it. A claim is measured against its own baseline, as a citation
+// is (§17): the scan-to-scan change table is empty after the next
+// `ds scan`, so reading it let any scan accept the change (bug 145), and it
+// never holds another repository's blocks, so a claim about a foreign id
+// could not expire at all (bug 146). The table is read only for a claim no
+// scan has recorded yet, which has no baseline.
+func (r *runner) aboutChange(ids []string, seen string) (aboutFinding, bool) {
+	if seen != "" {
+		return r.aboutDrift(ids, seen)
+	}
+	for _, id := range ids {
+		// A claim about an id is about every environment of it.
+		for _, c := range r.changesOfID[id] {
+			if c.State == match.StateChanged && c.Flags {
+				return aboutFinding{id: id, classes: c.Classes, message: fmt.Sprintf(msgClaimChanged, id, classList(c.Classes))}, true
+			}
+		}
+	}
+	return aboutFinding{}, false
+}
+
+// aboutDrift measures a claim's about= ids against its baseline. It reports,
+// in this order, the first def whose hash differs in a way its stability
+// flags; the first def the baseline names that is gone while its id is still
+// defined (an environment removed, bug 149; an id with no def at all is
+// `broken`, decided before this); and the first def the baseline does not
+// name — another environment of a covered id, or a def of an id added to
+// about= (bug 152). Each changed what the claim was reviewed against, so
+// each expires it until a renewal records the blocks as they are.
+func (r *runner) aboutDrift(ids []string, seen string) (aboutFinding, bool) {
+	was := parseAboutBaseline(seen)
+	now := map[string]bool{}
+	added := ""
+	for _, id := range ids {
+		for _, def := range r.defs[id] {
+			if def.Args[block.KeyBranch] != "" {
+				continue
+			}
+			k := aboutKey(def)
+			now[k] = true
+			old, ok := was[k]
+			if !ok {
+				if added == "" {
+					added = k
+				}
+				continue
+			}
+			if old == def.Hash {
+				continue
+			}
+			classes := r.aboutClasses(old, def)
+			if block.Flags(def.Stability(), classes) {
+				return aboutFinding{id: id, classes: classes, message: fmt.Sprintf(msgClaimChanged, id, classList(classes))}, true
+			}
+		}
+	}
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	var gone []string
+	for k := range was {
+		if want[aboutKeyID(k)] && !now[k] {
+			gone = append(gone, k)
+		}
+	}
+	if len(gone) > 0 {
+		sort.Strings(gone)
+		id := aboutKeyID(gone[0])
+		return aboutFinding{id: id, message: fmt.Sprintf(msgClaimEnvGone, id, aboutKeyEnv(gone[0]))}, true
+	}
+	if added != "" {
+		id := aboutKeyID(added)
+		return aboutFinding{id: id, message: fmt.Sprintf(msgClaimDefAdded, id, envNote(aboutKeyEnv(added)))}, true
+	}
+	return aboutFinding{}, false
+}
+
+// envNote names an environment in a message, or nothing for the default.
+func envNote(env string) string {
+	if env == "" {
+		return ""
+	}
+	return " (env=" + env + ")"
+}
+
+// aboutClasses classifies a def's change since a claim's baseline: from the
+// change table when that change is exactly this one (it has the previous
+// body without the store), else from the body store, else unknown.
+func (r *runner) aboutClasses(old string, def block.Block) []block.Class {
+	if c, ok := r.changeByKey[match.BlockKey(def)]; ok && c.State == match.StateChanged && c.Old.Hash == old {
+		return c.Classes
+	}
+	classes, _ := r.classifyDrift(old, def)
+	return classes
+}
+
+// claimBaseline is what a claim's about= blocks are measured against, as
+// an AboutBaseline: the per-def list its latest renewal recorded, else the
+// list scan recorded when the claim was first seen (its seen_hash), as a
+// citation is measured against its acked hash, else its seen hash. Empty
+// means no baseline exists yet (a claim no scan has recorded).
+//
+// A renewal from before per-def lists recorded one combined AboutHash.
+// While the blocks still hash to it the claim is reviewed as they are now;
+// once they do not, legacy is true: something changed since that review,
+// and neither the old hash nor a baseline written after it can say what.
+func (r *runner) claimBaseline(ref block.Reference, about []string, renewal ledger.Ack, renewed bool) (string, bool) {
+	switch {
+	case renewed && IsAboutBaseline(renewal.BlockHash):
+		return renewal.BlockHash, false
+	case renewed && renewal.BlockHash != "":
+		if renewal.BlockHash == AboutHash(about, r.in.Defs, r.in.Merged) {
+			return AboutBaseline(about, r.in.Defs, r.in.Merged), false
+		}
+		return "", len(about) > 0
+	}
+	return r.prevSeen[ledger.AckKey{Repo: r.in.Repo, Doc: ref.Pos.File, Line: ref.Pos.Start, ID: ref.ID, Env: ref.Args[block.KeyEnv]}], false
+}
+
+// IsAboutBaseline tells a per-def AboutBaseline from the combined AboutHash
+// an ack recorded before per-def baselines existed: a hash never holds the
+// entry separator.
+func IsAboutBaseline(s string) bool {
+	return strings.Contains(s, aboutSep)
+}
+
 // claimRenewal is the newest ack that renewed this claim: the one recorded
 // on its line, or — when the claim has moved, as it does whenever a line is
 // added above it — the newest claim ack in the same doc for the same
@@ -1923,7 +2180,7 @@ func codeStillInBlock(copyText, content, prefix string) bool {
 func fencedLines(text, prefix string) []string {
 	var in []string
 	open := false
-	for _, l := range strings.Split(text, "\n") {
+	for l := range strings.SplitSeq(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(l), "```") {
 			if open {
 				break

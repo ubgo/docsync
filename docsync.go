@@ -598,6 +598,9 @@ func (s *System) Snapshot(res scan.Result) (ledger.Ledger, ledger.Refs) {
 	// gets a baseline on the same terms as a local one.
 	defsByID := s.defsByID(res)
 	hashOf := func(x ledger.RefRow) string {
+		if x.Verb == extract.VerbClaim {
+			return check.AboutBaseline(check.ClaimAbout(x.ToReference()), res.Defs, s.merged)
+		}
 		env := x.Env
 		if env == "" {
 			env = s.cfg.Env.Default
@@ -626,7 +629,10 @@ func (s *System) Snapshot(res scan.Result) (ledger.Ledger, ledger.Refs) {
 		// the block says now, so a change nobody reviewed would never be
 		// reported.
 		row.SeenHash = base[i].Seen
-		if row.SeenHash == "" {
+		switch {
+		case row.Verb == extract.VerbClaim:
+			row.SeenHash = s.claimSeen(row, base[i], hashOf(row))
+		case row.SeenHash == "":
 			row.SeenHash = hashOf(row)
 		}
 		r.Rows = append(r.Rows, row)
@@ -637,6 +643,35 @@ func (s *System) Snapshot(res scan.Result) (ledger.Ledger, ledger.Refs) {
 		}
 	}
 	return l, r
+}
+
+// claimSeen is the baseline scan writes for a claim's about= blocks
+// (check.AboutBaseline). A recorded one is carried as it is, less the ids
+// dropped from about=: a scan never accepts a change or a new def; only a
+// renewal, which records its own baseline, does (bugs 145 and 152). A claim
+// no scan recorded before is baselined at the blocks as they are. A claim
+// recorded by a version that kept no baseline is baselined at the blocks as
+// that version's last scan recorded them — the previous ledger and foreign
+// snapshot — so a change made since that scan is still reported; only one
+// made and scanned before the upgrade is not, and no code can see that one.
+// An id that scan did not record (a foreign id only a claim named, which
+// the old foreign snapshot left out) is baselined as it is now.
+func (s *System) claimSeen(row ledger.RefRow, b ledger.Baseline, current string) string {
+	ids := check.ClaimAbout(row.ToReference())
+	switch {
+	case b.Seen != "":
+		return check.ExtendAboutBaseline(ids, b.Seen, "")
+	case b.Paired:
+		var prev, foreign []block.Block
+		for _, r := range s.prev.Rows {
+			prev = append(prev, r.ToBlock())
+		}
+		for _, r := range s.prevForeign {
+			foreign = append(foreign, r.ToBlock())
+		}
+		return check.ExtendAboutBaseline(ids, check.AboutBaseline(ids, prev, foreign), current)
+	}
+	return current
 }
 
 // CheckOptions selects the passes of `ds check` (§16, §22).

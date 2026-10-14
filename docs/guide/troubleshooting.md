@@ -70,7 +70,9 @@ It exits non-zero when any row is `FAIL`, so a setup script can run it as a gate
 |---|---|---|
 | `config` | `.ds/config.toml` did not parse; unknown keys are errors, and duration keys must parse | fix the key it names |
 | `glob …` | a `[scan]` pattern matches nothing (WARN) or is malformed (FAIL) | correct the pattern, or drop it |
-| `ledger` | the ledger or refs were written under a different extraction rule; see [A newer extraction rule](#a-newer-extraction-rule) | as the row says |
+| `ledger` | the ledger or refs were written under a different extraction rule, see [A newer extraction rule](#a-newer-extraction-rule); or `.ds/ledger.tsv`, `refs.tsv`, `acks.tsv` or `foreign.tsv` does not parse, and the row says how to recover | as the row says |
+| `workspace` | never WARN or FAIL; names the configured `workspace`, or says the repository is its own workspace | |
+| `index` | the index cannot be read. `WARN`: a remote that does not answer while a cached copy exists, or no index at all while `.ds/foreign.tsv` lets check resolve foreign citations. `FAIL`: no index and no snapshot, or a local index whose workspace file does not load | as the row says: `ds sync` where the index is reachable, then commit `.ds/foreign.tsv` |
 | `git` | not a git repository, or no commit yet: no permalinks and no diffs | `git init` and commit |
 | `gitignore` | `.ds/.gitignore` misses machine-local files, which would then be committed | add the lines it names; never `ds init --force` |
 | `gitattributes` | `acks.tsv merge=union` is missing, so acks on two branches conflict at merge | add the line it names |
@@ -146,11 +148,11 @@ This is every state in `check.StateValues`, with the severity and fix the code a
 | `ok` | none | the citation's block still has the hash it was acked at, or first seen at | nothing |
 | `moved` | none | same content, new file or lines; the ledger follows | nothing |
 | `unacked` | error (`warn` by config) | the block changed since the sentence was acked or first cited, or the sentence was rewritten since its ack; carries the change class and diff | `ds ack <id> --doc D --line N --note …` if still true; otherwise edit the sentence, then ack |
-| `broken` | error | the id is not defined (with "did you mean" for near misses), was deleted, has no def for the cited environment, its repo left the workspace, its `at=` commit does not exist, or a frozen run has no record of it | fix the id, re-add the def, or `ds sync` for a foreign id |
+| `broken` | error | the id is not defined (with "did you mean" for near misses), was deleted, has no def for the cited environment, its repo left the workspace, its `at=` commit does not exist, a frozen run has no record of it, or it is a claim's `about=` id that nothing defines | fix the id, re-add the def, or `ds sync` for a foreign id |
 | `pick failed` | error | a def's `pick=` or remote `file=` yields nothing, or many lines where one is needed | fix the def's `file=` or `pick=` |
 | `too-large` | error | a block-position citation would render more than `include.max_lines` (default 40) | add `lines=a-b`, or cite it as a link |
 | `range` | warning (error for a repo-mode copy) | `lines=` reaches past the block's end or is not a range (`abc`, `0-3`, `5-3`), or `ds:cfg` points at a multi-line block; in repo mode it is an error, because `ds refresh` cannot write that copy, and it is reported before any `stale` | adjust `lines=`, or use `ds:block` or a narrower `pick=` |
-| `expired` | error | a `ds:claim` is past `reviewed` plus `expires`, a claim's `about=` id changed, or a page is past `review_every` | reread it, then `ds ack --doc D --line N` (claim) or `ds ack --doc D` (page) |
+| `expired` | error | a `ds:claim` is past `reviewed` plus `expires`, a claim's `about=` blocks changed since the claim was last renewed or first scanned (a scan does not clear it), lost a definition, or gained one (another environment, or an id added to `about=`), or a page is past `review_every` | reread it, then `ds ack --doc D --line N` (claim) or `ds ack --doc D` (page) |
 | `sunset` | error | a citation of a def past its `sunset=` date | remove the citation |
 | `deprecated` | info | a citation of a def past its `deprecated=` date | plan to move the citation |
 | `assert failed` | error | a test cited with `assert=true` failed, was skipped, or is missing in the last published run | fix the test or the sentence |
@@ -627,14 +629,42 @@ perl -pi -e 's|^prefix = "ds"$|prefix = "ds"\nworkspace = "file:///nonexistent/d
 
 ```console
 $ ds --dir ../fresh scan
-ds: workspace index unreachable and no cached copy: '/nonexistent/ds-index.git' does not appear to be a git repository
-fatal: Could not read from remote repository.
-
-Please make sure you have the correct access rights
-and the repository exists.
+warning: workspace index unreachable and no cached copy: '/nonexistent/ds-index.git' does not appear to be a git repository; no .ds/foreign.tsv either, so citations of other repositories cannot be checked
+0 files, 0 defs, 0 refs, 0 problems, 0 skipped
 ```
 
-With `workspace` set to a git URL, the first command that needs the index, whichever it is, clones it into `.ds/index/`. This error means that clone failed, and git's own message says why: check the URL and your git credentials. Once the clone exists, a failed fetch only warns and the cached copy is used.
+With `workspace` set to a git URL, the first command that needs the index, whichever it is, clones it into `.ds/index/`. This warning means that clone failed, and git's reason follows it: check the URL and your git credentials. The command still runs on this repository's own blocks; only `ds sync` stops. Once the clone exists, a failed fetch only warns and the cached copy is used.
+
+### The workspace index is not on this machine
+
+<!-- doctest
+mkdir -p ../away
+git -C ../away init -q -b main .
+ds --dir ../away init
+perl -pi -e 's|^prefix = "ds"$|prefix = "ds"\nworkspace = "../shared-index"|' ../away/.ds/config.toml
+-->
+
+A repository can join a workspace whose index lives somewhere you cannot reach, such as another repository on the maintainer's machine. Every command except `ds sync` and `ds publish` warns and carries on with this repository's own blocks:
+
+```console
+$ ds --dir ../away scan
+warning: workspace path ../shared-index does not exist; create the index there, or point `workspace` in .ds/config.toml at it; no .ds/foreign.tsv either, so citations of other repositories cannot be checked
+0 files, 0 defs, 0 refs, 0 problems, 0 skipped
+```
+
+Citations of other repositories are read from the committed `.ds/foreign.tsv` when it exists, exactly as `ds check --frozen` does. Without it, each one is reported `broken` with a fix that names `ds sync`, never passed, and `ds check --strict` exits 1:
+
+```console
+$ ds --dir ../away check --strict; echo $?
+warning: workspace path ../shared-index does not exist; create the index there, or point `workspace` in .ds/config.toml at it; no .ds/foreign.tsv either, so citations of other repositories cannot be checked
+no references
+error: --strict: the workspace index is unavailable and there is no .ds/foreign.tsv, so citations of other repositories were not checked; run `ds sync` where the index is reachable and commit foreign.tsv
+1
+```
+
+If the path is a symlink, the warning names the target it points at, which is where the index is missing.
+
+Run `ds sync` where the index is reachable and commit `.ds/foreign.tsv`; from then on everyone else's checks read it.
 
 ### Every external link is unverifiable
 
@@ -704,6 +734,10 @@ Two guards stop it:
 **Why did a change not flag?** Check the def's `stability`. `api` flags signature, type, rename, value, and unknown changes, but not a body-only change; `volatile` flags nothing. Use `stable` (the default) for a block whose contents are the contract, such as a list of allowed values.
 
 **What does class `unknown` mean?** The block changed, but the earlier body was not available to describe how: it was pruned, never stored, or the block is secret. It flags wherever `api` flags, because an unexplained change could be a signature change.
+
+**A claim reports `changed (unknown)` right after upgrading.** It was last renewed by an older version, whose ack holds one combined hash, and its blocks changed since. Review the claim and renew it with `ds ack --doc D --line N`.
+
+**The workspace index is missing. Can I still use ds?** Yes. When the index named by `workspace` is not on this machine (a local directory you do not have, or a git index you cannot reach), every command except `ds sync` and `ds publish` warns and carries on with this repository's own blocks. Citations of other repositories are checked against the committed `.ds/foreign.tsv`, as in CI; without it they are reported `broken` and `ds check --strict` fails. Whoever can reach the index runs `ds sync` and commits `.ds/foreign.tsv`.
 
 **Do I ack each citation separately?** An ack is for one sentence: the same id cited in two sentences needs two acks, or one `ds ack <id> --doc D --all` that approves every citation of it in that doc. Rewording a sentence after its ack makes it `unacked` again, with the old and new wording as the diff.
 

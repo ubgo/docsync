@@ -289,3 +289,64 @@ func TestBareDefReadByEveryCommentTier(t *testing.T) {
 		t.Errorf("fenced example read as a def: %+v", f.Defs)
 	}
 }
+
+// TestScanCommentsReadsEveryCommentOnALine is bug 144: only the first
+// comment on a line was read, so a second citation in a table row, after a
+// sentence, or beside another on a line of its own was dropped without a
+// word. Each comment on the line is its own carrier; one after prose is
+// trailing, and its code is the prose without the earlier comments, so its
+// sentence is its own cell and not the directive before it.
+func TestScanCommentsReadsEveryCommentOnALine(t *testing.T) {
+	t.Parallel()
+	type want struct {
+		id       string
+		trailing bool
+		code     string
+	}
+	for _, tc := range []struct {
+		name string
+		ext  string
+		line string
+		want []want
+	}{
+		{"two on a line of their own", ".md", "<!-- ds:block id=a-a --> <!-- ds:block id=b-b -->", []want{{"a-a", false, ""}, {"b-b", false, ""}}},
+		{"after prose", ".md", "Core: <!-- ds:block id=a-a --> <!-- ds:block id=b-b -->", []want{{"a-a", true, "Core: "}, {"b-b", true, "Core:  "}}},
+		{"table cells", ".md", "| one <!-- ds:block id=a-a --> | two <!-- ds:block id=b-b --> |", []want{{"a-a", true, "| one "}, {"b-b", true, "| one  | two "}}},
+		{"after an ordinary comment", ".md", "<!-- note --> <!-- ds:block id=b-b -->", []want{{"b-b", false, ""}}},
+		{"mdx both forms", ".mdx", "{/* ds:block id=a-a */} <!-- ds:block id=b-b --> {/* ds:block id=c-c */}", []want{{"a-a", false, ""}, {"b-b", false, ""}, {"c-c", false, ""}}},
+		{"block then line comment", ".go", "x := 1 /* ds:block id=a-a */ // ds:block id=b-b", []want{{"a-a", true, "x := 1 "}, {"b-b", true, "x := 1  "}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var f Found
+			occs := scanComments([]string{tc.line}, Styles[tc.ext], "ds", &f)
+			if len(f.Problems) != 0 {
+				t.Fatalf("problems: %+v", f.Problems)
+			}
+			if len(occs) != len(tc.want) {
+				t.Fatalf("%d occurrences, want %d: %+v", len(occs), len(tc.want), occs)
+			}
+			for i, w := range tc.want {
+				o := occs[i]
+				if o.dir.Args["id"] != w.id || o.trailing != w.trailing || o.code != w.code || o.pos != (block.Position{Start: 1, End: 1}) {
+					t.Errorf("occurrence %d = %+v, want %+v", i, o, w)
+				}
+			}
+		})
+	}
+}
+
+// TestScanCommentsSecondDirectiveInOneComment is bug 148 through the
+// scanner: the comment is reported with the error that names the fix, and a
+// directive in the next comment on the line is still read.
+func TestScanCommentsSecondDirectiveInOneComment(t *testing.T) {
+	t.Parallel()
+	var f Found
+	occs := scanComments([]string{"<!-- ds:block id=a-a ds:block id=b-b --> <!-- ds:block id=c-c -->"}, Styles[".md"], "ds", &f)
+	if len(f.Problems) != 1 || !errors.Is(f.Problems[0].Err, directive.ErrSecondDirective) {
+		t.Fatalf("problems = %+v", f.Problems)
+	}
+	if len(occs) != 1 || occs[0].dir.Args["id"] != "c-c" {
+		t.Errorf("occurrences = %+v", occs)
+	}
+}

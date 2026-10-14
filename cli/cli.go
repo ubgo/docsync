@@ -116,6 +116,11 @@ type App struct {
 	// published blocks (§20.1).
 	indexFS      fs.FS
 	indexEntries []workspace.Entry
+	// foreignUnchecked is set when the run had neither a workspace index
+	// nor a committed foreign snapshot (bug 147): it carried on, but no
+	// citation of another repository could be checked, which `check
+	// --strict` refuses to call a pass.
+	foreignUnchecked bool
 	// args are the arguments Run was given, which an automatic update
 	// re-runs on the new binary.
 	args []string

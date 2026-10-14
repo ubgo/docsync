@@ -210,15 +210,15 @@ func TestWorkspaceRemoteIndex(t *testing.T) {
 	write(t, repo, ".ds/config.toml", "workspace = \"git@github.com:org/ds-index.git\"\n[scan]\ndocs = [\"docs/**\"]\n")
 	var pushes []string
 	v := fakeVCS{head: "c1", branch: "main", files: map[string][]byte{}, pushes: &pushes}
-	// Offline with no cache: sync fails, check still fails clearly, and a
-	// command that only reads the cache has none.
+	// Offline with no cache: sync, whose job is the index, fails; every
+	// other command warns and runs on this repository alone (bug 147).
 	if r := run(t, repo, v, "sync"); r.code != ExitError || !strings.Contains(r.err, "unreachable") {
 		t.Errorf("offline no cache = %+v", r)
 	}
-	if r := run(t, repo, v, "map"); r.code != ExitError || !strings.Contains(r.err, "unreachable") {
+	if r := run(t, repo, v, "map"); r.code != 0 || !strings.Contains(r.err, "warning: workspace index unreachable") {
 		t.Errorf("map with no cache = %+v", r)
 	}
-	if r := run(t, repo, v, "check"); r.code != ExitError {
+	if r := run(t, repo, v, "check"); r.code != 0 || !strings.Contains(r.err, "cannot be checked") {
 		t.Errorf("check offline no cache = %+v", r)
 	}
 	// Online: clone, publish pushes.

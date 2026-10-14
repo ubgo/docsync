@@ -138,7 +138,7 @@ snapshot  .ds/foreign.tsv   synced just now
 retry/retry.go:3	ok	backoff-zztatnzq
 ```
 
-Run `ds sync` before the first scan and it records nothing (`foreign.tsv: no change to record`), because no citation exists yet. `foreign.tsv` holds only the ids this repository cites, so an unrelated upstream edit never churns it.
+Run `ds sync` before the first scan and it records nothing (`foreign.tsv: no change to record`), because no citation exists yet. `foreign.tsv` holds only the ids this repository cites, through a link or a claim's `about=`, so an unrelated upstream edit never churns it.
 
 Then publish the citing repository too. That is how the docs repository learns who depends on its blocks:
 
@@ -336,7 +336,7 @@ published handbook: 1 defs, 0 refs, 0 test outcomes into .ds/index
 pushed
 ```
 
-`ds sync` cloned the index here because it ran first; `ds def` or `ds scan` would have done the same. Only a clone that fails stops a command, with `workspace index unreachable and no cached copy` and git's reason. After that, a failed fetch is a warning and the cached copy is used. A local directory needs no clone and no push. Private index repositories use your existing git credentials.
+`ds sync` cloned the index here because it ran first; `ds def` or `ds scan` would have done the same. A clone that fails no longer stops a command: it warns with `workspace index unreachable and no cached copy` and git's reason, and the command carries on with this repository's own blocks, reading foreign ones from `.ds/foreign.tsv` (only `ds sync` stops). After that, a failed fetch is a warning and the cached copy is used. A local directory needs no clone and no push; a `workspace` path that is not there is named as such (`workspace path ../index does not exist`) and never cloned. Private index repositories use your existing git credentials.
 
 ## Release branches
 

@@ -59,6 +59,12 @@ var (
 	ErrUnterminatedQuote = errors.New("directive: unterminated quoted value")
 	// ErrBadLink is returned when a link target has the prefix but is malformed.
 	ErrBadLink = errors.New("directive: malformed link target")
+	// ErrSecondDirective is returned when one comment holds a second
+	// directive after the first: `// ds:block id=a ds:block id=b`. One
+	// directive per comment (SPEC "Reading directives"), so the comment is
+	// not read; the message names the fix, where the bare-word error it
+	// replaces did not (bug 148).
+	ErrSecondDirective = errors.New("directive: a second directive in one comment is not read; put each directive in its own comment")
 )
 
 // Directive is one parsed directive. Args preserves insertion order through
@@ -148,9 +154,34 @@ func Parse(prefix, text string) (Directive, error) {
 	d := Directive{Verb: verb, Args: map[string]string{}}
 	offset := len(s) - len(tail)
 	if err := parseArgs(&d, tail, offset); err != nil {
+		if k := secondHead(tail, head); k >= 0 {
+			return Directive{}, &ParseError{Column: offset + k, Err: ErrSecondDirective}
+		}
 		return Directive{}, err
 	}
 	return d, nil
+}
+
+// secondHead returns the offset in tail of another directive's head
+// (`ds:` and a verb) starting a word, or -1. Parse consults it only when the
+// arguments fail to parse, so a comment that parses, a value mentioning
+// `ds:block` included, is never affected.
+func secondHead(tail, head string) int {
+	for k := 0; k < len(tail); k++ {
+		if k > 0 && wordByte(tail[k-1]) {
+			continue
+		}
+		if strings.HasPrefix(tail[k:], head) && identEnd(tail[k+len(head):]) > 0 {
+			return k
+		}
+	}
+	return -1
+}
+
+// wordByte says c can continue a word, so a head right after it is part of
+// that word (`nods:block`) and not a directive of its own.
+func wordByte(c byte) bool {
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // parseArgs consumes `key=value` pairs from tail, appending to d. offset is the

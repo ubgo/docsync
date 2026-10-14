@@ -1282,7 +1282,7 @@ When `workspace` names an existing local directory, `publish` writes into it, an
 
 ### ds sync
 
-Fetches the workspace index, rewrites `.ds/foreign.tsv` with the foreign blocks this repository cites, and shows what is published.
+Fetches the workspace index, rewrites `.ds/foreign.tsv` with the foreign blocks this repository cites or claims about, and shows what is published.
 
 ```text
 ds sync [--json]

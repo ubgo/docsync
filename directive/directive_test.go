@@ -390,3 +390,38 @@ func TestWhitespaceIsDecoded(t *testing.T) {
 		t.Errorf("no-break space between pairs = %+v %v", d.Args, err)
 	}
 }
+
+// TestParseSecondDirective is bug 148: a second directive written inside
+// the same comment was reported as a bare word where key=value was expected,
+// which does not say what is wrong. It is now named, at the second head, and
+// only when the comment does not parse, so a value that mentions a directive
+// still parses.
+func TestParseSecondDirective(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		in   string
+		want error
+		col  int
+	}{
+		{"two in one comment", "ds:block id=a ds:block id=b", ErrSecondDirective, 14},
+		{"second after its own marker", "ds:block id=a // ds:block id=b", ErrSecondDirective, 17},
+		{"second right after a delimiter", "ds:block id=a -->ds:cfg id=b", ErrSecondDirective, 17},
+		{"head inside a word is not one", "ds:block id=a nods:block", ErrPositional, 14},
+		{"head without a verb is not one", "ds:block id=a ds: x", ErrPositional, 14},
+		{"quoted mention parses", `ds:block id=a note="ds:block id=b"`, nil, 0},
+		{"bare value mention parses", "ds:block id=a note=ds:block", nil, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Parse(DefaultPrefix, tc.in)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("Parse(%q) error = %v, want %v", tc.in, err, tc.want)
+			}
+			var pe *ParseError
+			if errors.As(err, &pe) && pe.Column != tc.col {
+				t.Errorf("Parse(%q) column = %d, want %d", tc.in, pe.Column, tc.col)
+			}
+		})
+	}
+}

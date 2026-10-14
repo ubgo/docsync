@@ -171,8 +171,15 @@ const (
 	// unchanged block's citation is unacked by its wording (SPEC §18).
 	msgSentenceRewritten = "sentence rewritten since the ack"
 	msgAckOtherRule      = "ack was recorded under sentence rule %s, not %d; re-read the sentence and ack"
-	remedyEdit           = "edit the sentence at %s:%d, then ack"
-	remedyBroken         = "the id %s is not defined; fix the id in %s:%d or re-add the %s:def on the block it meant"
+	// msgClaimChanged, msgClaimEnvGone and msgClaimDefAdded are the ways a
+	// claim's about= blocks expire it: one changed in a way its stability
+	// flags, an environment the claim was reviewed against is no longer
+	// defined, or a definition it was not reviewed against appeared.
+	msgClaimChanged  = "claim is about %s, which changed (%s)"
+	msgClaimEnvGone  = "claim is about %s, which is no longer defined for env=%s"
+	msgClaimDefAdded = "claim is about %[1]s: a new definition of %[1]s appeared%[2]s"
+	remedyEdit       = "edit the sentence at %s:%d, then ack"
+	remedyBroken     = "the id %s is not defined; fix the id in %s:%d or re-add the %s:def on the block it meant"
 	// remedyUnrecorded is the frozen-run version. The run resolved foreign
 	// blocks from the committed snapshot, so an id absent from it may be
 	// perfectly well defined in another repo and simply not recorded yet —

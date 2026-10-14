@@ -197,7 +197,17 @@ type commentLine struct {
 	code string
 }
 
-// classify splits a line into code and comment parts for a style. Block
+// classify splits a line into code and comment parts for a style: the first
+// comment on the line, or a zero body when there is none. classifyAll has
+// the rules.
+func classify(n int, line string, st Style) commentLine {
+	if all := classifyAll(n, line, st); len(all) > 0 {
+		return all[0]
+	}
+	return commentLine{n: n}
+}
+
+// classifyAll splits a line into its comments, in order, for a style. Block
 // comments are only recognised when they open and close on the same line: a
 // multi-line block comment is never a directive carrier because the spec's
 // continuation rule is line-based, and a directive should be greppable on one
@@ -206,25 +216,50 @@ type commentLine struct {
 // does this exactly, and a false positive here only costs a spurious Problem
 // on a line that merely mentions `ds:` inside a string, which the fixtures
 // pin as acceptable.
-func classify(n int, line string, st Style) commentLine {
-	cl := commentLine{n: n}
-	idx, delimLen, closeLen := findComment(line, st)
-	if idx < 0 {
-		return cl
+//
+// Every comment on the line is returned, not only the first: a table row
+// citing one block per cell, or a sentence followed by two citations, holds
+// several `<!-- ds:block … -->` on one line, and reading only the first
+// dropped the rest without a word (bug 144). A comment after another is
+// whole-line only when everything before it is whitespace and whole-line
+// comments; its code is the line's text with the earlier comments removed, so
+// a trailing citation's sentence is the prose in front of it and not the
+// directives. A line comment runs to the end of the line and ends the walk.
+func classifyAll(n int, line string, st Style) []commentLine {
+	var out []commentLine
+	code := ""
+	whole := true
+	for off := 0; off < len(line); {
+		seg := line[off:]
+		idx, delimLen, closeLen := findComment(seg, st)
+		if idx < 0 {
+			break
+		}
+		code += seg[:idx]
+		whole = whole && strings.TrimSpace(seg[:idx]) == ""
+		cl := commentLine{n: n, body: seg[idx+delimLen : len(seg)-closeLen]}
+		if whole {
+			cl.isComment = true
+		} else {
+			cl.trailing = true
+			cl.code = code
+		}
+		out = append(out, cl)
+		if closeLen == 0 {
+			break
+		}
+		off += len(seg) - closeLen + len(closeOf(seg[idx:], st))
 	}
-	before := line[:idx]
-	rest := line[idx+delimLen:]
-	if closeLen > 0 {
-		rest = rest[:len(rest)-closeLen]
+	return out
+}
+
+// closeOf returns the closing delimiter of the block comment that opens at
+// the start of s, matching the open the same way findComment does.
+func closeOf(s string, st Style) string {
+	if st.BlockOpen != "" && strings.HasPrefix(s, st.BlockOpen) {
+		return st.BlockClose
 	}
-	cl.body = rest
-	if strings.TrimSpace(before) == "" {
-		cl.isComment = true
-	} else {
-		cl.trailing = true
-		cl.code = before
-	}
-	return cl
+	return st.AltClose
 }
 
 // findComment returns the index of the first comment delimiter outside a
@@ -296,8 +331,8 @@ func scanComments(lines []string, st Style, prefix string, f *Found) []occurrenc
 	var out []occurrence
 	head := prefix + directive.Separator
 	for i := 0; i < len(lines); i++ {
-		cl := classify(i+1, lines[i], st)
-		if cl.body == "" {
+		all := classifyAll(i+1, lines[i], st)
+		if len(all) == 0 {
 			if text, last, ok := MultiLineDirective(lines, i, st, head); ok {
 				pos := block.Position{Start: i + 1, End: last + 1}
 				d, err := directive.Parse(prefix, text)
@@ -313,34 +348,40 @@ func scanComments(lines []string, st Style, prefix string, f *Found) []occurrenc
 			}
 			continue
 		}
-		if !strings.HasPrefix(strings.TrimSpace(cl.body), head) {
-			continue
-		}
-		bodies := []string{cl.body}
 		last := i
-		if cl.isComment {
-			for j := i + 1; j < len(lines); j++ {
-				next := classify(j+1, lines[j], st)
-				if !next.isComment {
-					break
-				}
-				probe := []string{cl.body, next.body}
-				if _, n := directive.Fold(probe); n < 2 {
-					break
-				}
-				bodies = append(bodies, next.body)
-				last = j
+		for k, cl := range all {
+			if !strings.HasPrefix(strings.TrimSpace(cl.body), head) {
+				continue
 			}
+			bodies := []string{cl.body}
+			// Only a line's first comment is continued onto the next lines;
+			// one after it on the same line is read alone.
+			if k == 0 && cl.isComment {
+				for j := i + 1; j < len(lines); j++ {
+					next := classify(j+1, lines[j], st)
+					if !next.isComment {
+						break
+					}
+					probe := []string{cl.body, next.body}
+					if _, n := directive.Fold(probe); n < 2 {
+						break
+					}
+					bodies = append(bodies, next.body)
+					last = j
+				}
+			}
+			joined, _ := directive.Fold(bodies)
+			pos := block.Position{Start: i + 1, End: i + 1}
+			if k == 0 {
+				pos.End = last + 1
+			}
+			d, err := directive.Parse(prefix, joined)
+			if err != nil {
+				f.Problems = append(f.Problems, Problem{Pos: pos, Err: err})
+				continue
+			}
+			out = append(out, occurrence{dir: d, pos: pos, carrier: block.CarrierComment, trailing: cl.trailing, code: cl.code})
 		}
-		joined, _ := directive.Fold(bodies)
-		pos := block.Position{Start: i + 1, End: last + 1}
-		d, err := directive.Parse(prefix, joined)
-		if err != nil {
-			f.Problems = append(f.Problems, Problem{Pos: pos, Err: err})
-			i = last
-			continue
-		}
-		out = append(out, occurrence{dir: d, pos: pos, carrier: block.CarrierComment, trailing: cl.trailing, code: cl.code})
 		i = last
 	}
 	return out

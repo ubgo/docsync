@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ubgo/docsync/config"
+	"github.com/ubgo/docsync/ledger"
 	"github.com/ubgo/docsync/procplugin"
 )
 
@@ -46,16 +47,36 @@ func (g Git) Reachable(url string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		// git's last line is the one that says why ("Could not resolve
-		// host"); a doctor row is one line, so the rest is dropped.
-		lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
-		why := strings.TrimPrefix(lines[len(lines)-1], "fatal: ")
+		why := gitReason(stderr.String())
 		if why == "" {
 			why = err.Error()
 		}
 		return errors.New(why)
 	}
 	return nil
+}
+
+// gitNoise are the prefixes of git stderr lines that never say why a
+// command failed.
+var gitNoise = []string{"warning: ", "hint: "}
+
+// gitReason picks the line of git's stderr that says why it failed, for a
+// one-line doctor row (bug 150). That is the first line: git prints the
+// cause ("Could not resolve host", "'x' does not appear to be a git
+// repository", ssh's own error) and then a generic footer ending "and the
+// repository exists.", which is what taking the last line used to show.
+func gitReason(stderr string) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		noise := line == ""
+		for _, p := range gitNoise {
+			noise = noise || strings.HasPrefix(line, p)
+		}
+		if !noise {
+			return strings.TrimPrefix(line, "fatal: ")
+		}
+	}
+	return ""
 }
 
 // Doctor row names for the workspace checks.
@@ -69,8 +90,11 @@ const (
 // whether a workspace is configured, and when one is, whether its index can
 // be read -- a local directory that parses, or a remote that answers. A
 // remote that does not answer is a warning while a cached copy exists,
-// because check then runs against that copy, and a failure without one,
-// because check cannot run at all.
+// because check then runs against that copy. With no index at all, check
+// still runs (bug 147), so the row depends on the committed snapshot: a
+// warning when .ds/foreign.tsv exists, because check reads it, and a
+// failure when it does not, because no citation of another repository can
+// be checked.
 func (a *App) workspaceRows(cfg config.Config) [][]string {
 	if cfg.Workspace == "" {
 		return [][]string{{rowWorkspace, doctorOK, "none; this repository is its own workspace"}}
@@ -79,6 +103,9 @@ func (a *App) workspaceRows(cfg config.Config) [][]string {
 	dir, managed := a.indexPath(cfg)
 	if !managed {
 		st, err := a.syncIndex(cfg, false)
+		if errors.Is(err, ErrIndexOffline) {
+			return append(rows, a.noIndexRow(err.Error()))
+		}
 		if err != nil {
 			return append(rows, []string{rowIndex, doctorFail, err.Error()})
 		}
@@ -92,14 +119,30 @@ func (a *App) workspaceRows(cfg config.Config) [][]string {
 	if !ok {
 		return append(rows, []string{rowIndex, doctorWarn, "reachability not checked: the version control in use cannot probe a remote" + cached})
 	}
-	err := prober.Reachable(cfg.Workspace)
+	src, _ := cloneSource(cfg.Workspace)
+	err := prober.Reachable(src)
 	switch {
 	case err == nil:
 		return append(rows, []string{rowIndex, doctorOK, "reachable" + cached})
 	case cached != "":
 		return append(rows, []string{rowIndex, doctorWarn, fmt.Sprintf("unreachable (%v); check uses the cached copy", err)})
 	default:
-		return append(rows, []string{rowIndex, doctorFail, fmt.Sprintf("unreachable (%v) and no cached copy; check cannot run until `%s sync` succeeds", err, a.name)})
+		return append(rows, a.noIndexRow(fmt.Sprintf("unreachable (%v) and no cached copy", err)))
+	}
+}
+
+// noIndexRow is the index row when there is no index to read at all: WARN
+// when the committed snapshot lets check resolve foreign citations, FAIL
+// when nothing does (bug 147).
+func (a *App) noIndexRow(why string) []string {
+	f, ok, err := NewStore(a.dir).LoadForeign()
+	switch {
+	case err != nil:
+		return []string{rowIndex, doctorFail, fmt.Sprintf("%s; %s/%s cannot be read either: %v", why, DirName, ledger.ForeignFile, err)}
+	case ok:
+		return []string{rowIndex, doctorWarn, fmt.Sprintf("%s; check reads the %d foreign blocks in %s/%s", why, len(f.Rows), DirName, ledger.ForeignFile)}
+	default:
+		return []string{rowIndex, doctorFail, fmt.Sprintf("%s; no %s/%s either, so citations of other repositories cannot be checked until `%s sync` succeeds", why, DirName, ledger.ForeignFile, a.name)}
 	}
 }
 

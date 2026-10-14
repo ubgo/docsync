@@ -924,8 +924,11 @@ func (s *System) Ack(res scan.Result, req AckRequest) (ledger.Ack, error) {
 	}
 	if ref.Verb == extract.VerbClaim {
 		// A claim's hash is what it is about, so the renewal also accepts
-		// a change to those blocks (bug 72).
-		a.BlockHash = check.AboutHash(check.ClaimAbout(*ref), res.Defs, s.merged)
+		// a change to those blocks (bug 72). It is the per-def baseline,
+		// not one combined hash, so the next change is classified against
+		// what was reviewed, def by def; check still reads a combined hash
+		// recorded by an older version.
+		a.BlockHash = check.AboutBaseline(check.ClaimAbout(*ref), res.Defs, s.merged)
 	}
 	if !req.Preview {
 		s.observeAck(a)

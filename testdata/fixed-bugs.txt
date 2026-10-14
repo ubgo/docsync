@@ -124,3 +124,16 @@
 141 build mode: a copy already in a page was compared and reported stale with "run ds refresh" forever, while refresh never touched copies in build mode
 142 the YAML, TOML and HCL tiers ignored a link-form directive inside a comment, which the INI, shell and code tiers read
 143 a ds:def written as a bare line outside a comment was silently ignored in INI, env, properties, HTML, Markdown, AsciiDoc and reStructuredText, not reported as damage
+144 only the first directive on a line was read: a second comment directive after a sentence, beside another, or in the next table cell was dropped without a warning (GitHub issue 5)
+145 ds scan re-baselined a ds:claim about=, so a changed block stopped expiring the claim without an ack (GitHub issue 6)
+146 a ds:claim about= an id published by another workspace repository never expired, and ds sync did not record the id in foreign.tsv (GitHub issue 7)
+147 a workspace index missing on this machine (a local path not present, or a git index never cloned and unreachable) made every command but --frozen exit 2, even ds scan and ds def, with no way to carry on (GitHub issue 8)
+148 two directives inside one comment were reported as a bare word where key=value was expected, which did not name the mistake or the fix
+149 a ds:claim about= an id nothing defines (its block deleted, or the id mistyped) stayed ok instead of broken
+150 ds doctor's index row showed the last line of git's error, the generic "and the repository exists.", instead of the line that says why
+151 a workspace path that does not exist was handed to git clone as if it were a URL, so the error was git's "repository does not exist" about a clone nobody asked for, and the documented bare form github.com/org/ds-index was never cloned at all
+152 a new definition of a ds:claim about= id (another environment, or an id added to about=) did not expire the claim, and the next scan adopted it into the baseline
+153 a workspace index entry that does not parse or cannot be opened stopped every command in every repository reading the index, and the error did not say the file was in the index
+154 a .ds/foreign.tsv that does not parse or cannot be read was ignored in silence by every command except check --frozen, the CI default, which stops on it
+155 ds sync refused to replace a .ds/foreign.tsv that does not parse, though sync is what rewrites it and every other error about that file says to run it
+156 a .ds/ledger.tsv, refs.tsv, acks.tsv or foreign.tsv that does not parse, without merge conflict markers, was named with no way to recover

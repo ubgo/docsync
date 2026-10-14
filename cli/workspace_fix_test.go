@@ -133,11 +133,12 @@ func TestFirstCommandClonesAGitIndex(t *testing.T) {
 	if r := run(t, repo, v, "scan"); r.code != 0 {
 		t.Errorf("scan after the clone = %+v", r)
 	}
-	// A clone that reports success and leaves nothing is still offline.
+	// A clone that reports success and leaves nothing is still offline,
+	// which warns rather than stops (bug 147).
 	empty := t.TempDir()
 	write(t, empty, "docs/a.md", "text\n")
 	write(t, empty, ".ds/config.toml", "workspace = \"git@github.com:org/ds-index.git\"\n[scan]\ndocs = [\"docs/**\"]\n")
-	if r := run(t, empty, hollowClone{v}, "scan"); r.code != ExitError || !strings.Contains(r.err, "unreachable") {
+	if r := run(t, empty, hollowClone{v}, "scan"); r.code != 0 || !strings.Contains(r.err, "warning: workspace index unreachable") {
 		t.Errorf("hollow clone = %+v", r)
 	}
 }

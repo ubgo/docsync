@@ -10,7 +10,9 @@ import (
 
 	"github.com/ubgo/docsync"
 	"github.com/ubgo/docsync/block"
+	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/config"
+	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/ledger"
 	"github.com/ubgo/docsync/match"
 	"github.com/ubgo/docsync/workspace"
@@ -94,6 +96,14 @@ func citedIDs(refs ledger.Refs) map[workspace.Cite]bool {
 	for _, r := range refs.Rows {
 		if r.ID != "" {
 			out[workspace.Cite{ID: r.ID, Branch: r.Args[block.KeyBranch]}] = true
+		}
+		// A claim's about= ids are cited too: without them a frozen check
+		// had nothing to measure a claim about a foreign block against
+		// (bug 146).
+		if r.Verb == extract.VerbClaim {
+			for _, id := range check.ClaimAbout(r.ToReference()) {
+				out[workspace.Cite{ID: id}] = true
+			}
 		}
 	}
 	return out

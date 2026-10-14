@@ -71,6 +71,8 @@ ds: usage: --frozen and --sync ask for opposite things
 
 In a repository with no workspace configured, `--frozen` changes nothing; `CI=true ds check` and `ds check` give the same result.
 
+A job that does not run frozen (an explicit `--sync`, or `CI` unset) on a runner that cannot reach the workspace index still runs: it warns, and reads foreign blocks from `.ds/foreign.tsv` as frozen would. With `--strict` and no `.ds/foreign.tsv` it exits 1, because no citation of another repository was checked.
+
 Taking upstream changes is a deliberate act: run `ds sync` locally, commit the updated snapshot, and the resulting findings show up in that pull request rather than on whoever pushes next.
 
 ## GitHub Actions

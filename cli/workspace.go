@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -96,7 +97,11 @@ func (st indexState) defaultBranch() string {
 }
 
 // indexPath returns where the index lives and whether it is a checkout of
-// a remote that the CLI manages.
+// a remote that the CLI manages. Only a value shaped like a git URL is a
+// remote (bug 151): a path that does not exist on this machine used to be
+// handed to `git clone` as if it were one, so the run failed with git's
+// "repository does not exist" about a clone nobody asked for. Such a path
+// now resolves to where it would be, and syncIndex says it is missing.
 func (a *App) indexPath(cfg config.Config) (dir string, managed bool) {
 	loc := cfg.Workspace
 	if info, err := os.Stat(loc); err == nil && info.IsDir() {
@@ -105,8 +110,109 @@ func (a *App) indexPath(cfg config.Config) (dir string, managed bool) {
 	if info, err := os.Stat(filepath.Join(a.dir, loc)); err == nil && info.IsDir() && !filepath.IsAbs(loc) {
 		return filepath.Join(a.dir, loc), false
 	}
+	if _, ok := cloneSource(loc); !ok {
+		if filepath.IsAbs(loc) {
+			return loc, false
+		}
+		return filepath.Join(a.dir, loc), false
+	}
 	return filepath.Join(a.dir, DirName, IndexDir), true
 }
+
+// schemeSep marks a URL with a scheme (https://, ssh://, file://).
+const schemeSep = "://"
+
+// cloneSource says whether a `workspace` value names a git remote and, if
+// so, what to hand `git clone`. Three shapes are remotes: a URL with a
+// scheme; git's scp form, `[user@]host:path`, whose colon comes before any
+// slash and whose host is longer than a Windows drive letter; and the bare
+// `host/path` form the spec and repos lists use (`github.com/org/ds-index`),
+// whose first segment is a dotted host name, cloned over https because git
+// would otherwise read it as a local path. Anything else is a path.
+func cloneSource(loc string) (string, bool) {
+	if strings.Contains(loc, schemeSep) {
+		return loc, true
+	}
+	slash := strings.IndexAny(loc, `/\`)
+	head := loc
+	if slash >= 0 {
+		head = loc[:slash]
+	}
+	if colon := strings.Index(head, ":"); colon > 1 {
+		return loc, true
+	}
+	if slash > 0 && strings.Contains(head, ".") && strings.Trim(head, ".") != "" && !strings.HasPrefix(head, ".") {
+		return "https://" + loc, true
+	}
+	return "", false
+}
+
+// indexPathError reports a `workspace` path that is not a directory on this
+// machine (bug 151), naming the value as written and where it resolved. It
+// is a kind of ErrIndexOffline, so every command that carries on without an
+// index (bug 147) carries on here too, and `sync` stops with this message.
+// A symlink whose target is missing is named as one, with the target it
+// points at, because "does not exist" about a link the user can see in
+// `ls` sends them looking in the wrong place.
+type indexPathError struct {
+	loc, dir string
+	exists   bool
+	// target is where a dangling symlink at dir points, resolved; empty
+	// when dir is not a symlink.
+	target string
+}
+
+// newIndexPathError describes the path at dir, reading it once more to tell
+// a dangling symlink from a path that is simply absent.
+func newIndexPathError(loc, dir string, exists bool) indexPathError {
+	e := indexPathError{loc: loc, dir: dir, exists: exists}
+	if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 && !exists {
+		if t, err := os.Readlink(dir); err == nil {
+			if !filepath.IsAbs(t) {
+				t = filepath.Join(filepath.Dir(dir), t)
+			}
+			e.target = t
+		}
+	}
+	return e
+}
+
+func (e indexPathError) Error() string {
+	what := "does not exist"
+	if e.exists {
+		what = "is not a directory"
+	}
+	at := ""
+	if e.dir != e.loc {
+		at = fmt.Sprintf(" (resolved to %s)", e.dir)
+	}
+	if e.target != "" {
+		return fmt.Sprintf("workspace path %s%s is a symlink to %s, which does not exist; create the index there, or point the link or `workspace` in %s/%s at it", e.loc, at, e.target, DirName, ConfigFile)
+	}
+	return fmt.Sprintf("workspace path %s %s%s; create the index there, or point `workspace` in %s/%s at it", e.loc, what, at, DirName, ConfigFile)
+}
+
+func (e indexPathError) Is(target error) bool { return target == ErrIndexOffline }
+
+// indexReadError is an index that exists but cannot be read: a published
+// entry that does not parse, or a directory this user may not open (bug
+// 153). It used to stop every command in every repository reading the
+// index -- one bad publish upstream and nobody downstream could scan -- and
+// its message never said the file was in the index. It is a kind of
+// ErrIndexOffline, so the run carries on as it does with no index at all;
+// `sync`, whose job is the index, still stops on it.
+type indexReadError struct {
+	dir string
+	err error
+}
+
+func (e indexReadError) Error() string {
+	return fmt.Sprintf("workspace index %s cannot be read: %v; republish the entry from its repository with `ds publish`, or fix the index", e.dir, e.err)
+}
+
+func (e indexReadError) Unwrap() error { return e.err }
+
+func (e indexReadError) Is(target error) bool { return target == ErrIndexOffline }
 
 // syncIndex fetches (when fetch is set) and reads the index. Network
 // failures never fail a run: the cached copy is used and a warning says
@@ -125,8 +231,12 @@ func (a *App) syncIndex(cfg config.Config, fetch bool) (indexState, error) {
 	// unreachable", which is about a cache nobody had been told to build.
 	if managed && (fetch || statErr != nil) {
 		if statErr != nil {
-			if err := a.vcs.Clone(cfg.Workspace, dir); err != nil {
-				return st, fmt.Errorf("%w: %v", ErrIndexOffline, err)
+			src, _ := cloneSource(cfg.Workspace)
+			if err := a.vcs.Clone(src, dir); err != nil {
+				// One line, git's reason (bug 150): this error also ends
+				// up inside a warning, where git's generic footer about
+				// access rights would bury it.
+				return st, fmt.Errorf("%w: %s", ErrIndexOffline, gitReason(err.Error()))
 			}
 			st.Cloned = true
 		} else if err := a.vcs.Pull(dir); err != nil {
@@ -134,7 +244,10 @@ func (a *App) syncIndex(cfg config.Config, fetch bool) (indexState, error) {
 			st.Warnings = append(st.Warnings, "index fetch failed; using the cached copy: "+err.Error())
 		}
 	}
-	if _, err := os.Stat(dir); err != nil {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		if !managed {
+			return st, newIndexPathError(cfg.Workspace, dir, err == nil)
+		}
 		return st, ErrIndexOffline
 	}
 	if raw, err := os.ReadFile(filepath.Join(dir, config.WorkspaceFile)); err == nil {
@@ -146,7 +259,7 @@ func (a *App) syncIndex(cfg config.Config, fetch bool) (indexState, error) {
 	}
 	entries, err := workspace.Read(os.DirFS(dir))
 	if err != nil {
-		return st, err
+		return st, indexReadError{dir: dir, err: err}
 	}
 	st.Entries = entries
 	st.Merged = workspace.MergeFor(entries, st.WS.Repos)
@@ -266,6 +379,9 @@ func (a *App) workspaceOptions(cfg config.Config, repo string, fetch bool) ([]do
 		return append(opts, docsync.WithForeignSnapshot()), nil, err
 	}
 	st, err := a.syncIndex(cfg, fetch)
+	if errors.Is(err, ErrIndexOffline) {
+		return a.offlineOptions(cfg, err)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -275,7 +391,14 @@ func (a *App) workspaceOptions(cfg config.Config, repo string, fetch bool) ([]do
 	// sync, which is the only previous position a citing repo has for it.
 	// `check` never rewrites it, so this stays a comparison against
 	// committed state. Its absence simply means no move can be reported.
-	if snap, ok, err := NewStore(a.dir).LoadForeign(); err == nil && ok {
+	snap, ok, err := NewStore(a.dir).LoadForeign()
+	switch {
+	case err != nil:
+		// Not fatal here, since the live index resolves every citation,
+		// but never silent (bug 154): the same file stops `check --frozen`
+		// in CI, and moves since the last sync go unreported.
+		st.Warnings = append(st.Warnings, fmt.Sprintf("%v; moves of foreign blocks since the last sync are not reported, and `check --frozen` will fail", err))
+	case ok:
 		opts = append(opts, docsync.WithPreviousForeign(rowsOf(snap)...))
 	}
 	if len(st.Merged.Tests) > 0 {
@@ -283,6 +406,36 @@ func (a *App) workspaceOptions(cfg config.Config, repo string, fetch bool) ([]do
 	}
 	a.indexFS, a.indexEntries = os.DirFS(st.Dir), st.Entries
 	return opts, st.Warnings, nil
+}
+
+// ErrForeignUnchecked is why `check --strict` fails a run that had neither
+// the workspace index nor a committed foreign snapshot (bug 147).
+var ErrForeignUnchecked = fmt.Errorf("the workspace index is unavailable and there is no %s/%s, so citations of other repositories were not checked; run `ds sync` where the index is reachable and commit %s", DirName, ledger.ForeignFile, ledger.ForeignFile)
+
+// offlineOptions is what a run does when there is no index to read at all:
+// a local directory absent on this machine, or a git index never cloned and
+// unreachable now (bug 147). Only `sync` and `publish`, whose whole job is
+// the index, still stop. Every other command carries on with this
+// repository's own blocks and resolves foreign citations from the committed
+// snapshot, exactly as --frozen does. Without a snapshot the merged set is
+// empty but still marked snapshot-only, so a foreign citation is reported
+// as not recorded and names `ds sync`, never as passing: no index must not
+// mean no foreign blocks.
+func (a *App) offlineOptions(cfg config.Config, cause error) ([]docsync.Option, []string, error) {
+	opts, err := a.frozenOptions(NewStore(a.dir), cfg)
+	switch {
+	case errors.Is(err, ErrNoSnapshot):
+		opts = nil
+	case err != nil:
+		return nil, nil, err
+	}
+	where := fmt.Sprintf("foreign citations are read from %s/%s", DirName, ledger.ForeignFile)
+	if opts == nil {
+		a.foreignUnchecked = true
+		where = fmt.Sprintf("no %s/%s either, so citations of other repositories cannot be checked", DirName, ledger.ForeignFile)
+	}
+	warning := fmt.Sprintf("%v; %s", cause, where)
+	return append(opts, docsync.WithForeignSnapshot()), []string{warning}, nil
 }
 
 func (a *App) syncCmd() *cobra.Command {
@@ -348,8 +501,20 @@ func (a *App) writeSnapshot(cfg config.Config, st indexState) ([]snapshotChange,
 	commit, _ := a.vcs.Head()
 	next := st.Merged.Snapshot(repo, citedIDs(refs), ledger.Header{Repo: repo, Commit: commit, ScannedAt: a.now()})
 	prev, _, err := store.LoadForeign()
-	if err != nil {
+	var pathErr *fs.PathError
+	switch {
+	case errors.As(err, &pathErr), errors.Is(err, ledger.ErrFormat):
+		// A file this user cannot read, or one a newer docsync wrote:
+		// replacing it would hide what it recorded.
 		return nil, false, err
+	case err != nil:
+		// sync is what rewrites the snapshot, so a snapshot that does not
+		// parse must not stop it (bug 155): every other command's remedy
+		// for that file is "run `ds sync`". It is replaced, and the
+		// summary has no previous state to compare with.
+		why := strings.TrimSuffix(err.Error(), "; "+corruptRemedy[ledger.ForeignFile])
+		fmt.Fprintf(a.stderr, "warning: %s; replacing it, so every cited block is listed as new\n", why)
+		prev = ledger.Foreign{}
 	}
 	if err := store.SaveForeign(next); err != nil {
 		return nil, false, err

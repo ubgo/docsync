@@ -243,7 +243,7 @@ cp ../good.toml .ds/config.toml
 |---|---|---|---|
 | `spec` | string | `"1.0"` | The config schema version. Any other value stops the load. |
 | `prefix` | string | `"ds"` | The directive prefix: `ds:def`, `ds:block?id=…`. Use another one when your source already contains `ds:` text that is not a directive, such as examples in docs about docsync. Lowercase letters, digits (not first) and `_`. Changing it invalidates the extraction cache. |
-| `workspace` | string | empty | Where the workspace index lives, for repositories whose docs cite each other. An existing local directory is used in place; anything else is cloned into `.ds/index/` and pushed to by `publish`. Empty means a single repository. See [Cross-repo](cross-repo.md). |
+| `workspace` | string | empty | Where the workspace index lives, for repositories whose docs cite each other. An existing local directory is used in place. A git URL (with a scheme, in `user@host:path` form, or a bare `host/path` such as `github.com/org/ds-index`, cloned over https) is cloned into `.ds/index/` and pushed to by `publish`. Any other value is a path, relative to the repository root. Empty means a single repository. See [Cross-repo](cross-repo.md). |
 
 ```toml
 spec = "1.0"

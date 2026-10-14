@@ -166,3 +166,11 @@ init-agents-always-mcp	test	`.mcp.json` always; `.cursor/mcp.json`, `.vscode/mcp
 update-stays-out	test	It never runs in CI
 repo-copy-not-stale	test	never as `stale`, whose fix is a refresh that would change nothing
 string-holds-no-directive	test	because strings in code hold prose but never directives
+claim-baseline-ack-only	test	`ds scan` never clears it
+claim-baseline-ack-only	test	A scan never adds to it
+claim-undefined-broken	test	is `broken`, never `ok`
+missing-index-carries-on	test	is cited but is not recorded in foreign.tsv`, never ok
+strict-no-index-fails	test	`--strict` fails closed
+workspace-path-never-cloned	test	a path that is not a directory is named in the error and never cloned
+strict-green-rationale	prose: a design rationale in the decisions record; the behaviour is strict-no-index-fails	strict is the mode that must not report green for something it never looked at
+bad-index-rationale	prose: a design rationale in the decisions record; the behaviour is pinned by the bug 153 and 154 tests	one bad entry published upstream must not stop every repository downstream

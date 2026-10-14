@@ -83,9 +83,13 @@ func TestConflictRemedyPerFile(t *testing.T) {
 			t.Errorf("%s: %v, want it to name the file and say %q", kind, err, want)
 		}
 	}
-	// Any other failure is only labelled.
-	if err := decodeError(AcksFile, AcksFile, ledger.ErrColumns); err.Error() != AcksFile+": "+ledger.ErrColumns.Error() || !errors.Is(err, ledger.ErrColumns) {
+	// Any other failure says how to recover (bug 156), and a file from a
+	// newer docsync says to upgrade rather than to restore or delete it.
+	if err := decodeError(AcksFile, AcksFile, ledger.ErrColumns); !strings.HasPrefix(err.Error(), AcksFile+": "+ledger.ErrColumns.Error()+"; restore it") || !errors.Is(err, ledger.ErrColumns) {
 		t.Errorf("plain = %v", err)
+	}
+	if err := decodeError(AcksFile, AcksFile, ledger.ErrFormat); !strings.Contains(err.Error(), "ds update") || strings.Contains(err.Error(), "restore") || !errors.Is(err, ledger.ErrFormat) {
+		t.Errorf("newer format = %v", err)
 	}
 	// A shard follows the ledger's rule under its own name.
 	if err := decodeError(LedgerDir+"/api.tsv", LedgerFile, ledger.ErrConflict); !strings.HasPrefix(err.Error(), LedgerDir+"/api.tsv:") || !strings.Contains(err.Error(), "ds scan") {

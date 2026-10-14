@@ -114,7 +114,29 @@ func decodeError(name, kind string, err error) error {
 	if errors.Is(err, ledger.ErrConflict) {
 		return fmt.Errorf("%s: %w; %s", name, err, conflictRemedy[kind])
 	}
-	return fmt.Errorf("%s: %w", name, err)
+	if errors.Is(err, ledger.ErrFormat) {
+		return fmt.Errorf("%s: %w; %s", name, err, newerFormatRemedy)
+	}
+	return fmt.Errorf("%s: %w; %s", name, err, corruptRemedy[kind])
+}
+
+// newerFormatRemedy is the way out of a .ds/ file written by a newer
+// docsync: the file is fine, this binary is old, and restoring or deleting
+// the file would throw away what the newer one recorded.
+const newerFormatRemedy = "it was written by a newer docsync; upgrade this one with `ds update`"
+
+// corruptRemedy says what to do with a .ds/ file that does not parse and
+// holds no conflict markers: truncated, emptied, or hand-edited (bug 156).
+// The error used to name the file and stop, with nothing on how to recover,
+// and the obvious move -- run the command that writes it -- fails on the
+// same file for every one of them but foreign.tsv. As with conflictRemedy,
+// the advice follows what the file is: rebuilt from source, history only
+// git still has, or rewritten by sync.
+var corruptRemedy = map[string]string{
+	LedgerFile:         "restore it with `git restore " + DirName + "/" + LedgerFile + "`, or delete it and run `ds scan`, which rebuilds it from the source",
+	RefsFile:           "restore it with `git restore " + DirName + "/" + RefsFile + "`; deleting it instead makes the next scan baseline every citation at today's hash",
+	AcksFile:           "restore it with `git restore " + DirName + "/" + AcksFile + "`; deleting it instead drops every acknowledgement, and the changes they covered are reported again",
+	ledger.ForeignFile: "run `ds sync`, which rewrites it",
 }
 
 // NewStore points at dir/.ds.

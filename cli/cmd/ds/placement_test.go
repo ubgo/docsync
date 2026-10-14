@@ -10,6 +10,7 @@ import (
 
 	docsync "github.com/ubgo/docsync"
 	"github.com/ubgo/docsync/config"
+	"github.com/ubgo/docsync/directive"
 	"github.com/ubgo/docsync/ext/structured"
 	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/scan"
@@ -240,6 +241,123 @@ func TestDirectivePlacement(t *testing.T) {
 		}
 	}
 	t.Logf("%d formats, %d cases", len(formats), cases)
+}
+
+// lineIDs are the ids the several-per-line cases cite, in order. No file
+// defines them; a citation that is read shows up as a reference whatever
+// check would later say about it.
+var lineIDs = []string{"one-k7m2p4xq", "two-k7m2p4xq", "three-k7m2p4xq"}
+
+// lineCase is one line holding several comments, and the ids it must cite in
+// order. second marks the line whose first comment holds two directives: it
+// must be reported as such (bug 148), and nothing else on it is lost.
+type lineCase struct {
+	pos    string
+	src    string
+	want   []string
+	second bool
+}
+
+// blockCommentsCarryLinksOnly names the tiers whose block comments are read
+// for links but never for whole-line directives: HCL's directives live in
+// `#` and `//` comments (SPEC §7.1, ext/structured hcl.go hclMarkers).
+var blockCommentsCarryLinksOnly = map[string]bool{"hcl": true}
+
+// lineCases generates, for one file name, every way its comments can share
+// a line: two or three citations, an ordinary comment among them, after code
+// or prose, one per table cell in prose hosts, both block forms mixed, a
+// line comment after them, and two directives inside one comment, block or
+// line. tier is the tier the binary routes the name to.
+func lineCases(name, tier string) []lineCase {
+	st, _ := extract.StyleFor(name)
+	var out []lineCase
+	for _, p := range st.Line {
+		out = append(out, lineCase{pos: "two in one line comment " + p, src: p + " ds:block id=" + lineIDs[0] + " ds:block id=" + lineIDs[1], second: true})
+	}
+	if blockCommentsCarryLinksOnly[tier] {
+		return out
+	}
+	var pairs [][2]string
+	for _, pair := range [][2]string{{st.BlockOpen, st.BlockClose}, {st.AltOpen, st.AltClose}} {
+		if pair[0] != "" {
+			pairs = append(pairs, pair)
+		}
+	}
+	for _, pr := range pairs {
+		c := func(body string) string { return pr[0] + " " + body + " " + pr[1] }
+		ref := func(i int) string { return c("ds:block id=" + lineIDs[i]) }
+		form := " " + pr[0]
+		out = append(out,
+			lineCase{pos: "two on a line" + form, src: ref(0) + " " + ref(1), want: lineIDs[:2]},
+			lineCase{pos: "three with an ordinary comment" + form, src: c("note") + " " + ref(0) + ref(1) + " " + ref(2), want: lineIDs},
+			lineCase{pos: "after code or prose" + form, src: "x = 1 " + ref(0) + " " + ref(1), want: lineIDs[:2]},
+			lineCase{pos: "two in one comment" + form, src: c("ds:block id="+lineIDs[0]+" ds:block id="+lineIDs[1]) + " " + ref(2), want: lineIDs[2:], second: true},
+		)
+		if st.NoStrings || st.Bare {
+			out = append(out, lineCase{pos: "table cells" + form, src: "| one " + ref(0) + " | two " + ref(1) + " | three " + ref(2) + " |", want: lineIDs})
+		}
+		for _, p := range st.Line {
+			out = append(out, lineCase{pos: "then line comment " + p + form, src: ref(0) + " " + p + " ds:block id=" + lineIDs[1], want: lineIDs[:2]})
+		}
+	}
+	if len(pairs) == 2 {
+		a := pairs[0][0] + " ds:block id=" + lineIDs[0] + " " + pairs[0][1]
+		b := pairs[1][0] + " ds:block id=" + lineIDs[1] + " " + pairs[1][1]
+		out = append(out, lineCase{pos: "both block forms", src: a + " " + b + " " + a, want: []string{lineIDs[0], lineIDs[1], lineIDs[0]}})
+	}
+	return out
+}
+
+// TestSeveralDirectivesOnOneLine is the class bug 144 belonged to: only the
+// first comment on a line was read, so a second citation in a table row,
+// after a sentence, or beside another was dropped without a word. One
+// directive per comment, and every comment on a line is read (SPEC "Reading
+// directives"). The axes: every format with comments, crossed with every
+// way several comments can share a line (lineCases). Each case must
+// cite exactly its ids in order; a second directive inside one comment is
+// reported as such and the comment after it is still read (bug 148).
+func TestSeveralDirectivesOnOneLine(t *testing.T) {
+	t.Parallel()
+	reg := standardRegistry()
+	cases, formats := 0, 0
+	for _, name := range placementFormats() {
+		if extract.HasNoComments(name) {
+			continue
+		}
+		ex, err := reg.For(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lcs := lineCases(name, ex.Name())
+		if len(lcs) > 0 {
+			formats++
+		}
+		for _, lc := range lcs {
+			cases++
+			res := placementScan(t, name, lc.src+"\n")
+			var got []string
+			for _, r := range res.Refs {
+				got = append(got, r.ID)
+			}
+			if strings.Join(got, " ") != strings.Join(lc.want, " ") {
+				t.Errorf("%s (%s) %s: cites %v, want %v\n%s", name, ex.Name(), lc.pos, got, lc.want, lc.src)
+			}
+			second := false
+			for _, p := range res.Problems {
+				if errors.Is(p.Err, directive.ErrSecondDirective) && p.Pos.Start == 1 {
+					second = true
+				}
+			}
+			if second != lc.second {
+				t.Errorf("%s (%s) %s: second-directive problem = %v, want %v; problems %v", name, ex.Name(), lc.pos, second, lc.second, res.Problems)
+			}
+		}
+	}
+	// A table emptied by mistake must not pass on nothing.
+	if cases < 200 {
+		t.Errorf("generated %d cases; the comment tables shrank or the generator broke", cases)
+	}
+	t.Logf("%d formats, %d cases", formats, cases)
 }
 
 // placementScan scans one file with the binary's tiers and the default

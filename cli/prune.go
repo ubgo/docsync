@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/config"
+	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/ledger"
 	"github.com/ubgo/docsync/workspace"
 )
@@ -76,9 +77,14 @@ func (s *Store) liveFrom(prev ledger.Ledger, refs ledger.Refs, acks ledger.Acks)
 	for _, r := range refs.Rows {
 		live[r.AckedHash] = true
 		live[r.SeenHash] = true
+		markAboutLive(live, r)
 	}
 	for _, a := range acks.Latest() {
 		live[a.BlockHash] = true
+		// A claim's renewal records one hash per def it is about.
+		for _, h := range check.AboutBaselineHashes(a.BlockHash) {
+			live[h] = true
+		}
 	}
 	foreign, ok, err := s.LoadForeign()
 	if err != nil {
@@ -305,6 +311,21 @@ func (a *App) pruneIndex(out io.Writer, st *Store, cfg config.Config, keep time.
 	return nil
 }
 
+// markAboutLive keeps live the bodies a claim's baselines name: its
+// seen_hash and acked_hash each list one hash per def it is about
+// (check.AboutBaseline), and pruning them would leave the claim's next
+// change classified `unknown`.
+func markAboutLive(live map[string]bool, r ledger.RefRow) {
+	if r.Verb != extract.VerbClaim {
+		return
+	}
+	for _, base := range []string{r.SeenHash, r.AckedHash} {
+		for _, h := range check.AboutBaselineHashes(base) {
+			live[h] = true
+		}
+	}
+}
+
 // indexLive unions the live hashes of every repo published into the index.
 func indexLive(entries []workspace.Entry) map[string]bool {
 	live := map[string]bool{}
@@ -315,6 +336,7 @@ func indexLive(entries []workspace.Entry) map[string]bool {
 		for _, r := range e.Refs.Rows {
 			live[r.AckedHash] = true
 			live[r.SeenHash] = true
+			markAboutLive(live, r)
 		}
 	}
 	delete(live, "")

@@ -197,6 +197,10 @@ func sortIdx(idx []int, less func(a, b int) bool) {
 type Baseline struct {
 	Acked string
 	Seen  string
+	// Paired says the citation was recorded by an earlier scan (it was
+	// paired with a previous row), so an empty Seen is a row written by a
+	// version that kept no baseline for it, not a new citation.
+	Paired bool
 	// Ack is the ack row Acked came from, when it came from one: the one
 	// at the citation's position or, for a moved citation, the one carried
 	// from its old position, or the one behind a hash refs.tsv carried
@@ -242,7 +246,7 @@ func Baselines(prev []RefRow, cur []RefRow, latest map[AckKey]Ack, scannedAt tim
 			continue
 		}
 		p := prev[j]
-		out[i].Seen = p.SeenHash
+		out[i].Seen, out[i].Paired = p.SeenHash, true
 		moved := p.Key() != row.Key()
 		if ackedHere && (!moved || ackFits(here, row, scannedAt)) {
 			out[i].Acked, out[i].Ack = here.BlockHash, &here

@@ -191,6 +191,10 @@ func (a *App) doctorCmd() *cobra.Command {
 			rows = append(rows, []string{"extractors", doctorOK, strings.Join(a.tiers(), ", ")})
 			if l, r, _, err := st.LoadState(); err != nil {
 				rows = append(rows, []string{"ledger", doctorFail, err.Error()})
+			} else if _, _, ferr := st.LoadForeign(); ferr != nil {
+				// The snapshot is committed state like the ledger, and
+				// `check --frozen`, the default in CI, stops on it (bug 154).
+				rows = append(rows, []string{"ledger", doctorFail, ferr.Error()})
 			} else if row := ruleRow(docsync.CheckRule(l, r)); row != nil {
 				rows = append(rows, row)
 			} else {
@@ -493,6 +497,13 @@ func (a *App) checkCmd() *cobra.Command {
 			} else {
 				printFindings(out, rep.Findings, expand)
 				fmt.Fprintf(out, "%s\n", summaryLine(rep))
+			}
+			if opts.Strict && a.foreignUnchecked {
+				// --strict fails closed (§21): with no index and no
+				// snapshot, citations of other repositories were not
+				// checked, and a green strict run would claim they were.
+				fmt.Fprintf(cmd.ErrOrStderr(), "error: --%s: %v\n", flagStrict, ErrForeignUnchecked)
+				return exitCode(ExitFindings)
 			}
 			if rep.ExitCode != 0 {
 				return exitCode(ExitFindings)
@@ -1014,13 +1025,17 @@ func (a *App) recordAcks(ld loaded, res scan.Result, reqs []docsync.AckRequest, 
 }
 
 // ackedBodies keeps, of a scan's bodies (already free of secret and local
-// blocks), those whose hash an ack row approves. A claim renewal and a page
-// review name no hash and contribute nothing.
+// blocks), those whose hash an ack row approves: a citation's one hash, or
+// each hash a claim renewal lists. A page review names no hash and
+// contributes nothing.
 func ackedBodies(bodies map[string]string, rows []ledger.Ack) map[string]string {
 	out := map[string]string{}
 	for _, r := range rows {
-		if body, ok := bodies[r.BlockHash]; ok {
-			out[r.BlockHash] = body
+		// A claim renewal names one hash per def it is about.
+		for _, h := range append(check.AboutBaselineHashes(r.BlockHash), r.BlockHash) {
+			if body, ok := bodies[h]; ok {
+				out[h] = body
+			}
 		}
 	}
 	return out

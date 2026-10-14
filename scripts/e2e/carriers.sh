@@ -98,5 +98,43 @@ out=$(ds scan 2>&1)
 if echo "$out" | grep -q "not inside a comment"; then ok "a bare directive already in go.work is reported"; else no "existing damage passed silently: $out"; fi
 if echo "$out" | grep -q "go.work:1"; then ok "the report names the file and line to fix"; else no "the report does not locate the damage: $out"; fi
 
+# --- several directives on one line: each comment is read (bug 144) ---
+# Only the first comment on a line was read, so a second citation in a table
+# row, after a sentence, or beside another was dropped and its def reported
+# uncovered, with nothing saying why (GitHub issue 5).
+setup
+mkdir -p src docs
+printf 'export function a(x: number) {\n  return x;\n}\nexport function b(x: number) {\n  return x;\n}\n' > src/t.ts
+cat > docs/a.md <<'MD'
+# T
+
+<!-- ds:def id=a-aaaaaaaa file=src/t.ts pick=symbol:a -->
+<!-- ds:def id=b-bbbbbbbb file=src/t.ts pick=symbol:b -->
+
+Core: <!-- ds:block id=a-aaaaaaaa --> <!-- ds:block id=b-bbbbbbbb -->
+
+<!-- ds:block id=a-aaaaaaaa --> <!-- ds:block id=b-bbbbbbbb -->
+
+| x | y |
+|---|---|
+| one <!-- ds:block id=a-aaaaaaaa --> | two <!-- ds:block id=b-bbbbbbbb --> |
+MD
+printf '# M\n\nUse `a` and `b`. {/* ds:block id=a-aaaaaaaa */} {/* ds:block id=b-bbbbbbbb */}\n' > docs/m.mdx
+git add -A && git commit -qm a
+ds scan >/dev/null 2>&1
+ex=$(ds check --explain 2>&1)
+for at in docs/a.md:6 docs/a.md:8 docs/a.md:12 docs/m.mdx:3; do
+  if echo "$ex" | grep "^$at " | grep -q b-bbbbbbbb; then ok "the second directive on $at is read (bug 144)"; else no "the second directive on $at is dropped: $(echo "$ex" | grep "^$at ")"; fi
+done
+if echo "$ex" | grep -q uncovered; then no "a def cited only second on a line is reported uncovered: $ex"; else ok "no def is reported uncovered (bug 144)"; fi
+row=$(awk -F'\t' '$3=="docs/a.md" && $4==12 {print $9}' .ds/refs.tsv | sort -u | wc -l | tr -d ' ')
+if [ "$row" = 2 ]; then ok "each table cell keeps its own sentence (bug 144)"; else no "the two cells of one table row share a sentence: $row distinct"; fi
+
+# --- two directives in one comment are named, not read as arguments (bug 148) ---
+printf 'Two <!-- ds:block id=a-aaaaaaaa ds:block id=b-bbbbbbbb -->\n' >> docs/a.md
+git add -A && git commit -qm b
+out=$(ds scan 2>&1)
+if echo "$out" | grep -q "docs/a.md:13.*second directive in one comment"; then ok "two directives in one comment are reported by line (bug 148)"; else no "two directives in one comment are not named: $out"; fi
+
 echo; echo "  ---- $pass passed, $fail failed ----"
 [ "$fail" -eq 0 ]
