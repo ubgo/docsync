@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Branch, tag or commit to run the gate on (default: the branch the run was started from)
+        description: "Branch, tag or commit to run the gate on; empty means the branch the run was started from"
         required: false
         default: ""
 
