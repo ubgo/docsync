@@ -1,0 +1,124 @@
+# The full gate: `task` on a clean Linux runner, with every tool it needs.
+#
+# `task` is the whole gate (fmt, vet, staticcheck, race tests, 100% coverage,
+# the JavaScript integrations, dogfood, corpus, extract:diff, e2e, the guide's
+# examples, cross-builds). It takes long enough that running it on a shared
+# development machine slows everything else there, so this runs the same thing
+# on GitHub's runners. It is the preferred way to run the gate when that
+# machine is busy, and it belongs before every release, next to windows.yml.
+#
+# Manual only. Run it from the Actions tab, or:
+#
+#   gh workflow run gate.yml                  # the default branch
+#   gh workflow run gate.yml -f ref=<sha>     # any branch or commit
+#
+# then read the result once with `gh run view`. To run it automatically,
+# replace the `on:` block with:
+#
+#   on:
+#     workflow_dispatch:
+#     push:
+#       branches: [main]
+#     pull_request:
+#
+# Machine-wide locking: on a development machine the agents wrap heavy runs in
+# `testlock`, a lock shared by every session there. The Taskfile itself never
+# calls it, so nothing here needs it and no shim is installed: each runner is
+# a machine of its own.
+name: gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to run the gate on (default: the branch the run was started from)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: task on ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # ext/treesitter and the ds binary need cgo; ubuntu-latest has gcc.
+      CGO_ENABLED: "1"
+      # A development build never updates itself, but say so for any child
+      # process that reads it.
+      DS_UPDATE: "off"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            cli/go.sum
+            ext/records/sqlite/go.sum
+            ext/structured/go.sum
+            ext/treesitter/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+
+      # integrations.sh builds a real Hugo site from `ds export hugo`; without
+      # hugo it prints SKIP, so it is installed rather than left to skip.
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: "0.165.0"
+          extended: true
+
+      # The versions the gate is run with on the development machine, so a
+      # formatting or lint verdict here means the same thing there.
+      - name: Go tools (task, gofumpt, staticcheck)
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@v3.53.1
+          go install mvdan.cc/gofumpt@v0.5.0
+          go install honnef.co/go/tools/cmd/staticcheck@2026.2.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # The guide's examples and some e2e cases commit in throwaway
+      # repositories, which needs an identity.
+      - name: Git identity
+        run: |
+          git config --global user.name gate
+          git config --global user.email gate@example.invalid
+          git config --global init.defaultBranch main
+
+      # The corpus gate and extract:diff run ds over other people's code. The
+      # public corpus repositories are cloned shallow (both read only the last
+      # commit). ubgo/auth, the Go corpus on the development machine, is
+      # private and is left out; gqlgen covers Go here. Passing CORPUS
+      # explicitly matters: the scripts' defaults are paths on the development
+      # machine, and a corpus that is not there makes the gate print SKIP and
+      # pass having checked nothing.
+      - name: Clone the corpus
+        run: |
+          c="$RUNNER_TEMP/corpus"
+          mkdir -p "$c"
+          git clone -q --depth 1 https://github.com/99designs/gqlgen "$c/gqlgen"
+          git clone -q --depth 1 https://github.com/Aider-AI/aider "$c/aider"
+          git clone -q --depth 1 https://github.com/vercel/ai-chatbot "$c/ai-chatbot"
+          git clone -q --depth 1 https://github.com/stackblitz/bolt.new "$c/bolt.new"
+          echo "CORPUS=$c/gqlgen:$c/aider:$c/ai-chatbot:$c/bolt.new" >> "$GITHUB_ENV"
+
+      - name: Toolchain
+        run: |
+          go version
+          task --version
+          gofumpt --version
+          staticcheck -version
+          node --version
+          hugo version
+          gcc --version | head -1
+          python3 --version
+
+      - name: task
+        run: task
