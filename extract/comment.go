@@ -195,6 +195,12 @@ type commentLine struct {
 	trailing bool
 	// code is the non-comment part of the line, for trailing comments.
 	code string
+	// after is the non-comment text after the comment on its line. A
+	// comment followed by text is not a carrier on a line of its own: the
+	// text is content, and the comment is about it (bug 161).
+	after string
+	// end is the byte offset just past the comment's close on its line.
+	end int
 }
 
 // classify splits a line into code and comment parts for a style: the first
@@ -227,6 +233,9 @@ func classify(n int, line string, st Style) commentLine {
 // directives. A line comment runs to the end of the line and ends the walk.
 func classifyAll(n int, line string, st Style) []commentLine {
 	var out []commentLine
+	// gaps[k] is the text between comment k and the next one, or the end of
+	// the line, from which each comment's after is assembled.
+	var gaps []string
 	code := ""
 	whole := true
 	for off := 0; off < len(line); {
@@ -234,6 +243,9 @@ func classifyAll(n int, line string, st Style) []commentLine {
 		idx, delimLen, closeLen := findComment(seg, st)
 		if idx < 0 {
 			break
+		}
+		if len(gaps) > 0 {
+			gaps[len(gaps)-1] = seg[:idx]
 		}
 		code += seg[:idx]
 		whole = whole && strings.TrimSpace(seg[:idx]) == ""
@@ -245,10 +257,17 @@ func classifyAll(n int, line string, st Style) []commentLine {
 			cl.code = code
 		}
 		out = append(out, cl)
+		gaps = append(gaps, "")
 		if closeLen == 0 {
+			out[len(out)-1].end = len(line)
 			break
 		}
 		off += len(seg) - closeLen + len(closeOf(seg[idx:], st))
+		out[len(out)-1].end = off
+		gaps[len(gaps)-1] = line[off:]
+	}
+	for k := range out {
+		out[k].after = strings.Join(gaps[k:], "")
 	}
 	return out
 }
@@ -310,6 +329,17 @@ type occurrence struct {
 	carrier  block.Carrier
 	trailing bool   // sat after code on the same line
 	code     string // that code, when trailing
+	after    string // the non-comment text after it on its line
+	end      int    // the byte offset just past its close on its first line
+}
+
+// leading reports whether the comment starts its line and text follows it
+// there: `<!-- ds:claim … --> The cache is warmed nightly.` The line is not a
+// carrier on its own line, because the text after the comment is content.
+// Read as one, the prose was left out of every hash that spans the line
+// and a reference in it bound no sentence (bug 161).
+func (o occurrence) leading() bool {
+	return !o.trailing && strings.TrimSpace(o.after) != ""
 }
 
 // linkPattern finds `ds:verb?key=value` link targets inside free text: code
@@ -380,7 +410,7 @@ func scanComments(lines []string, st Style, prefix string, f *Found) []occurrenc
 				f.Problems = append(f.Problems, Problem{Pos: pos, Err: err})
 				continue
 			}
-			out = append(out, occurrence{dir: d, pos: pos, carrier: block.CarrierComment, trailing: cl.trailing, code: cl.code})
+			out = append(out, occurrence{dir: d, pos: pos, carrier: block.CarrierComment, trailing: cl.trailing, code: cl.code, after: cl.after, end: cl.end})
 		}
 		i = last
 	}

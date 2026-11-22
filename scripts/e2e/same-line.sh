@@ -3,7 +3,9 @@
 # each is a statement of its own, acked on its own. Acks used to be found by
 # line, so the sentences on a line shared one: `ds ack --line` and `--all`
 # recorded the first sentence only (twice, for --all), and the other stayed
-# unacked forever, reported as the first one rewritten.
+# unacked forever, reported as the first one rewritten. Also a directive
+# comment that shares its line with prose (bugs 160 and 161), and the
+# upgrade from rule 1 that fix moved the extraction rule from.
 #
 # Drives the real ds binary on throwaway git repos; run through scripts/e2e/run.sh,
 # which puts the binary built from this tree first on PATH.
@@ -86,6 +88,33 @@ git merge -q --no-edit one >/dev/null 2>&1 && merged=clean || merged=CONFLICT
 ck "the ack merges into a branch that rewrote one sentence" "clean" "$merged"
 out=$(ds check 2>&1)
 ck "after the merge, the rewritten sentence alone is unacked" "1 error, 1 ok" "$(echo "$out" | tail -1)"
+
+# A directive comment after a sentence whose paragraph goes on below it is
+# about that sentence (bug 160): rewriting it is reported. It used to bind
+# the next line's sentence, so the rewrite went unnoticed.
+setup
+printf '# Demo\n\nAdd sums its operands. <!-- ds:block id=%s -->\nIt is pure.\n' "$ID" > README.md
+ds scan >/dev/null; ds ack $ID --doc README.md --line 3 >/dev/null 2>&1
+ck "acked, the sentence a trailing comment follows is ok" "1 ok" "$(ds check 2>&1 | tail -1)"
+sedi 's/sums its operands/adds two numbers/' README.md
+ck "rewriting that sentence is reported" "sentence rewritten since the ack" "$(ds check 2>&1)"
+
+# A comment that starts a line with prose after it leaves the prose in the
+# hash of the section around it (bug 161): editing the prose flags the
+# section's citations. The line used to be a carrier, left out of the hash.
+setup
+printf '# Demo\n\n<!-- ds:def id=policy-h3v8n2wd -->\n## Policy\n\n<!-- ds:claim reviewed=2026-09-01 expires=3650d --> Sessions last a day.\n\n## Use\n\nSee [the policy](ds:block?id=policy-h3v8n2wd).\n' > docs.md
+ds scan >/dev/null; git add -A; git commit -qm policy
+sedi 's/last a day/last a week/' docs.md
+ck "editing prose after a leading comment flags the section's citation" "policy-h3v8n2wd changed" "$(ds check 2>&1)"
+
+# The upgrade from rule 1 (0.1.9 and earlier): check warns, scan restamps,
+# and nothing is refused.
+setup
+sedi '1s/extract=[0-9]*/extract=1/' .ds/ledger.tsv; sedi '1s/extract=[0-9]*/extract=1/' .ds/refs.tsv
+ck "a rule 1 ledger is warned about, not refused" "older extraction rule" "$(ds check 2>&1)"
+ds scan >/dev/null 2>&1
+ck "the next scan restamps it under the current rule" "extract=5" "$(head -1 .ds/ledger.tsv)"
 
 echo; echo "  ---- $pass passed, $fail failed ----"
 [ "$fail" -eq 0 ]

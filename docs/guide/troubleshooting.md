@@ -571,24 +571,24 @@ maxretries-ybq9jjbb@internal/limits.go:12 -> maxretries-ydsm7jm6
 
 ### A newer extraction rule
 
-Hashes are only comparable when computed under the same extraction rules, so every ledger records its rule (`extract=` on line 1). A `ds` older than the one that wrote the ledger refuses to touch it, `ds scan` included, rather than rewriting it under the older rule. Here line 1 of the ledger was edited to claim rule 2:
+Hashes are only comparable when computed under the same extraction rules, so every ledger records its rule (`extract=` on line 1). A `ds` older than the one that wrote the ledger refuses to touch it, `ds scan` included, rather than rewriting it under the older rule. Here line 1 of the ledger was edited to claim rule 6:
 
 <!-- doctest
 ds scan
 cp .ds/ledger.tsv ../ledger.bak
-perl -pi -e 's/extract=1/extract=2/ if $. == 1' .ds/ledger.tsv
+perl -pi -e 's/extract=5/extract=6/ if $. == 1' .ds/ledger.tsv
 -->
 
 ```console
 $ ds check
-ds: docsync: recorded under a newer extraction rule than this build implements: ledger.tsv says extract=2, this build implements rule 1; upgrade ds; if a pre-release ds wrote it, set extract=1 on line 1 of .ds/ledger.tsv and .ds/refs.tsv, then run `ds scan`
+ds: docsync: recorded under a newer extraction rule than this build implements: ledger.tsv says extract=6, this build implements rule 5; upgrade ds (`ds update`) to the release that wrote it, and use the same version in CI
 ```
 
 <!-- doctest
 cp ../ledger.bak .ds/ledger.tsv
 -->
 
-Usually the fix is to upgrade `ds` (and to pin the same version in CI as on laptops). Repositories created with builds from before the first release recorded `extract=2` to `4` for what is now rule 1; for those, editing line 1 of both files as the message says is the whole fix. An older rule than the build is the normal upgrade path: `ds check` warns, `ds doctor` shows `WARN`, the next `ds scan` rewrites the files, and the affected citations report as changed once and are acked with a note.
+The fix is to upgrade `ds` (and to pin the same version in CI as on laptops). 0.1.10 moved the rule from 1 to 5, so after anyone runs `ds scan` with 0.1.10 or later, every older `ds` on the repository refuses it this way. Repositories created with builds from before the first release recorded `extract=2` to `4`; those numbers are never used for a rule, so such a repository reads as an older rule. An older rule than the build is the normal upgrade path: `ds check` warns, `ds doctor` shows `WARN`, the next `ds scan` rewrites the files, and the affected citations report as changed once and are acked with a note.
 
 ### CI fails on a citation of another repository
 

@@ -15,6 +15,7 @@ import (
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/config"
+	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/ledger"
 	"github.com/ubgo/docsync/match"
 	"github.com/ubgo/docsync/workspace"
@@ -499,7 +500,9 @@ func (a *App) writeSnapshot(cfg config.Config, st indexState) ([]snapshotChange,
 	}
 	repo := a.repoName(cfg)
 	commit, _ := a.vcs.Head()
-	next := st.Merged.Snapshot(repo, citedIDs(refs), ledger.Header{Repo: repo, Commit: commit, ScannedAt: a.now()})
+	// Stamped with this build's rule like every header it writes: left
+	// out, it read as rule 1 whatever wrote it.
+	next := st.Merged.Snapshot(repo, citedIDs(refs), ledger.Header{Extract: extract.Rule, Repo: repo, Commit: commit, ScannedAt: a.now()})
 	prev, _, err := store.LoadForeign()
 	var pathErr *fs.PathError
 	switch {

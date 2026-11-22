@@ -10,7 +10,7 @@
 # Manual only. Run it from the Actions tab, or:
 #
 #   gh workflow run gate.yml                  # the default branch
-#   gh workflow run gate.yml -f ref=<sha>     # any branch or commit
+#   gh workflow run gate.yml -f ref=<full sha>  # any branch or full commit sha; a short sha fails at checkout
 #
 # then read the result once with `gh run view`. To run it automatically,
 # replace the `on:` block with:

@@ -63,17 +63,27 @@ func (Markdown) Extract(p string, src []byte, prefix string) Found {
 			bindMarkdown(o, lines, html, carrier, &f)
 		default:
 			carrier := block.CarrierBlock
-			if o.trailing {
+			if o.trailing || o.leading() {
 				carrier = block.CarrierComment
 			}
 			r := block.Reference{Verb: o.dir.Verb, ID: o.dir.Args[block.KeyID], Pos: o.pos, Carrier: carrier, Args: o.dir.Args}
-			if o.trailing {
-				// The sentence ends where the comment starts; the rest of the
+			switch {
+			case o.trailing:
+				// The comment is about the sentence it follows: the one
+				// holding the last character before it. The column just past
+				// that character is where the next sentence starts, so when
+				// the paragraph went on to another line the comment bound
+				// that line's sentence instead (bug 160). The rest of the
 				// line is the directive, not prose.
 				withCode := append([]string(nil), lines...)
 				withCode[o.pos.Start-1] = o.code
-				r.SetSentence(paragraphSentence(withCode, masked, o.pos.Start-1, len(strings.TrimRight(o.code, " \t"))))
-			} else if o.dir.Verb == VerbBlock {
+				r.SetSentence(paragraphSentence(withCode, masked, o.pos.Start-1, max(len(strings.TrimRight(o.code, " \t"))-1, 0)))
+			case o.leading():
+				// The comment starts its line and text follows: it is about
+				// the sentence that text begins (bug 161).
+				rest := lines[o.pos.Start-1][o.end:]
+				r.SetSentence(paragraphSentence(lines, masked, o.pos.Start-1, o.end+len(rest)-len(strings.TrimLeft(rest, " \t"))))
+			case o.dir.Verb == VerbBlock:
 				r.Region = region(lines, o.pos.End+1, prefix)
 			}
 			f.Refs = append(f.Refs, Ref{Directive: o.dir, Reference: r})
@@ -477,6 +487,16 @@ func bindMarkdown(o occurrence, lines []string, html bool, carrier map[int]bool,
 		return
 	}
 	start := nextNonBlank(lines, o.pos.End+1)
+	if o.leading() && !html {
+		// The def starts its line and its text follows it there: that
+		// text begins the block. It bound the next line instead, leaving
+		// out the first line of its own paragraph, or its heading (bug
+		// 161). The directive is not part of the block, so the line is
+		// read without it, and editing the def's own keys changes nothing.
+		start = o.pos.Start
+		lines = append([]string(nil), lines...)
+		lines[start-1] = strings.TrimLeft(lines[start-1][o.end:], " \t")
+	}
 	if start == 0 {
 		f.Problems = append(f.Problems, Problem{Pos: o.pos, Err: ErrNothingToBind})
 		return
@@ -581,13 +601,17 @@ func paragraphSentence(lines, prose []string, i, col int) string {
 	var joined strings.Builder
 	offset := 0
 	for k := start; k <= end; k++ {
-		text := commentSpanRE.ReplaceAllStringFunc(lines[k], func(m string) string { return strings.Repeat(" ", len(m)) })
-		text = strings.TrimPrefix(strings.TrimLeft(text, " \t"), ">")
+		blanked := commentSpanRE.ReplaceAllStringFunc(lines[k], func(m string) string { return strings.Repeat(" ", len(m)) })
+		text := strings.TrimPrefix(strings.TrimLeft(blanked, " \t"), ">")
 		trimmed := strings.TrimSpace(text)
 		if k == i {
-			lead := len(lines[k]) - len(strings.TrimLeft(lines[k], " \t"))
-			if strings.HasPrefix(strings.TrimLeft(lines[k], " \t"), ">") {
-				lead += 1 + len(text[1:]) - len(strings.TrimLeft(text[1:], " \t"))
+			// lead is where trimmed starts in the line. It is measured with
+			// the comments blanked, as trimmed is: measured on the line as
+			// written, a comment at its start was not counted, and a column
+			// after it landed that comment's length further on (bug 162).
+			lead := len(blanked) - len(strings.TrimLeft(blanked, " \t"))
+			if strings.HasPrefix(strings.TrimLeft(blanked, " \t"), ">") {
+				lead += 1 + len(text) - len(strings.TrimLeft(text, " \t"))
 			}
 			offset = joined.Len() + min(max(col-lead, 0), len(trimmed))
 		}

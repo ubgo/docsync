@@ -8,10 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.1.10] - 2026-11-22
 
-A release of the `ds` binary and the `cli` module (0.1.10) and the library (0.1.8); the tier modules are unchanged. Fixes GitHub issue 9 and bugs 157 to 159: of several sentences on one line citing one id, each is now acked and checked on its own.
+A release of the `ds` binary and the `cli` module (0.1.10) and the library (0.1.8); the tier modules are unchanged. Fixes GitHub issue 9 and bugs 157 to 163: of several sentences on one line citing one id, each is now acked and checked on its own, and a directive comment that shares its line with prose binds the right sentence. This release moves the extraction rule from 1 to 5: read Upgrading first, and upgrade every machine and CI job that runs `ds` on a repository together.
 
 ### Upgrading
 
+- The extraction rule is now 5. The first `ds check` after upgrading warns that the ledger was recorded under rule 1, and the next `ds scan` restamps it. After that scan, a `ds` older than 0.1.10 refuses the repository (`recorded under a newer extraction rule`), so upgrade every machine and CI job that runs `ds` on it at the same time; pin `v0.1.10` where you pin versions. Block hashes are unchanged except for a block that spans a line starting with a directive comment followed by more text or code on that line, or a def written that way: those report `unacked` once, and you ack them with a note. A citation or claim whose sentence binding changed (a comment after a sentence whose paragraph goes on to the next line, or a comment at the start of a line) reports `ack was recorded under sentence rule 1, not 5` once; ack it again.
 - A line where several sentences cite one id, acked with an older version, has an ack for one of its sentences only, so the first check with this version may report the others `unacked`. Run `ds ack <id> --doc <doc> --line <n>` once for that line; it now acks every sentence on it. A line with one citing sentence is checked exactly as before.
 
 ### Added
@@ -22,6 +23,10 @@ A release of the `ds` binary and the `cli` module (0.1.10) and the library (0.1.
 
 - Of several sentences on one line citing one id, only one could ever be acked. Acks were found by doc and line, so `ds ack <id> --doc D --line N` recorded the first sentence only and `--all` recorded it twice; the other sentence stayed `unacked` forever, reported as the first one rewritten. Each sentence now has its own ack: `ds ack --line` and `--all` (and a `ds:ack id=…` commit message) ack every sentence on the line that cites the id, once each, and each is checked against its own ack. Two `ds:claim`s on one line are renewed the same way. When a line yields several rows, `ds ack` quotes each row's sentence, and `ds ack --dry-run` quotes each sentence it would ack instead of one sentence twice (bug 157, GitHub issue 9).
 - In an editor, hovering the second of two sentences on one line citing one id showed the first sentence's state and diff. It now shows its own (bug 158).
+- A directive comment after a sentence bound the next line's sentence when the paragraph went on below it (`Saves are atomic. <!-- ds:claim … -->` followed by more of the paragraph on the next line), so a rewrite of the sentence it was written for went unnoticed and the claim was renewed against the wrong sentence. It now binds the sentence it follows (bug 160).
+- A directive comment at the start of a line with prose after it (`<!-- ds:claim … --> The cache is warmed nightly.`) was read as a carrier on a line of its own. The prose on that line was left out of the hash of every section or paragraph containing it, so editing it flagged nothing; a citation or claim there bound no sentence; and a `ds:def` written that way bound the next line instead of its own paragraph. The comment is now about the text that follows it: that text counts in hashes, a citation or claim binds the sentence it begins, and a def binds the paragraph or heading it begins, without the directive itself, so editing the def's keys changes no hash (bug 161).
+- A link after a comment at the start of its line could bind a later sentence, because its column was measured with the comment and the sentence without it (bug 162).
+- `ds sync` wrote `.ds/foreign.tsv` with no extraction rule in its header, so it read as rule 1 whatever build wrote it. It now records the rule of the build that wrote it, as every other header does (bug 163).
 - `ds report --stalest` ranked a page by its acks when an acked line also held a citation nobody had acked, of another id or another sentence on that line. Such a page is now listed as never acked, and `gaps` says to review it, because each citation counts on its own (bug 159).
 
 ## [0.1.9] - 2026-10-14

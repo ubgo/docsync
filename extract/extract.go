@@ -344,13 +344,23 @@ func remoteDef(d directive.Directive, id string, dpos block.Position, carrier bl
 // a listed abbreviation, with whitespace collapsed and HTML comments left
 // out. Any later change to what those bytes cover bumps this by one.
 //
+// Rule 5 (0.1.10) changed what a directive comment that shares its line with
+// prose binds and covers: one after prose binds the sentence it follows even
+// when the paragraph goes on to the next line (it bound that line's sentence,
+// bug 160); one that starts a line with text after it is about that text,
+// which is no longer left out of hashes as a standalone carrier, and a def
+// written that way binds the block the text begins (bug 161); and a column
+// after a comment at the start of a line is measured as it should be (bug
+// 162). Numbers 2 to 4 are skipped: builds before the first release stamped
+// them for what became rule 1, so a ledger carrying one reads as older.
+//
 // The extraction cache is keyed on it, so a bump can never be served results
 // computed under the old rule, and each ack records it, so an ack made under
 // another rule is never compared as if its sentence were bound the same way.
 // Such an ack reports once (check.msgAckOtherRule) and is cleared by acking
 // the sentence again.
 // dsself:def id=rule-7y7umdv9 owner=@docsync stability=stable
-const Rule = 1
+const Rule = 5
 
 // carrierLines marks every line occupied by a standalone directive carrier —
 // a comment whose whole purpose is to anchor or cite a block.
@@ -361,7 +371,9 @@ const Rule = 1
 func carrierLines(occs []occurrence) map[int]bool {
 	out := map[int]bool{}
 	for _, o := range occs {
-		if o.trailing {
+		// A comment that shares its line with text, after the text or
+		// before it, leaves the line content (bug 161).
+		if o.trailing || o.leading() {
 			continue
 		}
 		for i := o.pos.Start; i <= o.pos.End; i++ {

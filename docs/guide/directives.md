@@ -126,7 +126,7 @@ docs/verbs.md
 2 warning, 2 ok
 ```
 
-One comment holds one directive, and every comment on a line is read, so a table row can cite one block per cell and a sentence can end with two citations. Two directives inside one comment are reported, and that comment is not read:
+One comment holds one directive, and every comment on a line is read, so a table row can cite one block per cell and a sentence can end with two citations. A comment after prose is about the sentence it follows, even when the paragraph goes on to the next line; a comment that starts a line with text after it is about that text, and a `ds:def` written that way binds the paragraph or heading the text begins. Two directives inside one comment are reported, and that comment is not read:
 
 ```go file=store/two.go
 package store
@@ -944,7 +944,7 @@ git init -q -b main .
 ds init
 -->
 
-A claim needs no def. It puts a review date on a sentence, for statements you want to be reminded about even when no code changed.
+A claim needs no def. It puts a review date on a sentence, for statements you want to be reminded about even when no code changed. Write the comment after the sentence it is about, on the same line; a comment at the start of a line is about the sentence that follows it on that line. A comment on a line of its own is about no sentence.
 
 | Key | Meaning |
 |---|---|

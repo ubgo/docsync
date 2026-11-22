@@ -334,7 +334,7 @@ func main() {
 ```console
 $ go build -o bin/snap ./snap
 $ bin/snap ../repo
-# docsync ledger format=2 extract=1 repo=api commit= scanned_at=2026-10-01T03:42:59Z
+# docsync ledger format=2 extract=5 repo=api commit= scanned_at=2026-10-01T03:42:59Z
 id	repo	kind	file	symbol	lines	hash	owner	stability	env	args
 savesession-73km8a3x	api	func	internal/store/session.go	SaveSession	8-11	73e47ea1f7bfc260d14e34ab7193bda9b627579dc01931009b0a17d5a0d6d86e	@auth	stable		id=savesession-73km8a3x owner=@auth
 ```

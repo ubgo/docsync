@@ -44,8 +44,8 @@ func TestDoctorStatusesAreTheClosedSet(t *testing.T) {
 	check("degraded")
 }
 
-// TestOlderRuleHelpers pins the upgrade-path output, which no file can reach
-// while rule 1 is the only released rule: doctor warns rather than fails,
+// TestOlderRuleHelpers pins the upgrade-path output against fixed rule
+// numbers, whatever the real rule is: doctor warns rather than fails,
 // check and scan print through their format, and a newer rule or a match
 // prints nothing here (a newer one was refused before any command ran).
 func TestOlderRuleHelpers(t *testing.T) {

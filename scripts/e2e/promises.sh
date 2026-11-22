@@ -112,7 +112,7 @@ for f in ledger refs; do
   out=$(ds check 2>&1); rc=$?
   ck "§33 $f.tsv with extract=99: check refuses" 2 $rc
   has "§33 $f.tsv with extract=99: refused naming both rules" "$out" "$f.tsv says extract=99, this build implements rule"
-  has "§33 $f.tsv with extract=99: the refusal gives the pre-release fix" "$out" "set extract=1"
+  has "§33 $f.tsv with extract=99: the refusal says to upgrade" "$out" "upgrade ds"
   ds scan >/dev/null 2>&1; rc=$?
   cmp -s .ds/$f.tsv "$S/newer" && x=kept || x=rewritten
   ck "§33 $f.tsv with extract=99: scan refuses" 2 $rc
@@ -120,9 +120,11 @@ for f in ledger refs; do
   out=$(ds doctor 2>&1); rc=$?
   ck "§33 $f.tsv with extract=99: doctor fails" 2 $rc
   has "§33 $f.tsv with extract=99: doctor names it" "$out" "extract=99"
-  # The fix the refusal gives for a repo a pre-release build wrote.
-  sedi "1s/extract=99/extract=1/" .ds/$f.tsv
-  ds check >/dev/null 2>&1; ck "§33 $f.tsv: setting extract=1 clears the refusal" 0 $?
+  # What a pre-release build stamped (2 to 4) reads as an older rule since
+  # rule 5: check warns and carries on, and the next scan restamps it.
+  sedi "1s/extract=99/extract=3/" .ds/$f.tsv
+  out=$(ds check 2>&1); ck "§33 $f.tsv with a pre-release extract=3: check is not refused" 0 $?
+  has "§33 $f.tsv with a pre-release extract=3: named as an older rule" "$out" "older extraction rule"
   cp "$S/orig" .ds/$f.tsv
 done
 # The ack log's header is written once and never restamped, so it says

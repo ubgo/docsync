@@ -20,7 +20,7 @@ func ruleHeader(kind string, rule int) ledger.Header {
 // does not cover. Hashes taken under a rule this build does not implement
 // cannot be compared with its own: accepting them would report unchanged
 // blocks as drift and let a scan rewrite the files under the older rule. The
-// refusal names the file, both rules, and the fix for a pre-release repo.
+// refusal names the file, both rules, and says to upgrade.
 // promise:extract-rule
 func TestNewerExtractionRuleIsRefused(t *testing.T) {
 	t.Parallel()
@@ -37,7 +37,7 @@ func TestNewerExtractionRuleIsRefused(t *testing.T) {
 			t.Errorf("%s under rule %d: err = %v, want ErrNewerRule", name, newer, err)
 			continue
 		}
-		for _, want := range []string{name + ".tsv says extract=" + strconv.Itoa(newer), "this build implements rule " + strconv.Itoa(extract.Rule), "set extract=1"} {
+		for _, want := range []string{name + ".tsv says extract=" + strconv.Itoa(newer), "this build implements rule " + strconv.Itoa(extract.Rule), "upgrade ds"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("%s: %q does not say %q", name, err, want)
 			}
@@ -53,13 +53,22 @@ func TestNewerExtractionRuleIsRefused(t *testing.T) {
 	if err := CheckRule(ledger.Ledger{}, ledger.Refs{}); err != nil {
 		t.Errorf("first run: %v", err)
 	}
+	// What builds before the first release stamped (2 to 4, for what became
+	// rule 1) and rule 1 itself read as older since rule 5: the upgrade
+	// path, never a refusal.
+	for _, rule := range []int{1, 2, 3, 4} {
+		_, err := New(WithFS(fsys), WithPrevious(ledger.Ledger{Header: ruleHeader(ledger.KindLedger, rule)}, ledger.Refs{Header: ruleHeader(ledger.KindRefs, rule)}))
+		if err != nil || !errors.Is(CheckRule(ledger.Ledger{Header: ruleHeader(ledger.KindLedger, rule)}, ledger.Refs{}), ErrOtherRule) {
+			t.Errorf("rule %d: New = %v; want it accepted as an older rule", rule, err)
+		}
+	}
 }
 
 // TestOlderExtractionRuleWarns pins the upgrade path: a file from an older rule
 // is named with ErrOtherRule, which hosts print as a warning, and is never
 // refused, since the scan it would block is what restamps it. Run against a
-// current rule of 3, because while rule 1 is the only released one no real
-// file can be older.
+// fixed current rule of 3, so the cases do not move when the real rule does;
+// TestNewerExtractionRuleIsRefused covers the real rule against rule 1.
 // promise:extract-rule
 func TestOlderExtractionRuleWarns(t *testing.T) {
 	t.Parallel()

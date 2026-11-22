@@ -140,3 +140,7 @@
 157 of several sentences on one line citing one id, only one could ever be acked: acks were found by doc and line, so ds ack --line and --all recorded the first sentence and the other stayed unacked, reported as the first one rewritten
 158 the editor's hover on the second of two sentences on one line citing one id showed the first sentence's state, because the finding was looked up by line and id
 159 ds report counted a page as reviewed when an acked line also held a citation nobody had acked, of another id or another sentence, because the stalest-pages ranking found acks by line
+160 a directive comment after a sentence bound the next line's sentence when its paragraph went on to the next line, so the ack's wording check and the claim's renewal watched the wrong sentence
+161 a directive comment that starts a line with prose after it was read as a carrier on a line of its own: the prose was left out of every hash spanning the line, a citation or claim there bound no sentence, and a def there bound the next line instead of its own paragraph
+162 a link after a comment at the start of its line bound the sentence the comment's length further on, because its column was measured on the line with the comment and its sentence on the line without it
+163 ds sync wrote .ds/foreign.tsv with no extraction rule in its header, so it read as rule 1 whatever build wrote it

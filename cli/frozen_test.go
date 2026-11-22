@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ubgo/docsync/extract"
 	"github.com/ubgo/docsync/ledger"
 )
 
@@ -277,6 +279,24 @@ func TestSyncReportsAMoveEndToEnd(t *testing.T) {
 	// Syncing again is genuinely unchanged.
 	if r := run(t, docs, docsVCS, "sync"); !strings.Contains(r.out, snapshotUnchanged) {
 		t.Errorf("an idempotent sync = %+v", r)
+	}
+}
+
+// TestSyncStampsTheExtractionRule pins that foreign.tsv records the rule of
+// the build that wrote it, as every other header does. It was written with
+// none, which reads as rule 1 whatever wrote it (bug 163).
+func TestSyncStampsTheExtractionRule(t *testing.T) {
+	t.Parallel()
+	_, docs, _, _, docsVCS := staleSetup(t)
+	if r := run(t, docs, docsVCS, "sync"); r.code != 0 {
+		t.Fatalf("sync = %+v", r)
+	}
+	raw, err := os.ReadFile(filepath.Join(docs, ".ds", ledger.ForeignFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head, _, _ := strings.Cut(string(raw), "\n"); !strings.Contains(head, fmt.Sprintf(" extract=%d ", extract.Rule)) {
+		t.Errorf("foreign.tsv header = %q, want extract=%d", head, extract.Rule)
 	}
 }
 

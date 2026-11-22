@@ -260,17 +260,18 @@ func TestInitAndDoctor(t *testing.T) {
 		t.Errorf("doctor on a newer-rule ledger = %+v", r)
 	}
 	for _, c := range []string{"check", "scan"} {
-		if r := run(t, dir, v, c); r.code != ExitError || !strings.Contains(r.err, newer) || !strings.Contains(r.err, "set extract=1") {
+		if r := run(t, dir, v, c); r.code != ExitError || !strings.Contains(r.err, newer) || !strings.Contains(r.err, "upgrade ds") {
 			t.Errorf("%s on a newer-rule ledger = %+v", c, r)
 		}
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, ".ds", "ledger.tsv")); string(got) != stamped {
 		t.Error("a refused scan rewrote the ledger")
 	}
-	// The remedy the refusal gives for a pre-release repo is the whole fix.
-	write(t, dir, ".ds/ledger.tsv", strings.Replace(stamped, newer, "extract=1", 1))
-	if r := run(t, dir, v, "check"); strings.Contains(r.err, "extraction rule") || r.code == ExitError {
-		t.Errorf("check after the remedy = %+v", r)
+	// A ledger a pre-release build wrote (extract=2 to 4, for what became
+	// rule 1) is an older rule since rule 5: a warning, never a refusal.
+	write(t, dir, ".ds/ledger.tsv", strings.Replace(stamped, newer, "extract=3", 1))
+	if r := run(t, dir, v, "check"); !strings.Contains(r.err, "older extraction rule") || r.code == ExitError {
+		t.Errorf("check on a pre-release ledger = %+v", r)
 	}
 	write(t, dir, ".ds/ledger.tsv", string(led))
 	write(t, dir, ".ds/config.toml", "[scan]\ncode = [\"[\"]\ndocs = [\"nothing/**\"]\n")

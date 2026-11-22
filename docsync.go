@@ -90,10 +90,9 @@ var (
 	// would report unchanged blocks as drift, and a scan would rewrite the
 	// files under the older rule. The remedy is a newer ds.
 	//
-	// Pre-release builds stamped extract=2 to 4 for what is now rule 1 (the
-	// counter was reset for the first release). Such a repository sees this
-	// refusal once; setting extract=1 on the header line of .ds/ledger.tsv and
-	// .ds/refs.tsv, then running `ds scan`, is the whole fix.
+	// Pre-release builds stamped extract=2 to 4 for what became rule 1. Rule
+	// 5 skips those numbers, so such a repository reads as an older rule and
+	// takes the upgrade path; while rule 1 was current it was refused here.
 	ErrNewerRule = errors.New("docsync: recorded under a newer extraction rule than this build implements")
 	// ErrOtherRule reports a ledger or refs recorded under an older extraction
 	// rule, which is the upgrade path: unchanged blocks can report drift until
@@ -232,9 +231,11 @@ func WithAcks(a ledger.Acks) Option {
 	return func(s *System) error { s.acks = a; return nil }
 }
 
-// preReleaseFix is the remedy a refusal carries for a repository that ran a
-// pre-release build, whose rule numbers ran above today's rule 1.
-const preReleaseFix = "upgrade ds; if a pre-release ds wrote it, set extract=1 on line 1 of .ds/ledger.tsv and .ds/refs.tsv, then run `ds scan`"
+// newerRuleFix is the remedy a refusal carries: a ds at least as new as the
+// one that wrote the file. It used to add a fix for a repository a
+// pre-release build wrote, whose rule numbers ran above rule 1; since rule 5
+// such a repository reads as older and is upgraded by the next scan.
+const newerRuleFix = "upgrade ds (`ds update`) to the release that wrote it, and use the same version in CI"
 
 // CheckRule compares the extraction rule the ledger and refs record with
 // extract.Rule. A newer rule is ErrNewerRule, which WithPrevious refuses; an
@@ -250,7 +251,8 @@ const preReleaseFix = "upgrade ds; if a pre-release ds wrote it, set extract=1 o
 func CheckRule(l ledger.Ledger, r ledger.Refs) error { return checkRule(l, r, extract.Rule) }
 
 // checkRule is CheckRule against a given current rule, so the upgrade path --
-// a file from an older rule -- is testable while the only released rule is 1.
+// a file from an older rule -- is testable against fixed numbers, whatever
+// the real rule is.
 func checkRule(l ledger.Ledger, r ledger.Refs, current int) error {
 	var older error
 	for _, h := range []ledger.Header{l.Header, r.Header} {
@@ -264,7 +266,7 @@ func checkRule(l ledger.Ledger, r ledger.Refs, current int) error {
 		case h.Kind == "":
 			// A zero header is a first run: nothing was recorded under any rule.
 		case rule > current:
-			return fmt.Errorf("%w: %s.tsv says extract=%d, this build implements rule %d; %s", ErrNewerRule, h.Kind, rule, current, preReleaseFix)
+			return fmt.Errorf("%w: %s.tsv says extract=%d, this build implements rule %d; %s", ErrNewerRule, h.Kind, rule, current, newerRuleFix)
 		case rule < current && older == nil:
 			older = fmt.Errorf("%w: %s.tsv says extract=%d, this build implements rule %d", ErrOtherRule, h.Kind, rule, current)
 		}

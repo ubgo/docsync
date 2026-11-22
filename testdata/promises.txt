@@ -120,8 +120,9 @@ file-confined	test	`file=` resolves under the repo root with symlinks rejected
 format-by-name	test	an older tool refuses a newer format by name, never by misparsing
 format-by-name	test	refuses a ledger `format` it does not know
 extract-rule	test	a ledger or refs file recording a rule newer than the tool implements is refused by every command
-extract-rule	test	such a repository is refused once, and setting `extract=1`
+extract-rule	test	since rule 5 such a repository reads as an older rule and takes that upgrade path, never a refusal
 extract-rule	test	The ack log's header rule is not consulted: it is written once and never restamped
+extract-rule	test	Numbers 2 to 4 are never used
 truth-declared	test	direction can never be inferred from where a name appears
 agent-bounded	test	an agent must not be able to approve its own work silently
 library-no-writes	test	never the library; it returns `Edit` values and the caller applies them

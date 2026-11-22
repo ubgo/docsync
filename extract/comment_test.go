@@ -3,6 +3,7 @@ package extract
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ubgo/docsync/block"
@@ -54,7 +55,8 @@ func TestClassify(t *testing.T) {
 		{"backtick string", "s := `//not` // c", goSt, commentLine{n: 1, body: " c", trailing: true, code: "s := `//not` "}},
 		{"unterminated string swallows line", `s := "open // x`, goSt, commentLine{n: 1}},
 		{"block comment same line", "/* ds:def id=a */", goSt, commentLine{n: 1, body: " ds:def id=a ", isComment: true}},
-		{"block comment trailing code after close ignored", "x /* c */ y", goSt, commentLine{n: 1, body: " c ", trailing: true, code: "x "}},
+		{"block comment: code after the close is not its code, and is what follows it", "x /* c */ y", goSt, commentLine{n: 1, body: " c ", trailing: true, code: "x ", after: " y"}},
+		{"a comment that starts the line before text is followed by it", "<!-- ds:claim owner=x --> The text.", mdSt, commentLine{n: 1, body: " ds:claim owner=x ", isComment: true, after: " The text."}},
 		{"multi-line block open is not a carrier", "/* ds:def id=a", goSt, commentLine{n: 1}},
 		{"html comment", "<!-- ds:block id=a -->", mdSt, commentLine{n: 1, body: " ds:block id=a ", isComment: true}},
 		{"html comment after text is trailing", "text <!-- ds:claim owner=x -->", mdSt, commentLine{n: 1, body: " ds:claim owner=x ", trailing: true, code: "text "}},
@@ -67,6 +69,12 @@ func TestClassify(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := classify(1, tc.line, tc.st)
+			// end is checked against the line itself: what follows it is
+			// the text after the comment, or nothing for a line comment.
+			if got.body != "" && strings.TrimSpace(tc.line[got.end:]) != strings.TrimSpace(got.after) {
+				t.Errorf("classify(%q).end = %d leaves %q after the comment, want %q", tc.line, got.end, tc.line[got.end:], got.after)
+			}
+			got.end, tc.want.end = 0, 0
 			if got != tc.want {
 				t.Errorf("classify(%q) = %#v, want %#v", tc.line, got, tc.want)
 			}

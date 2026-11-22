@@ -128,7 +128,7 @@ REPO  COMMIT   PUBLISHED             DEFS  REFS
 docs  61a2c79  2026-10-01T03:33:50Z  1     0
   + backoff-zztatnzq now cited at b0f1c95
 $ cat .ds/foreign.tsv
-# docsync foreign format=2 extract=1 repo=api commit= scanned_at=2026-10-01T03:34:01Z
+# docsync foreign format=2 extract=5 repo=api commit= scanned_at=2026-10-01T03:34:01Z
 id	repo	commit	kind	file	symbol	lines	hash	owner	stability	env	args
 backoff-zztatnzq	docs	61a2c79	section	spec/retries.md	Backoff	4-6	b0f1c9545a72b6ca037227506866f872c2921fc7ba489d88dbd1dfc20fd37e8a		stable		id=backoff-zztatnzq repo=docs
 $ git add -A && git commit -qm retry
