@@ -44,8 +44,9 @@ import (
 //
 // Invariant: rows are grouped by id and env and never paired across groups,
 // and for citations at distinct positions the result is independent of the
-// order prev and cur arrive in (two citations of one id on one line are
-// indistinguishable, and every consumer keys them by position anyway).
+// order prev and cur arrive in. Two citations of one id on one line are told
+// apart by their sentences (rule 1); with the same sentence they are the
+// same statement twice, and consumers key them by CiteKey (bug 157).
 func Carry(prev, cur []RefRow, effective func(RefRow) string, current func(RefRow) string) []int {
 	out := make([]int, len(cur))
 	for i := range out {
@@ -224,9 +225,15 @@ type Baseline struct {
 // same sentence (both sentence hashes non-empty and equal), or, for a
 // citation with no sentence to compare, when it was recorded after
 // scannedAt — the last scan, whose layout the move is measured from.
-func Baselines(prev []RefRow, cur []RefRow, latest map[AckKey]Ack, scannedAt time.Time, current func(RefRow) string) []Baseline {
+func Baselines(prev []RefRow, cur []RefRow, acks AckIndex, scannedAt time.Time, current func(RefRow) string) []Baseline {
+	// Each row's own ack at its position: by position alone, two sentences
+	// on one line citing one id shared a single ack (bug 157).
+	prevAck := map[CiteKey]*Ack{}
+	for j, a := range acks.Assign(prev) {
+		prevAck[prev[j].CiteKey()] = a
+	}
 	effective := func(x RefRow) string {
-		if a, ok := latest[x.Key()]; ok && a.BlockHash != "" {
+		if a := prevAck[x.CiteKey()]; a != nil && a.BlockHash != "" {
 			return a.BlockHash
 		}
 		if x.AckedHash != "" {
@@ -235,29 +242,39 @@ func Baselines(prev []RefRow, cur []RefRow, latest map[AckKey]Ack, scannedAt tim
 		return x.SeenHash
 	}
 	from := Carry(prev, cur, effective, current)
+	curAck := acks.Assign(cur)
+	// held is, per position, the sentences cited there now: an ack of one
+	// of them belongs to it, never to a neighbour (carriedAck).
+	held := map[AckKey]map[string]bool{}
+	for _, row := range cur {
+		if held[row.Key()] == nil {
+			held[row.Key()] = map[string]bool{}
+		}
+		held[row.Key()][row.SentenceHash] = true
+	}
 	out := make([]Baseline, len(cur))
 	for i, row := range cur {
-		here, ackedHere := latest[row.Key()]
+		here := curAck[i]
 		j := from[i]
 		if j < 0 {
-			if ackedHere {
-				out[i].Acked, out[i].Ack = here.BlockHash, &here
+			if here != nil {
+				out[i].Acked, out[i].Ack = here.BlockHash, here
 			}
 			continue
 		}
 		p := prev[j]
 		out[i].Seen, out[i].Paired = p.SeenHash, true
 		moved := p.Key() != row.Key()
-		if ackedHere && (!moved || ackFits(here, row, scannedAt)) {
-			out[i].Acked, out[i].Ack = here.BlockHash, &here
+		if here != nil && (!moved || ackFits(*here, row, scannedAt)) {
+			out[i].Acked, out[i].Ack = here.BlockHash, here
 			continue
 		}
-		if a, ok := latest[p.Key()]; ok {
-			out[i].Acked, out[i].Ack = a.BlockHash, &a
+		if a := prevAck[p.CiteKey()]; a != nil {
+			out[i].Acked, out[i].Ack = a.BlockHash, a
 			continue
 		}
 		out[i].Acked = p.AckedHash
-		out[i].Ack = carriedAck(latest, row, p.AckedHash)
+		out[i].Ack = carriedAck(acks, row, p.AckedHash, held[row.Key()])
 	}
 	return out
 }
@@ -282,10 +299,17 @@ func Baselines(prev []RefRow, cur []RefRow, latest map[AckKey]Ack, scannedAt tim
 // (else the newest) stands for it, so the rewrite is reported rather than
 // missed — the rule Carry follows: over-reporting costs an ack. Nil when no
 // ack row names the hash, which leaves a hash-only baseline as it was.
-func carriedAck(latest map[AckKey]Ack, row RefRow, hash string) *Ack {
+//
+// held is the set of sentences cited at the row's own position now. An ack
+// there of another of them is that sentence's, not this one's: taking it
+// compared a sentence never acked with its neighbour's wording (bug 157).
+func carriedAck(acks AckIndex, row RefRow, hash string, held map[string]bool) *Ack {
 	var best *Ack
-	for _, a := range latest {
+	for _, a := range acks.All() {
 		if a.ID != row.ID || a.Env != row.Env || a.Repo != row.Repo || a.BlockHash != hash {
+			continue
+		}
+		if a.key() == row.Key() && a.SentenceHash != row.SentenceHash && held[a.SentenceHash] {
 			continue
 		}
 		if a.SentenceHash != "" && a.SentenceHash == row.SentenceHash {

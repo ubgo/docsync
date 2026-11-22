@@ -375,7 +375,7 @@ Every input is a functional option to `docsync.New`. `WithFS` is the only requir
 
 ## What a System can do
 
-`System` is safe to share between goroutines. Its methods map one to one onto the CLI commands: `Scan`, `ScanFull`, `Check`, `Snapshot`, `Bodies`, `Define`, `FixDuplicates`, `Rename`, `Repair`, `Adopt`, `Ack`, `Render`, `Fences` and `FencesReport` (repo-mode copies; the second also says which copies were skipped or written with only a link, and why), `Context`, `ContextFor`, `Map`, `Facts`, `Find`, `FindBy`, `Read`, `LocateID`, `Why`, `Blame`, `Graph`, `Impact`, `Report`, `Audit`, `Notify`, `ExtractFile`, and `SaveState`. `Triage(rep)` is a package function that groups a report's `unacked` findings. Read signatures with `go doc github.com/ubgo/docsync System`.
+`System` is safe to share between goroutines. Its methods map one to one onto the CLI commands: `Scan`, `ScanFull`, `Check`, `Snapshot`, `Bodies`, `Define`, `FixDuplicates`, `Rename`, `Repair`, `Adopt`, `Ack` and `AckEach` (one row per sentence the request selects, where several sentences on the line cite the id; `Ack` returns the first), `Render`, `Fences` and `FencesReport` (repo-mode copies; the second also says which copies were skipped or written with only a link, and why), `Context`, `ContextFor`, `Map`, `Facts`, `Find`, `FindBy`, `Read`, `LocateID`, `Why`, `Blame`, `Graph`, `Impact`, `Report`, `Audit`, `Notify`, `ExtractFile`, and `SaveState`. `Triage(rep)` is a package function that groups a report's `unacked` findings, and `FindingOf(findings, doc, ref)` picks one citation's own finding, matching its sentence where several on a line cite one id. Read signatures with `go doc github.com/ubgo/docsync System`.
 
 ## The packages
 

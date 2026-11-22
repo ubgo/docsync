@@ -137,3 +137,6 @@
 154 a .ds/foreign.tsv that does not parse or cannot be read was ignored in silence by every command except check --frozen, the CI default, which stops on it
 155 ds sync refused to replace a .ds/foreign.tsv that does not parse, though sync is what rewrites it and every other error about that file says to run it
 156 a .ds/ledger.tsv, refs.tsv, acks.tsv or foreign.tsv that does not parse, without merge conflict markers, was named with no way to recover
+157 of several sentences on one line citing one id, only one could ever be acked: acks were found by doc and line, so ds ack --line and --all recorded the first sentence and the other stayed unacked, reported as the first one rewritten
+158 the editor's hover on the second of two sentences on one line citing one id showed the first sentence's state, because the finding was looked up by line and id
+159 ds report counted a page as reviewed when an acked line also held a citation nobody had acked, of another id or another sentence, because the stalest-pages ranking found acks by line

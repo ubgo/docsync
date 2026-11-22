@@ -130,6 +130,38 @@ func TestPruneKeepsEveryLiveSource(t *testing.T) {
 	}
 }
 
+// TestPruneKeepsEachSentencesOwnAck pins the prune half of bug 157: when
+// several sentences on one line cite one id, the ack each is checked against
+// is its own, which need not be the newest on the line. Its body stays live;
+// an older ack of a sentence since rewritten and re-acked is consulted by
+// nothing and its body may go.
+func TestPruneKeepsEachSentencesOwnAck(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	row := func(sentence string) ledger.RefRow {
+		return ledger.RefRow{ID: "a", Repo: "r", Doc: "d.md", Line: 3, Verb: "block", SentenceHash: sentence}
+	}
+	ack := func(sentence, hash string, at time.Time) ledger.Ack {
+		return ledger.Ack{At: at, ID: "a", Repo: "r", Doc: "d.md", Line: 3, BlockHash: hash, SentenceHash: sentence}
+	}
+	acks := ledger.Acks{Rows: []ledger.Ack{
+		ack("s2", "h-s2-own", t0),
+		ack("s1-old", "h-superseded", t0.Add(time.Hour)),
+		ack("s1", "h-s1-newest", t0.Add(2*time.Hour)),
+	}}
+	two := ledger.Refs{Rows: []ledger.RefRow{row("s1"), row("s2")}}
+	live, err := NewStore(t.TempDir()).liveFrom(ledger.Ledger{}, two, acks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !live["h-s1-newest"] || !live["h-s2-own"] {
+		t.Errorf("live = %v; want both sentences' own acks", live)
+	}
+	if live["h-superseded"] {
+		t.Error("the ack of a sentence rewritten and re-acked was kept live")
+	}
+}
+
 // TestPruneRemovesAndRespectsGrace covers the everyday path: a dry run
 // writes nothing, the grace period keeps a recent body, and a real run
 // removes only the complement of the live set.

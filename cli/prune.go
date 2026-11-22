@@ -79,7 +79,20 @@ func (s *Store) liveFrom(prev ledger.Ledger, refs ledger.Refs, acks ledger.Acks)
 		live[r.SeenHash] = true
 		markAboutLive(live, r)
 	}
+	// The acks check can consult: the newest at each position, and each
+	// cited sentence's own where several sentences on one line cite one id
+	// (bug 157). An older ack of a sentence since rewritten and re-acked is
+	// consulted by nothing, and its body may go.
+	var consulted []ledger.Ack
 	for _, a := range acks.Latest() {
+		consulted = append(consulted, a)
+	}
+	for _, own := range acks.Index().Assign(refs.Rows) {
+		if own != nil {
+			consulted = append(consulted, *own)
+		}
+	}
+	for _, a := range consulted {
 		live[a.BlockHash] = true
 		// A claim's renewal records one hash per def it is about.
 		for _, h := range check.AboutBaselineHashes(a.BlockHash) {

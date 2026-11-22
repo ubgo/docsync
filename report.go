@@ -11,6 +11,7 @@ import (
 	"github.com/ubgo/docsync/block"
 	"github.com/ubgo/docsync/check"
 	"github.com/ubgo/docsync/extract"
+	"github.com/ubgo/docsync/ledger"
 	"github.com/ubgo/docsync/render"
 	"github.com/ubgo/docsync/scan"
 )
@@ -186,27 +187,32 @@ func (s *System) Report(rep Report, opts ReportOptions) ReportResult {
 		}
 	}
 	// Stalest: pages by oldest ack; never-acked pages first.
-	latestAck := map[string]time.Time{}
+	//
+	// Each citation's ack is its own (ledger.AckIndex.Assign): by line, a
+	// sentence never acked borrowed the ack of another on its line, and a
+	// page holding one counted as reviewed (bug 159).
 	oldest := map[string]time.Time{}
-	for _, a := range s.acks.Rows {
-		key := a.Doc + "\x00" + strconv.Itoa(a.Line)
-		if a.At.After(latestAck[key]) {
-			latestAck[key] = a.At
+	var citing []ledger.RefRow
+	for _, r := range res.Refs {
+		if r.ID != "" {
+			citing = append(citing, ledger.FromReference(s.repo, r))
 		}
 	}
+	own := s.acks.Index().Assign(citing)
 	cites := map[string]int{}
-	for _, r := range res.Refs {
-		if r.ID == "" {
-			continue
+	for i, r := range citing {
+		cites[r.Doc]++
+		ok := own[i] != nil
+		var t time.Time
+		if ok {
+			t = own[i].At
 		}
-		cites[r.Pos.File]++
-		t, ok := latestAck[r.Pos.File+"\x00"+strconv.Itoa(r.Pos.Start)]
-		cur, seen := oldest[r.Pos.File]
+		cur, seen := oldest[r.Doc]
 		switch {
 		case !ok:
-			oldest[r.Pos.File] = time.Time{}
+			oldest[r.Doc] = time.Time{}
 		case !seen || (!cur.IsZero() && t.Before(cur)):
-			oldest[r.Pos.File] = t
+			oldest[r.Doc] = t
 		}
 	}
 	for doc, t := range oldest {

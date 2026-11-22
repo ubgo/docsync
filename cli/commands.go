@@ -765,7 +765,7 @@ func (a *App) ackCmd() *cobra.Command {
 					return err
 				}
 				if dry {
-					printAckPreview(cmd.OutOrStdout(), rep.Scan, rows, false)
+					printAckPreview(cmd.OutOrStdout(), rows, false)
 					return nil
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "acked group %d: %d sentences\n", group, len(rows))
@@ -853,20 +853,10 @@ func (a *App) ackCmd() *cobra.Command {
 				return err
 			}
 			if dry {
-				printAckPreview(cmd.OutOrStdout(), res, rows, page)
+				printAckPreview(cmd.OutOrStdout(), rows, page)
 				return nil
 			}
-			for _, r := range rows {
-				if page {
-					fmt.Fprintf(cmd.OutOrStdout(), "recorded a review of %s (%s)\n", r.Doc, r.ActorKind)
-					continue
-				}
-				if r.ID == "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "renewed the claim at %s:%d (%s)\n", r.Doc, r.Line, r.ActorKind)
-					continue
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "acked %s at %s:%d (%s)\n", r.ID, r.Doc, r.Line, r.ActorKind)
-			}
+			printAcked(cmd.OutOrStdout(), rows, page)
 			return nil
 		},
 	}
@@ -891,34 +881,53 @@ const sentencePreviewWidth = 80
 // approves is a sentence, so each line quotes it: a location and a hash are
 // not reviewable. A selection that cites nothing is refused before this, as
 // the real run refuses it, so a dry run fails exactly where the real one does.
-func printAckPreview(w io.Writer, res scan.Result, rows []ledger.Ack, page bool) {
-	// Every row was built from the citation at its doc line, so each has a
-	// sentence here; a block-position citation's is empty.
-	sentence := map[string]string{}
-	for _, ref := range res.Refs {
-		sentence[citationKey(ref.Pos.File, ref.Pos.Start, ref.ID)] = ref.Sentence
-	}
+//
+// The sentence is the one the row approves. It was looked up by doc, line
+// and id, which quoted one sentence for both when two on a line cite the
+// id (bug 157).
+func printAckPreview(w io.Writer, rows []ledger.Ack, page bool) {
 	for _, r := range rows {
 		switch {
 		case page:
 			fmt.Fprintf(w, "would record a review of %s (%s)\n", r.Doc, r.ActorKind)
 		case r.ID == "":
-			fmt.Fprintf(w, "would renew the claim at %s:%d — %q\n", r.Doc, r.Line, preview(sentence[citationKey(r.Doc, r.Line, r.ID)]))
+			fmt.Fprintf(w, "would renew the claim at %s:%d — %q\n", r.Doc, r.Line, preview(r.Sentence))
 		default:
 			// A block-position citation has no sentence; the block is
 			// what it approves.
 			quoted := ""
-			if s := sentence[citationKey(r.Doc, r.Line, r.ID)]; s != "" {
-				quoted = fmt.Sprintf(" — %q", preview(s))
+			if r.Sentence != "" {
+				quoted = fmt.Sprintf(" — %q", preview(r.Sentence))
 			}
 			fmt.Fprintf(w, "would ack %s at %s:%d (%s)%s\n", r.ID, r.Doc, r.Line, short(r.BlockHash), quoted)
 		}
 	}
 }
 
-// citationKey identifies a citation by its doc line and id.
-func citationKey(doc string, line int, id string) string {
-	return fmt.Sprintf("%s:%d %s", doc, line, id)
+// printAcked reports what an ack run recorded, one line per row. A line
+// that gave several rows — several sentences citing one id, or several
+// claims — quotes each row's sentence, since the location alone reads as
+// the same ack printed twice (bug 157).
+func printAcked(w io.Writer, rows []ledger.Ack, page bool) {
+	perLine := map[ledger.AckKey]int{}
+	for _, r := range rows {
+		perLine[ledger.AckKey{Doc: r.Doc, Line: r.Line, ID: r.ID, Env: r.Env}]++
+	}
+	for _, r := range rows {
+		if page {
+			fmt.Fprintf(w, "recorded a review of %s (%s)\n", r.Doc, r.ActorKind)
+			continue
+		}
+		quoted := ""
+		if perLine[ledger.AckKey{Doc: r.Doc, Line: r.Line, ID: r.ID, Env: r.Env}] > 1 {
+			quoted = fmt.Sprintf(" — %q", preview(r.Sentence))
+		}
+		if r.ID == "" {
+			fmt.Fprintf(w, "renewed the claim at %s:%d (%s)%s\n", r.Doc, r.Line, r.ActorKind, quoted)
+			continue
+		}
+		fmt.Fprintf(w, "acked %s at %s:%d (%s)%s\n", r.ID, r.Doc, r.Line, r.ActorKind, quoted)
+	}
 }
 
 // preview cuts s to sentencePreviewWidth runes, ending in an ellipsis when
@@ -999,13 +1008,23 @@ func ackDirectives(prefix, text string) ([]commitAck, error) {
 // so what `ack --dry-run` lists is what the real run then records.
 func (a *App) recordAcks(ld loaded, res scan.Result, reqs []docsync.AckRequest, dry bool) ([]ledger.Ack, error) {
 	var rows []ledger.Ack
+	// Each sentence is acked once per run. `ack --all` and a triage group
+	// make one request per citation or finding, and two sentences on one
+	// line give two identical requests, each selecting both sentences (bug
+	// 157): the repeat is dropped before it is built, so each sentence is
+	// recorded, and an ack observer told of it, once.
+	asked := map[docsync.AckRequest]bool{}
 	for _, req := range reqs {
 		req.Preview = dry
-		ack, err := ld.sys.Ack(res, req)
+		if asked[req] {
+			continue
+		}
+		asked[req] = true
+		acks, err := ld.sys.AckEach(res, req)
 		if err != nil {
 			return nil, err
 		}
-		rows = append(rows, ack)
+		rows = append(rows, acks...)
 	}
 	if dry {
 		return rows, nil

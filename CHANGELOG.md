@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-11-22
+
+A release of the `ds` binary and the `cli` module (0.1.10) and the library (0.1.8); the tier modules are unchanged. Fixes GitHub issue 9 and bugs 157 to 159: of several sentences on one line citing one id, each is now acked and checked on its own.
+
+### Upgrading
+
+- A line where several sentences cite one id, acked with an older version, has an ack for one of its sentences only, so the first check with this version may report the others `unacked`. Run `ds ack <id> --doc <doc> --line <n>` once for that line; it now acks every sentence on it. A line with one citing sentence is checked exactly as before.
+
+### Added
+
+- `System.AckEach` in the library builds one ack row per sentence a request selects: every sentence on the requested line that cites the id. `System.Ack` still returns one row, the first sentence's.
+
+### Fixed
+
+- Of several sentences on one line citing one id, only one could ever be acked. Acks were found by doc and line, so `ds ack <id> --doc D --line N` recorded the first sentence only and `--all` recorded it twice; the other sentence stayed `unacked` forever, reported as the first one rewritten. Each sentence now has its own ack: `ds ack --line` and `--all` (and a `ds:ack id=…` commit message) ack every sentence on the line that cites the id, once each, and each is checked against its own ack. Two `ds:claim`s on one line are renewed the same way. When a line yields several rows, `ds ack` quotes each row's sentence, and `ds ack --dry-run` quotes each sentence it would ack instead of one sentence twice (bug 157, GitHub issue 9).
+- In an editor, hovering the second of two sentences on one line citing one id showed the first sentence's state and diff. It now shows its own (bug 158).
+- `ds report --stalest` ranked a page by its acks when an acked line also held a citation nobody had acked, of another id or another sentence on that line. Such a page is now listed as never acked, and `gaps` says to review it, because each citation counts on its own (bug 159).
+
 ## [0.1.9] - 2026-10-14
 
 A release of the `ds` binary and the `cli` module (0.1.9) and the library (0.1.7); the tier modules are unchanged. Fixes GitHub issues 5 to 8 and bugs 144 to 156: every directive on a line is read, a `ds:claim about=` keeps its baseline until it is renewed, and a workspace index missing on this machine no longer stops every command. Read Upgrading first if you use `about=` claims.

@@ -739,7 +739,9 @@ Two guards stop it:
 
 **The workspace index is missing. Can I still use ds?** Yes. When the index named by `workspace` is not on this machine (a local directory you do not have, or a git index you cannot reach), every command except `ds sync` and `ds publish` warns and carries on with this repository's own blocks. Citations of other repositories are checked against the committed `.ds/foreign.tsv`, as in CI; without it they are reported `broken` and `ds check --strict` fails. Whoever can reach the index runs `ds sync` and commits `.ds/foreign.tsv`.
 
-**Do I ack each citation separately?** An ack is for one sentence: the same id cited in two sentences needs two acks, or one `ds ack <id> --doc D --all` that approves every citation of it in that doc. Rewording a sentence after its ack makes it `unacked` again, with the old and new wording as the diff.
+**Do I ack each citation separately?** An ack is for one sentence: the same id cited in two sentences needs two acks, or one `ds ack <id> --doc D --all` that approves every citation of it in that doc. Two sentences on one line are acked together by `ds ack <id> --doc D --line N`, which records one row for each and quotes each sentence it acked.
+
+**I acked a line and one sentence on it is still `unacked`.** With 0.1.9 and earlier, of several sentences on one line citing one id only the first could be acked, and the other was reported as the first one rewritten. From 0.1.10 each sentence has its own ack: run `ds ack <id> --doc D --line N` once more and every sentence on the line is acked. Rewording a sentence after its ack makes it `unacked` again, with the old and new wording as the diff.
 
 **How do I see what an ack would approve before recording it?** `ds ack … --dry-run` quotes each sentence and the hash it would approve, and records nothing.
 

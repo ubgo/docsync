@@ -390,11 +390,8 @@ func (s *System) Blame(rep Report, doc string, line int) (BlameResult, error) {
 			out.Change = c
 		}
 	}
-	for _, f := range rep.Findings {
-		if f.Doc == doc && f.Line == line && (f.ID == out.Reference.ID || out.Reference.ID == "") {
-			out.Finding = f
-			break
-		}
+	if f, ok := FindingOf(rep.Findings, doc, out.Reference); ok {
+		out.Finding = f
 	}
 	for _, a := range s.acks.Rows {
 		if a.Doc == doc && a.Line == line {
@@ -402,6 +399,28 @@ func (s *System) Blame(rep Report, doc string, line int) (BlameResult, error) {
 		}
 	}
 	return out, nil
+}
+
+// FindingOf is the finding of one citation in doc: the one on its line with
+// its id and its sentence, else the first on its line with its id. Matching
+// the line and id alone gave the editor's hover, on the second of two
+// sentences citing one id, the first sentence's state (bug 158). An id-less
+// reference (a claim) matches any id.
+func FindingOf(findings []check.Finding, doc string, ref block.Reference) (check.Finding, bool) {
+	var first check.Finding
+	found := false
+	for _, f := range findings {
+		if f.Doc != doc || f.Line != ref.Pos.Start || (f.ID != ref.ID && ref.ID != "") {
+			continue
+		}
+		if f.Sentence == ref.Sentence {
+			return f, true
+		}
+		if !found {
+			first, found = f, true
+		}
+	}
+	return first, found
 }
 
 // FixDuplicates re-mints every def after the first for each id defined more

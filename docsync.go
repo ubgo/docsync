@@ -567,7 +567,7 @@ func (s *System) ExtractFile(ctx context.Context, path string, src []byte) ([]bl
 }
 
 // Snapshot turns a scan into the ledger and refs to commit (§15). Refs carry
-// the latest acked hash per line so a fresh checkout can check without the
+// each citation's latest acked hash so a fresh checkout can check without the
 // ack log.
 func (s *System) Snapshot(res scan.Result) (ledger.Ledger, ledger.Refs) {
 	h := ledger.Header{Format: ledger.Format, Extract: extract.Rule, Repo: s.repo, Commit: s.commit, ScannedAt: s.now()}
@@ -592,7 +592,7 @@ func (s *System) Snapshot(res scan.Result) (ledger.Ledger, ledger.Refs) {
 	}
 	r := ledger.Refs{Header: h}
 	r.Header.Kind = ledger.KindRefs
-	latest := s.acks.Latest()
+	acks := s.acks.Index()
 	// Hashes of everything a citation in this repo can point at, including
 	// blocks defined elsewhere in the workspace, so a cross-repo citation
 	// gets a baseline on the same terms as a local one.
@@ -620,7 +620,7 @@ func (s *System) Snapshot(res scan.Result) (ledger.Ledger, ledger.Refs) {
 	// treated every moved citation as new and silently accepted whatever the
 	// block says now; ledger.Baselines is where that is decided, for scan
 	// and check alike.
-	base := ledger.Baselines(s.prevRefs.Rows, cur, latest, s.prevRefs.Header.ScannedAt, hashOf)
+	base := ledger.Baselines(s.prevRefs.Rows, cur, acks, s.prevRefs.Header.ScannedAt, hashOf)
 	for i, row := range cur {
 		row.AckedHash = base[i].Acked
 		// Written once, at the first scan that records this citation, and

@@ -249,10 +249,10 @@ func TestReport(t *testing.T) {
 	fsys["docs/acked2.md"] = &fstest.MapFile{Data: []byte("Port [8081](ds:cfg?id=auth-port-h3v8n2wd).\n")}
 	fsys["docs/home.md"] = &fstest.MapFile{Data: []byte("<!-- ds:def id=motto-a2b6f8jk -->\nShip weekly always\n\nElsewhere: Ship weekly always is repeated.\n")}
 	acks := ledger.Acks{Rows: []ledger.Ack{
-		{At: clock.Add(-24 * time.Hour), ID: "sess-save-k7m2p4xq", Doc: "docs/sessions.md", Line: 7},
-		{At: clock.Add(-72 * time.Hour), ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
-		{At: clock.Add(-96 * time.Hour), ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
-		{At: clock.Add(-48 * time.Hour), ID: "auth-port-h3v8n2wd", Doc: "docs/acked2.md", Line: 1},
+		{At: clock.Add(-24 * time.Hour), Repo: "api", ID: "sess-save-k7m2p4xq", Doc: "docs/sessions.md", Line: 7},
+		{At: clock.Add(-72 * time.Hour), Repo: "api", ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
+		{At: clock.Add(-96 * time.Hour), Repo: "api", ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
+		{At: clock.Add(-48 * time.Hour), Repo: "api", ID: "auth-port-h3v8n2wd", Doc: "docs/acked2.md", Line: 1},
 	}}
 	s, rep := changedSystem(t, fsys, WithConfig(c), WithAcks(acks))
 	r := s.Report(rep, ReportOptions{Churn: map[string]int{"internal/store/write.go": 9, "internal/busy.go": 20, "internal/also.go": 20, "internal/cold.go": 2, "internal/exported.go": 1, ".ds/ledger.tsv": 50, "internal/unscanned.go": 99, "docs/sessions.md": 40}})
@@ -1063,9 +1063,9 @@ func TestStalestRanksByDay(t *testing.T) {
 	fsys["docs/acked2.md"] = &fstest.MapFile{Data: []byte("Port [8081](ds:cfg?id=auth-port-h3v8n2wd).\n")}
 	day := clock.UTC().Truncate(24 * time.Hour).Add(-24 * time.Hour).Add(time.Hour)
 	acks := ledger.Acks{Rows: []ledger.Ack{
-		{At: day.Add(time.Second), ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
-		{At: day, ID: "auth-port-h3v8n2wd", Doc: "docs/acked2.md", Line: 1},
-		{At: day.Add(-48 * time.Hour), ID: "sess-save-k7m2p4xq", Doc: "docs/sessions.md", Line: 7},
+		{At: day.Add(time.Second), Repo: "api", ID: "auth-port-h3v8n2wd", Doc: "docs/acked.md", Line: 1},
+		{At: day, Repo: "api", ID: "auth-port-h3v8n2wd", Doc: "docs/acked2.md", Line: 1},
+		{At: day.Add(-48 * time.Hour), Repo: "api", ID: "sess-save-k7m2p4xq", Doc: "docs/sessions.md", Line: 7},
 	}}
 	s, rep := changedSystem(t, fsys, WithConfig(cfg()), WithAcks(acks))
 	var docs []string

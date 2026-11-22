@@ -496,10 +496,11 @@ func Run(in Input) Report {
 			r.foreignByKey[c.Key()] = c
 		}
 	}
-	r.acks = in.Acks.Latest()
-	r.prevAcked = map[ledger.AckKey]string{}
-	r.prevSeen = map[ledger.AckKey]string{}
-	r.prevAck = map[ledger.AckKey]ledger.Ack{}
+	r.acks = in.Acks.Index()
+	r.prevAcked = map[ledger.CiteKey]string{}
+	r.prevSeen = map[ledger.CiteKey]string{}
+	r.prevAck = map[ledger.CiteKey]ledger.Ack{}
+	r.ackHere = map[ledger.CiteKey]ledger.Ack{}
 	// This repo's citations are followed across moves before anything is
 	// measured, by the same rule scan uses to write refs.tsv, so a line
 	// inserted above a citation or a renamed doc cannot turn an unreviewed
@@ -518,8 +519,13 @@ func Run(in Input) Report {
 		}
 		return def.Hash
 	}
+	for i, a := range r.acks.Assign(cur) {
+		if a != nil {
+			r.ackHere[cur[i].CiteKey()] = *a
+		}
+	}
 	for i, b := range ledger.Baselines(in.PrevRefs.Rows, cur, r.acks, in.PrevRefs.Header.ScannedAt, current) {
-		key := cur[i].Key()
+		key := cur[i].CiteKey()
 		if b.Acked != "" {
 			r.prevAcked[key] = b.Acked
 		}
@@ -538,7 +544,7 @@ func Run(in Input) Report {
 		r.reference(ref, "")
 	}
 	for _, m := range in.MergedRefs {
-		key := ledger.AckKey{Repo: m.Repo, Doc: m.Ref.Pos.File, Line: m.Ref.Pos.Start, ID: m.Ref.ID, Env: m.Ref.Args[block.KeyEnv]}
+		key := ledger.CiteKey{AckKey: ledger.AckKey{Repo: m.Repo, Doc: m.Ref.Pos.File, Line: m.Ref.Pos.Start, ID: m.Ref.ID, Env: m.Ref.Args[block.KeyEnv]}, Sentence: m.Ref.SentenceHash}
 		if m.AckedHash != "" {
 			r.prevAcked[key] = m.AckedHash
 		}
@@ -589,12 +595,18 @@ type runner struct {
 	changeByKey  map[string]match.Change
 	changesOfID  map[string][]match.Change
 	foreignByKey map[string]match.Change
-	acks         map[ledger.AckKey]ledger.Ack
-	prevAcked    map[ledger.AckKey]string
-	prevSeen     map[ledger.AckKey]string
+	acks         ledger.AckIndex
+	// The per-citation state is keyed by position and sentence, so two
+	// sentences on one line citing one id are measured each on its own
+	// (bug 157).
+	prevAcked map[ledger.CiteKey]string
+	prevSeen  map[ledger.CiteKey]string
 	// prevAck is the ack row behind prevAcked, where there is one, for the
 	// wording check.
-	prevAck     map[ledger.AckKey]ledger.Ack
+	prevAck map[ledger.CiteKey]ledger.Ack
+	// ackHere is the ack recorded at each citation's own position that is
+	// its own (ledger.AckIndex.Assign).
+	ackHere     map[ledger.CiteKey]ledger.Ack
 	referenced  map[string]bool
 	truthHashes map[string]string
 	out         []Finding
@@ -1149,7 +1161,7 @@ func (r *runner) idReference(ref block.Reference, base Finding) {
 // AND the rule differs is it undecidable whether the wording changed or only
 // the boundary moved, and that is reported once as recorded under another
 // rule, never as a rewrite.
-func (r *runner) wording(key ledger.AckKey, ref block.Reference) (string, string) {
+func (r *runner) wording(key ledger.CiteKey, ref block.Reference) (string, string) {
 	a, ok := r.prevAck[key]
 	if !r.in.Opts.Wording || !ok || ref.SentenceHash == "" {
 		return "", ""
@@ -1176,15 +1188,15 @@ func (r *runner) wording(key ledger.AckKey, ref block.Reference) (string, string
 // ackedHash is the hash a sentence was last acked against: the append-only
 // log first, then the acked hash carried in the previous refs so a fresh
 // checkout can check without the log (§15).
-func (r *runner) ackKey(ref block.Reference, def block.Block, docRepo string) ledger.AckKey {
+func (r *runner) ackKey(ref block.Reference, def block.Block, docRepo string) ledger.CiteKey {
 	repo := r.in.Repo
 	if docRepo != "" {
 		repo = docRepo
 	}
-	return ledger.AckKey{Repo: repo, Doc: ref.Pos.File, Line: ref.Pos.Start, ID: def.ID, Env: ref.Args[block.KeyEnv]}
+	return ledger.CiteKey{AckKey: ledger.AckKey{Repo: repo, Doc: ref.Pos.File, Line: ref.Pos.Start, ID: def.ID, Env: ref.Args[block.KeyEnv]}, Sentence: ref.SentenceHash}
 }
 
-func (r *runner) ackedHash(key ledger.AckKey) string {
+func (r *runner) ackedHash(key ledger.CiteKey) string {
 	// Every citation's acked hash is settled before any finding is made: a
 	// local one by ledger.Baselines, ack log included, and a foreign one by
 	// what its own repository published. Consulting this repository's ack
@@ -1771,8 +1783,8 @@ func (r *runner) pages() {
 			continue
 		}
 		var newest time.Time
-		for k, a := range r.acks {
-			if k.Doc == doc && a.At.After(newest) {
+		for _, a := range r.acks.All() {
+			if a.Doc == doc && a.At.After(newest) {
 				newest = a.At
 			}
 		}
@@ -2123,7 +2135,7 @@ func (r *runner) claimBaseline(ref block.Reference, about []string, renewal ledg
 		}
 		return "", len(about) > 0
 	}
-	return r.prevSeen[ledger.AckKey{Repo: r.in.Repo, Doc: ref.Pos.File, Line: ref.Pos.Start, ID: ref.ID, Env: ref.Args[block.KeyEnv]}], false
+	return r.prevSeen[ledger.CiteKey{AckKey: ledger.AckKey{Repo: r.in.Repo, Doc: ref.Pos.File, Line: ref.Pos.Start, ID: ref.ID, Env: ref.Args[block.KeyEnv]}, Sentence: ref.SentenceHash}], false
 }
 
 // IsAboutBaseline tells a per-def AboutBaseline from the combined AboutHash
@@ -2139,7 +2151,7 @@ func IsAboutBaseline(s string) bool {
 // sentence. Looking only at the line lost the renewal on any edit above the
 // claim, and a claim renewed yesterday reported expired again.
 func (r *runner) claimRenewal(ref block.Reference) (ledger.Ack, bool) {
-	if a, ok := r.acks[ledger.AckKey{Repo: r.in.Repo, Doc: ref.Pos.File, Line: ref.Pos.Start}]; ok {
+	if a, ok := r.ackHere[ledger.CiteKey{AckKey: ledger.AckKey{Repo: r.in.Repo, Doc: ref.Pos.File, Line: ref.Pos.Start}, Sentence: ref.SentenceHash}]; ok {
 		return a, true
 	}
 	if ref.SentenceHash == "" {
@@ -2147,8 +2159,8 @@ func (r *runner) claimRenewal(ref block.Reference) (ledger.Ack, bool) {
 	}
 	var best ledger.Ack
 	found := false
-	for k, a := range r.acks {
-		if k.ID == "" && k.Repo == r.in.Repo && k.Doc == ref.Pos.File && a.SentenceHash == ref.SentenceHash && (!found || a.At.After(best.At)) {
+	for _, a := range r.acks.All() {
+		if a.ID == "" && a.Repo == r.in.Repo && a.Doc == ref.Pos.File && a.SentenceHash == ref.SentenceHash && (!found || a.At.After(best.At)) {
 			best, found = a, true
 		}
 	}

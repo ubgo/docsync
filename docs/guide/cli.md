@@ -538,7 +538,7 @@ ds ack <id>... [flags]
 | Flag | Does |
 |---|---|
 | `--doc string` | The citing document. |
-| `--line int` | The citing line. With `--doc`, acks that one citation. |
+| `--line int` | The citing line. With `--doc`, acks the citation of the id on that line, and every other sentence on the line that cites it. |
 | `--all` | Ack every citation of the id, or every citation in `--doc` when it is given. |
 | `--group int` | Ack every sentence in triage group N (see `triage`). |
 | `--note string` | Why it is still true. Shown in `audit`, `why --history` and on rendered pages. |
@@ -548,7 +548,7 @@ ds ack <id>... [flags]
 | `--from-commit commit` | Read `ds:ack id=…` directives from that commit's message (with your configured prefix). |
 | `--dry-run` | List every sentence that would be acked, quoted, and at which hash, and record nothing. |
 
-An ack is for one sentence. If you rewrite the sentence later, it needs a new ack. You do not need to scan before acking. Update the sentence, then ack it:
+An ack is for one sentence. If you rewrite the sentence later, it needs a new ack. When several sentences on one line cite the id, `--line` acks each of them, one row per sentence, and the output quotes each sentence so you can see what you approved. You do not need to scan before acking. Update the sentence, then ack it:
 
 ```console
 $ perl -pi -e 's/30 minutes/60 minutes/' docs/auth.md
@@ -1030,7 +1030,7 @@ ds report [flags]
 |---|---|
 | `--uncovered` | Defs that nothing cites or covers. |
 | `--unmarked` | Code and config files that changed in git history and hold no defs, and exported declarations with no def. Pages (markdown, HTML, AsciiDoc, rst) are left out: they cite blocks rather than hold them. |
-| `--stalest` | Pages ordered by the day of their oldest ack, never-acked pages first; pages acked the same day are in path order. |
+| `--stalest` | Pages ordered by the day of their oldest ack, never-acked pages first; pages acked the same day are in path order. A page counts as never acked while any citation on it has no ack of its own, even when another citation on the same line has one. |
 | `--literals` | Fact values typed by hand into docs instead of cited. |
 | `--orphaned-owners` | Owners used in defs that are missing from `[owners]`. |
 | `--gaps` | A ranked worklist of what to document next. |
@@ -1048,13 +1048,14 @@ uncovered (2)
 unmarked (1)
   go.mod  changed 1 times, no defs
 stalest (3)
+  docs/auth.md  never acked  3 cites
   docs/refresh.md  never acked  2 cites
   docs/api.md  2026-10-01  2 cites
-  docs/auth.md  2026-10-01  3 cites
 literals (0)
 orphaned owners (0):
-gaps (4)
+gaps (5)
   define blocks in go.mod (changed 1 times, nothing documented)
+  review docs/auth.md (cites never acked)
   review docs/refresh.md (cites never acked)
   document or drop empty-password-taw2whnr (internal/auth/errors.go)
   document or drop logout-d3dzzyqr (internal/auth/logout.go)

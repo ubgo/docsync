@@ -131,7 +131,7 @@ $ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":
 "@auth" = ["alice"]
 ```
 
-With `alice` listed, the ack is recorded under the client's name from `initialize` (`clientInfo.name`, here `review-bot`; `mcp` when the client gives none), actor kind `agent`, and the delegating person, so the audit log always says who judged:
+With `alice` listed, the ack is recorded under the client's name from `initialize` (`clientInfo.name`, here `review-bot`; `mcp` when the client gives none), actor kind `agent`, and the delegating person, so the audit log always says who judged. Like `ds ack --line`, it acks every sentence on that line citing the id, one row each, and the result lists the rows:
 
 ```console
 $ printf '%s\n' "$INIT" '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ack","arguments":{"id":"sess-ttl","doc":"docs/sessions.md","line":3,"delegated_by":"alice","note":"45 is right"}}}' | ds mcp > /dev/null

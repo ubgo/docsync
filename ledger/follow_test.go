@@ -278,14 +278,14 @@ func TestBaselines(t *testing.T) {
 	ack := func(doc string, line int, hash, sentence string, at time.Time) Ack {
 		return Ack{At: at, ID: "a", Repo: "api", Doc: doc, Line: line, BlockHash: hash, SentenceHash: sentence}
 	}
-	latestOf := func(as ...Ack) map[AckKey]Ack {
-		return Acks{Rows: as}.Latest()
+	latestOf := func(as ...Ack) AckIndex {
+		return Acks{Rows: as}.Index()
 	}
 	withAcked := func(r RefRow, h string) RefRow { r.AckedHash = h; return r }
 	for _, tc := range []struct {
 		name      string
 		prev, cur []RefRow
-		latest    map[AckKey]Ack
+		latest    AckIndex
 		scannedAt time.Time
 		want      Baseline
 	}{
@@ -468,7 +468,7 @@ func TestCarriedAck(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := carriedAck(Acks{Rows: tc.acks}.Latest(), tc.row, "h")
+			got := carriedAck(Acks{Rows: tc.acks}.Index(), tc.row, "h", nil)
 			where := ""
 			if got != nil {
 				where = fmt.Sprintf("%s:%d", got.Doc, got.Line)
@@ -488,7 +488,7 @@ func TestBaselinesKeepsTheAckBehindACarriedHash(t *testing.T) {
 	a := Ack{At: time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC), ID: "a", Repo: "api", Doc: "d.md", Line: 3, BlockHash: "h", SentenceHash: "s1", Sentence: "The old wording."}
 	prev := ref("a", "d.md", 9, "s1", hashOld)
 	prev.AckedHash = "h"
-	got := Baselines([]RefRow{prev}, []RefRow{ref("a", "d.md", 9, "s2", "")}, Acks{Rows: []Ack{a}}.Latest(), time.Time{}, nowFor)
+	got := Baselines([]RefRow{prev}, []RefRow{ref("a", "d.md", 9, "s2", "")}, Acks{Rows: []Ack{a}}.Index(), time.Time{}, nowFor)
 	if got[0].Acked != "h" || got[0].Ack == nil || got[0].Ack.Sentence != a.Sentence {
 		t.Fatalf("Baselines = %+v, want the line 3 ack behind hash h", got[0])
 	}

@@ -174,3 +174,4 @@ strict-no-index-fails	test	`--strict` fails closed
 workspace-path-never-cloned	test	a path that is not a directory is named in the error and never cloned
 strict-green-rationale	prose: a design rationale in the decisions record; the behaviour is strict-no-index-fails	strict is the mode that must not report green for something it never looked at
 bad-index-rationale	prose: a design rationale in the decisions record; the behaviour is pinned by the bug 153 and 154 tests	one bad entry published upstream must not stop every repository downstream
+same-line-own-ack	test	a sentence is never covered by the ack of another sentence on its line

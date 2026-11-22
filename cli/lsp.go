@@ -561,11 +561,11 @@ func (s *lspServer) hover(path string, pos lspPosition) (*lspHover, error) {
 	}
 	state := check.StateOK
 	var diff string
-	for _, f := range rep.Findings {
-		if f.ID == ref.ID && f.Doc == path && f.Line == ref.Pos.Start {
-			state, diff = f.State, f.Diff
-			break
-		}
+	// The finding is this citation's: two sentences on one line citing
+	// the id each have one, and the line alone showed the first sentence's
+	// state over both (bug 158).
+	if f, ok := docsync.FindingOf(rep.Findings, path, ref); ok {
+		state, diff = f.State, f.Diff
 	}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "**%s** · `%s:%d-%d` · %s\n\n", b.ID, b.Pos.File, b.Pos.Start, b.Pos.End, state)

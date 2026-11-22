@@ -866,37 +866,95 @@ func (s *System) isOwnerPerson(name string) bool {
 // and the sentence's current hash. The caller appends it to the log. An
 // agent actor must name who delegated; the library refuses otherwise so no
 // tool path can approve its own work silently.
+//
+// When several sentences on the line cite the id, Ack returns the row for
+// the first; AckEach returns one for each.
 func (s *System) Ack(res scan.Result, req AckRequest) (ledger.Ack, error) {
+	rows, err := s.AckEach(res, req)
+	if err != nil {
+		return ledger.Ack{}, err
+	}
+	return rows[0], nil
+}
+
+// AckEach builds the ack rows a request selects: one per sentence on the
+// requested line that cites the id the request names (or, with no id, the
+// id of the first citation on the line), in the order they appear. Two
+// sentences on one line citing one id are two statements, and each is acked
+// on its own; acking only the first left the other unacked whatever was run
+// (bug 157). Two identical sentences give one row. A page review gives one
+// row. It refuses as Ack does.
+func (s *System) AckEach(res scan.Result, req AckRequest) ([]ledger.Ack, error) {
 	if req.ActorKind == "" {
 		req.ActorKind = ledger.ActorHuman
 	}
 	if req.ActorKind == ledger.ActorAgent && req.DelegatedBy == "" {
-		return ledger.Ack{}, ErrDelegationRequired
+		return nil, ErrDelegationRequired
 	}
 	if req.ActorKind == ledger.ActorAgent && !s.isOwnerPerson(req.DelegatedBy) {
-		return ledger.Ack{}, fmt.Errorf("%w: %q", ErrDelegateNotOwner, req.DelegatedBy)
+		return nil, fmt.Errorf("%w: %q", ErrDelegateNotOwner, req.DelegatedBy)
 	}
 	if req.Page {
 		if res.Pages[req.Doc].ReviewEvery == "" {
-			return ledger.Ack{}, fmt.Errorf("%w: %s", ErrNoPageReview, req.Doc)
+			return nil, fmt.Errorf("%w: %s", ErrNoPageReview, req.Doc)
 		}
 		a := ledger.Ack{At: s.now(), Actor: req.Actor, ActorKind: req.ActorKind, DelegatedBy: req.DelegatedBy, Repo: s.repo, Doc: req.Doc, Note: req.Note, Rule: extract.Rule}
 		if !req.Preview {
 			s.observeAck(a)
 		}
-		return a, nil
+		return []ledger.Ack{a}, nil
 	}
-	var ref *block.Reference
+	var refs []*block.Reference
 	for i := range res.Refs {
 		r := &res.Refs[i]
-		if r.Pos.File == req.Doc && r.Pos.Start == req.Line && req.matches(r) {
-			ref = r
-			break
+		if r.Pos.File != req.Doc || r.Pos.Start != req.Line || !req.matches(r) {
+			continue
+		}
+		// The first match fixes what is acked: its id and verb, and its env
+		// unless the request names one. Every later citation on the line
+		// that is the same — another sentence about the same thing — is
+		// acked with it.
+		if len(refs) > 0 && !sameCitation(*refs[0], *r, req.Env) {
+			continue
+		}
+		refs = append(refs, r)
+	}
+	if len(refs) == 0 {
+		return nil, fmt.Errorf("%w: %s:%d", ErrNoReference, req.Doc, req.Line)
+	}
+	var out []ledger.Ack
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		if seen[ref.SentenceHash] {
+			continue
+		}
+		seen[ref.SentenceHash] = true
+		a, err := s.ackOne(res, req, ref)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	if !req.Preview {
+		for _, a := range out {
+			s.observeAck(a)
 		}
 	}
-	if ref == nil {
-		return ledger.Ack{}, fmt.Errorf("%w: %s:%d", ErrNoReference, req.Doc, req.Line)
+	return out, nil
+}
+
+// sameCitation reports whether b cites what a does, as far as an ack on
+// their line is concerned: the same id, both claims or neither, and the
+// same env unless the request names one for both.
+func sameCitation(a, b block.Reference, env string) bool {
+	if a.ID != b.ID || (a.Verb == extract.VerbClaim) != (b.Verb == extract.VerbClaim) {
+		return false
 	}
+	return env != "" || a.Args[block.KeyEnv] == b.Args[block.KeyEnv]
+}
+
+// ackOne builds the row for one citation.
+func (s *System) ackOne(res scan.Result, req AckRequest, ref *block.Reference) (ledger.Ack, error) {
 	// The ack is for this citation, so it carries the citation's env and
 	// the hash of the def that env resolves to — the key and the value check
 	// looks it up by. Using the request's env (empty from the CLI) and the
@@ -929,9 +987,6 @@ func (s *System) Ack(res scan.Result, req AckRequest) (ledger.Ack, error) {
 		// what was reviewed, def by def; check still reads a combined hash
 		// recorded by an older version.
 		a.BlockHash = check.AboutBaseline(check.ClaimAbout(*ref), res.Defs, s.merged)
-	}
-	if !req.Preview {
-		s.observeAck(a)
 	}
 	return a, nil
 }

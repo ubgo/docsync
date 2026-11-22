@@ -409,6 +409,42 @@ func TestLSPPicksTheCitationUnderTheCursor(t *testing.T) {
 	}
 }
 
+// TestLSPHoverShowsTheSentencesOwnState pins bug 158 in the editor: of two
+// sentences on one line citing one id, hovering the second showed the
+// first one's state, because the finding was looked up by line and id.
+// Here the second sentence is rewritten after both were acked, so only it
+// is unacked.
+func TestLSPHoverShowsTheSentencesOwnState(t *testing.T) {
+	t.Parallel()
+	dir, v := initialised(t)
+	first, second := "Save [writes](ds:block?id=sess-save-k7m2p4xq) once.", "Save [never](ds:block?id=sess-save-k7m2p4xq) fails."
+	write(t, dir, "docs/two.md", "# T\n\n"+first+" "+second+"\n")
+	if r := run(t, dir, v, "scan"); r.code != 0 {
+		t.Fatal(r)
+	}
+	if r := run(t, dir, v, "ack", "sess-save-k7m2p4xq", "--doc", "docs/two.md", "--line", "3"); r.code != 0 {
+		t.Fatal(r)
+	}
+	line := first + " " + strings.Replace(second, "fails", "errs", 1)
+	write(t, dir, "docs/two.md", "# T\n\n"+line+"\n")
+	abs, _ := filepath.Abs(dir)
+	uri := fileURI(filepath.Join(abs, "docs/two.md"))
+	at := func(s string) int { return len(utf16.Encode([]rune(line[:strings.Index(line, s)]))) + 1 }
+	req := func(id, ch int) string {
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"textDocument/hover","params":{"textDocument":{"uri":"%s"},"position":{"line":2,"character":%d}}}`, id, uri, ch)
+	}
+	resps := lspRun(t, dir, v, frame(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, req(2, at("[writes]")), req(3, at("[never]"))))
+	if len(resps) != 3 {
+		t.Fatalf("responses = %d", len(resps))
+	}
+	if got := fmt.Sprint(resps[1].Result); !strings.Contains(got, "· ok") {
+		t.Errorf("hover on the unchanged sentence = %s; want ok", got)
+	}
+	if got := fmt.Sprint(resps[2].Result); !strings.Contains(got, "· unacked") {
+		t.Errorf("hover on the rewritten sentence = %s; want unacked", got)
+	}
+}
+
 // TestRefAtFallbacks covers the lookups a live editor can reach when the
 // text and the extraction disagree: every one answers with the line's first
 // citation rather than nothing or the wrong line.
